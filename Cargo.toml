@@ -1,0 +1,24 @@
+[package]
+readme = "README.md"
+name = "iproute-rs"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Command line tool for rust-netlink project"
+homepage = "https://github.com/rust-netlink/iproute-rs"
+repository = "https://github.com/rust-netlink/iproute-rs"
+keywords = ["network"]
+
+[lib]
+name = "iproute_rs"
+
+[[bin]]
+name = "ip"
+path = "src/ip/main.rs"
+
+[dependencies]
+clap = { version = "4.5.40", features = ["cargo"] }
+rtnetlink = "0.17.0"
+serde = {version = "1.0", default-features = false, features = ["derive"]}
+serde_json = "1.0.140"
+tokio = { version = "1.30", features = ["rt", "net", "time", "macros"] }
