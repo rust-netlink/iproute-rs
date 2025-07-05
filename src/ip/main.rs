@@ -47,9 +47,9 @@ async fn main() -> Result<(), CliError> {
     };
 
     if matches.get_flag("VERSION") {
-        print_result_and_exit(Ok(format!("{}", app.render_version())));
+        print_result_and_exit(Ok(format!("{}", app.render_version())), fmt);
     } else if let Some(matches) = matches.subcommand_matches(LinkCommand::CMD) {
-        print_result_and_exit(LinkCommand::handle(matches, fmt).await);
+        print_result_and_exit(LinkCommand::handle(matches).await, fmt);
     }
 
     Ok(())

@@ -24,3 +24,21 @@ impl std::fmt::Display for CliError {
 }
 
 impl std::error::Error for CliError {}
+
+impl From<std::io::Error> for CliError {
+    fn from(e: std::io::Error) -> Self {
+        CliError {
+            code: DEFAULT_ERROR_CODE,
+            msg: format!("std::io::Error: {e}"),
+        }
+    }
+}
+
+impl From<rtnetlink::Error> for CliError {
+    fn from(e: rtnetlink::Error) -> Self {
+        CliError {
+            code: DEFAULT_ERROR_CODE,
+            msg: format!("rtnetlink::Error: {e}"),
+        }
+    }
+}

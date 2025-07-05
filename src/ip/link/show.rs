@@ -1,19 +1,145 @@
 // SPDX-License-Identifier: MIT
 
-use iproute_rs::{CliError, OutputFormat};
+use std::collections::HashMap;
+
+use futures_util::stream::TryStreamExt;
+use rtnetlink::packet_route::link::{
+    LinkAttribute, LinkFlags, LinkInfo, LinkLayerType, LinkMessage,
+};
+use rtnetlink::packet_utils::nla::Nla;
 use serde::Serialize;
 
+use iproute_rs::{mac_to_string, CanDisplay, CanOutput, CliError};
+
 #[derive(Serialize, Default)]
-struct IfaceBrief {
+pub(crate) struct CliLinkInfo {
     ifindex: u32,
     ifname: String,
     flags: Vec<String>,
     mtu: u32,
+    qdisc: String,
+    operstate: String,
+    linkmode: String,
+    group: String,
+    txqlen: u32,
+    link_type: String,
+    address: String,
+    broadcast: String,
 }
 
+impl std::fmt::Display for CliLinkInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}: {}: <{}> mtu {} qdisc {} state {} mode {} group {} qlen {}\
+            \n    link/{}",
+            self.ifindex,
+            self.ifname,
+            self.flags.as_slice().join(","),
+            self.mtu,
+            self.qdisc,
+            self.operstate,
+            self.linkmode,
+            self.group,
+            self.txqlen,
+            self.link_type,
+        )?;
+        if !self.address.is_empty() {
+            write!(f, "{} brd {}", self.address, self.broadcast)?;
+        }
+        Ok(())
+    }
+}
+
+impl CanDisplay for CliLinkInfo {
+    fn gen_string(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl CanOutput for CliLinkInfo {}
+
 pub(crate) async fn handle_show(
-    matches: &clap::ArgMatches,
-    fmt: OutputFormat,
-) -> Result<String, CliError> {
-    todo!()
+    opts: &[&str],
+) -> Result<Vec<CliLinkInfo>, CliError> {
+    let (connection, handle, _) = rtnetlink::new_connection()?;
+
+    tokio::spawn(connection);
+
+    let link_get_handle = handle.link().get();
+
+    /*
+    if let Some(iface_name) = filter.iface_name.as_ref() {
+        link_get_handle = link_get_handle.match_name(iface_name.to_string());
+    }
+    */
+
+    let mut links = link_get_handle.execute();
+    let mut ifaces: Vec<CliLinkInfo> = Vec::new();
+
+    while let Some(nl_msg) = links.try_next().await? {
+        ifaces.push(parse_nl_msg_to_iface(nl_msg)?);
+    }
+
+    Ok(ifaces)
+}
+
+pub(crate) fn parse_nl_msg_to_iface(
+    nl_msg: LinkMessage,
+) -> Result<CliLinkInfo, CliError> {
+    let mut ret = CliLinkInfo {
+        ifindex: nl_msg.header.index,
+        // TODO: We are having different ordering comparing to iproute
+        flags: nl_msg
+            .header
+            .flags
+            .iter()
+            .map(|f| f.to_string().to_uppercase())
+            .collect(),
+        link_type: nl_msg.header.link_layer_type.to_string().to_lowercase(),
+        ..Default::default()
+    };
+
+    for nl_attr in nl_msg.attributes {
+        match nl_attr {
+            LinkAttribute::IfName(name) => ret.ifname = name,
+            LinkAttribute::Mtu(mtu) => ret.mtu = mtu,
+            LinkAttribute::Address(mac) => ret.address = mac_to_string(&mac),
+            LinkAttribute::Broadcast(mac) => {
+                ret.broadcast = mac_to_string(&mac)
+            }
+            LinkAttribute::Qdisc(qdisc) => ret.qdisc = qdisc,
+            LinkAttribute::OperState(state) => {
+                // TODO: impl Display for State in rust-netlink
+                ret.operstate = format!("{:?}", state).to_uppercase()
+            }
+            LinkAttribute::TxQueueLen(v) => ret.txqlen = v,
+            LinkAttribute::Group(v) => {
+                ret.group = resolve_ip_link_group_name(v)
+            }
+            LinkAttribute::Mode(v) => ret.linkmode = link_mode_to_string(v),
+            _ => {
+                println!("Remains {:?}", nl_attr);
+            }
+        }
+    }
+    Ok(ret)
+}
+
+fn resolve_ip_link_group_name(id: u32) -> String {
+    // TODO: Read `/usr/share/iproute2/group` and `/etc/iproute2/group`
+    match id {
+        0 => "default".into(),
+        _ => id.to_string(),
+    }
+}
+
+// TODO: https://github.com/rust-netlink/netlink-packet-route/pull/171
+fn link_mode_to_string(mode: u8) -> String {
+    match mode {
+        0 => "DEFAULT".into(),
+        1 => "DORMANT".into(),
+        2 => "TESTING".into(),
+        _ => format!("UNKNOWN:{mode}"),
+    }
 }
