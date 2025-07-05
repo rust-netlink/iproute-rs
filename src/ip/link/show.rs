@@ -3,10 +3,7 @@
 use std::collections::HashMap;
 
 use futures_util::stream::TryStreamExt;
-use rtnetlink::packet_route::link::{
-    LinkAttribute, LinkFlags, LinkInfo, LinkLayerType, LinkMessage,
-};
-use rtnetlink::packet_utils::nla::Nla;
+use rtnetlink::packet_route::link::{LinkAttribute, LinkMessage};
 use serde::Serialize;
 
 use iproute_rs::{mac_to_string, CanDisplay, CanOutput, CliError};
@@ -18,12 +15,18 @@ pub(crate) struct CliLinkInfo {
     flags: Vec<String>,
     mtu: u32,
     qdisc: String,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "master")]
+    controller: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "master")]
+    controller_ifindex: Option<u32>,
     operstate: String,
     linkmode: String,
     group: String,
     txqlen: u32,
     link_type: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     address: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     broadcast: String,
 }
 
@@ -31,21 +34,25 @@ impl std::fmt::Display for CliLinkInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}: {}: <{}> mtu {} qdisc {} state {} mode {} group {} qlen {}\
-            \n    link/{}",
+            "{}: {}: <{}> mtu {} qdisc {}",
             self.ifindex,
             self.ifname,
             self.flags.as_slice().join(","),
             self.mtu,
             self.qdisc,
-            self.operstate,
-            self.linkmode,
-            self.group,
-            self.txqlen,
-            self.link_type,
         )?;
+        if let Some(ctrl) = self.controller.as_ref() {
+            write!(f, " master {}", ctrl)?;
+        }
+        write!(
+            f,
+            " state {} mode {} group {} qlen {}\n",
+            self.operstate, self.linkmode, self.group, self.txqlen,
+        )?;
+        write!(f, "\n    ")?;
+        write!(f, "link/{}", self.link_type)?;
         if !self.address.is_empty() {
-            write!(f, "{} brd {}", self.address, self.broadcast)?;
+            write!(f, " {} brd {}", self.address, self.broadcast)?;
         }
         Ok(())
     }
@@ -60,7 +67,7 @@ impl CanDisplay for CliLinkInfo {
 impl CanOutput for CliLinkInfo {}
 
 pub(crate) async fn handle_show(
-    opts: &[&str],
+    _opts: &[&str],
 ) -> Result<Vec<CliLinkInfo>, CliError> {
     let (connection, handle, _) = rtnetlink::new_connection()?;
 
@@ -80,6 +87,8 @@ pub(crate) async fn handle_show(
     while let Some(nl_msg) = links.try_next().await? {
         ifaces.push(parse_nl_msg_to_iface(nl_msg)?);
     }
+
+    resolve_controller_name(&mut ifaces);
 
     Ok(ifaces)
 }
@@ -118,8 +127,9 @@ pub(crate) fn parse_nl_msg_to_iface(
                 ret.group = resolve_ip_link_group_name(v)
             }
             LinkAttribute::Mode(v) => ret.linkmode = link_mode_to_string(v),
+            LinkAttribute::Controller(d) => ret.controller_ifindex = Some(d),
             _ => {
-                println!("Remains {:?}", nl_attr);
+                // println!("Remains {:?}", nl_attr);
             }
         }
     }
@@ -141,5 +151,20 @@ fn link_mode_to_string(mode: u8) -> String {
         1 => "DORMANT".into(),
         2 => "TESTING".into(),
         _ => format!("UNKNOWN:{mode}"),
+    }
+}
+
+fn resolve_controller_name(links: &mut [CliLinkInfo]) {
+    let index_2_name: HashMap<u32, String> = links
+        .iter()
+        .map(|l| (l.ifindex, l.ifname.to_string()))
+        .collect();
+
+    for link in links.iter_mut() {
+        if let Some(ctrl_ifindex) = link.controller_ifindex {
+            if let Some(name) = index_2_name.get(&ctrl_ifindex) {
+                link.controller = Some(name.to_string());
+            }
+        }
     }
 }
