@@ -1,0 +1,16 @@
+header:
+  license:
+    content: |
+      SPDX-License-Identifier: MIT
+  paths-ignore:
+    - 'Makefile'
+    - 'target'
+    - '**/*.toml'
+    - '**/*.lock'
+    - '**/*.yml'
+    - '**/*.md'
+    - 'CHANGELOG'
+    - 'LICENSE-MIT'
+    - '.gitignore'
+
+  comment: on-failure
