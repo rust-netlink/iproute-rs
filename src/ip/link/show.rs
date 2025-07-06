@@ -7,7 +7,9 @@ use rtnetlink::packet_route::link::{LinkAttribute, LinkMessage};
 use serde::Serialize;
 
 use super::flags::link_flags_to_string;
-use iproute_rs::{mac_to_string, CanDisplay, CanOutput, CliError};
+use iproute_rs::{
+    mac_to_string, write_with_color, CanDisplay, CanOutput, CliColor, CliError,
+};
 
 #[derive(Serialize, Default)]
 pub(crate) struct CliLinkInfo {
@@ -33,11 +35,11 @@ pub(crate) struct CliLinkInfo {
 
 impl std::fmt::Display for CliLinkInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: ", self.ifindex)?;
+        write_with_color!(f, CliColor::IfaceName, "{}: ", self.ifname)?;
         write!(
             f,
-            "{}: {}: <{}> mtu {} qdisc {}",
-            self.ifindex,
-            self.ifname,
+            "<{}> mtu {} qdisc {}",
             self.flags.as_slice().join(","),
             self.mtu,
             self.qdisc,
@@ -45,17 +47,25 @@ impl std::fmt::Display for CliLinkInfo {
         if let Some(ctrl) = self.controller.as_ref() {
             write!(f, " master {}", ctrl)?;
         }
+        write!(f, " state ")?;
+        if self.operstate == "UP" {
+            write_with_color!(f, CliColor::StateUp, "{} ", self.operstate)?;
+        } else if self.operstate == "DOWN" {
+            write_with_color!(f, CliColor::StateDown, "{} ", self.operstate)?;
+        } else {
+            write!(f, "{} ", self.operstate)?;
+        }
         write!(
             f,
-            " state {} mode {} group {} qlen {}",
-            self.operstate, self.linkmode, self.group, self.txqlen,
+            "mode {} group {} qlen {}",
+            self.linkmode, self.group, self.txqlen,
         )?;
         write!(f, "\n    ")?;
-        write!(f, "link/{}", self.link_type)?;
+        write!(f, "link/{} ", self.link_type)?;
         if !self.address.is_empty() {
-            write!(f, " {} brd {}", self.address, self.broadcast)?;
-        } else {
-            write!(f, " ")?;
+            write_with_color!(f, CliColor::Mac, "{}", self.address)?;
+            write!(f, " brd ")?;
+            write_with_color!(f, CliColor::Mac, "{}", self.broadcast)?;
         }
         Ok(())
     }
