@@ -2,9 +2,12 @@
 
 mod link;
 
+#[cfg(test)]
+mod tests;
+
 use std::io::IsTerminal;
 
-use iproute_rs::{print_result_and_exit, CliColor, CliError, OutputFormat};
+use iproute_rs::{CliColor, CliError, OutputFormat, print_result_and_exit};
 
 use self::link::LinkCommand;
 
@@ -57,16 +60,15 @@ async fn main() -> Result<(), CliError> {
         OutputFormat::default()
     };
 
-    if let Some(color_str) = matches.get_one::<String>("COLOR") {
-        if color_str == "always"
-            || (color_str == "auto" && std::io::stdout().is_terminal())
-        {
-            CliColor::enable();
-        }
+    if let Some(color_str) = matches.get_one::<String>("COLOR")
+        && (color_str == "always"
+            || (color_str == "auto" && std::io::stdout().is_terminal()))
+    {
+        CliColor::enable();
     }
 
     if matches.get_flag("VERSION") {
-        print_result_and_exit(Ok(format!("{}", app.render_version())), fmt);
+        print_result_and_exit(Ok(app.render_version().to_string()), fmt);
     } else if let Some(matches) = matches.subcommand_matches(LinkCommand::CMD) {
         print_result_and_exit(LinkCommand::handle(matches).await, fmt);
     }

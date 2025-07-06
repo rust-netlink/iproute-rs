@@ -14,7 +14,7 @@ where
 {
     fn gen_string(&self) -> String {
         let strings: Vec<String> = self.iter().map(T::gen_string).collect();
-        format!("{}", strings.join("\n"))
+        strings.join("\n").to_string()
     }
 }
 

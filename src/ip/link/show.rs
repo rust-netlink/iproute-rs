@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use super::flags::link_flags_to_string;
 use iproute_rs::{
-    mac_to_string, write_with_color, CanDisplay, CanOutput, CliColor, CliError,
+    CanDisplay, CanOutput, CliColor, CliError, mac_to_string, write_with_color,
 };
 
 #[derive(Serialize, Default)]
@@ -20,7 +20,7 @@ pub(crate) struct CliLinkInfo {
     qdisc: String,
     #[serde(skip_serializing_if = "Option::is_none", rename = "master")]
     controller: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "master")]
+    #[serde(skip)]
     controller_ifindex: Option<u32>,
     operstate: String,
     linkmode: String,
@@ -45,7 +45,7 @@ impl std::fmt::Display for CliLinkInfo {
             self.qdisc,
         )?;
         if let Some(ctrl) = self.controller.as_ref() {
-            write!(f, " master {}", ctrl)?;
+            write!(f, " master {ctrl}")?;
         }
         write!(f, " state ")?;
         if self.operstate == "UP" {
@@ -127,7 +127,7 @@ pub(crate) fn parse_nl_msg_to_iface(
             LinkAttribute::Qdisc(qdisc) => ret.qdisc = qdisc,
             LinkAttribute::OperState(state) => {
                 // TODO: impl Display for State in rust-netlink
-                ret.operstate = format!("{:?}", state).to_uppercase()
+                ret.operstate = format!("{state:?}").to_uppercase()
             }
             LinkAttribute::TxQueueLen(v) => ret.txqlen = v,
             LinkAttribute::Group(v) => {
@@ -168,10 +168,10 @@ fn resolve_controller_name(links: &mut [CliLinkInfo]) {
         .collect();
 
     for link in links.iter_mut() {
-        if let Some(ctrl_ifindex) = link.controller_ifindex {
-            if let Some(name) = index_2_name.get(&ctrl_ifindex) {
-                link.controller = Some(name.to_string());
-            }
+        if let Some(ctrl_ifindex) = link.controller_ifindex
+            && let Some(name) = index_2_name.get(&ctrl_ifindex)
+        {
+            link.controller = Some(name.to_string());
         }
     }
 }

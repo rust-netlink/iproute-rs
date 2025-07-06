@@ -2,7 +2,7 @@
 
 use iproute_rs::CliError;
 
-use super::show::{handle_show, CliLinkInfo};
+use super::show::{CliLinkInfo, handle_show};
 
 pub(crate) struct LinkCommand;
 
@@ -45,7 +45,7 @@ impl LinkCommand {
         matches: &clap::ArgMatches,
     ) -> Result<Vec<CliLinkInfo>, CliError> {
         if let Some(matches) = matches.subcommand_matches("add") {
-            println!("HAHA {:?}", matches);
+            println!("HAHA {matches:?}");
             todo!()
         } else if let Some(matches) = matches.subcommand_matches("show") {
             let opts: Vec<&str> = matches
