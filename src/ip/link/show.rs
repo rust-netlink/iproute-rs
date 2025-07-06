@@ -25,7 +25,8 @@ pub(crate) struct CliLinkInfo {
     operstate: String,
     linkmode: String,
     group: String,
-    txqlen: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    txqlen: Option<u32>,
     link_type: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     address: String,
@@ -55,11 +56,10 @@ impl std::fmt::Display for CliLinkInfo {
         } else {
             write!(f, "{} ", self.operstate)?;
         }
-        write!(
-            f,
-            "mode {} group {} qlen {}",
-            self.linkmode, self.group, self.txqlen,
-        )?;
+        write!(f, "mode {} group {} ", self.linkmode, self.group,)?;
+        if let Some(v) = self.txqlen {
+            write!(f, "qlen {v}")?;
+        }
         write!(f, "\n    ")?;
         write!(f, "link/{} ", self.link_type)?;
         if !self.address.is_empty() {
@@ -129,7 +129,11 @@ pub(crate) fn parse_nl_msg_to_iface(
                 // TODO: impl Display for State in rust-netlink
                 ret.operstate = format!("{state:?}").to_uppercase()
             }
-            LinkAttribute::TxQueueLen(v) => ret.txqlen = v,
+            LinkAttribute::TxQueueLen(v) => {
+                if v > 0 {
+                    ret.txqlen = Some(v)
+                }
+            }
             LinkAttribute::Group(v) => {
                 ret.group = resolve_ip_link_group_name(v)
             }
