@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 use crate::tests::{exec_cmd, get_ip_cli_path};
 
