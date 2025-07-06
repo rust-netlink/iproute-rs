@@ -6,6 +6,7 @@ use futures_util::stream::TryStreamExt;
 use rtnetlink::packet_route::link::{LinkAttribute, LinkMessage};
 use serde::Serialize;
 
+use super::flags::link_flags_to_string;
 use iproute_rs::{mac_to_string, CanDisplay, CanOutput, CliError};
 
 #[derive(Serialize, Default)]
@@ -46,13 +47,15 @@ impl std::fmt::Display for CliLinkInfo {
         }
         write!(
             f,
-            " state {} mode {} group {} qlen {}\n",
+            " state {} mode {} group {} qlen {}",
             self.operstate, self.linkmode, self.group, self.txqlen,
         )?;
         write!(f, "\n    ")?;
         write!(f, "link/{}", self.link_type)?;
         if !self.address.is_empty() {
             write!(f, " {} brd {}", self.address, self.broadcast)?;
+        } else {
+            write!(f, " ")?;
         }
         Ok(())
     }
@@ -98,13 +101,7 @@ pub(crate) fn parse_nl_msg_to_iface(
 ) -> Result<CliLinkInfo, CliError> {
     let mut ret = CliLinkInfo {
         ifindex: nl_msg.header.index,
-        // TODO: We are having different ordering comparing to iproute
-        flags: nl_msg
-            .header
-            .flags
-            .iter()
-            .map(|f| f.to_string().to_uppercase())
-            .collect(),
+        flags: link_flags_to_string(nl_msg.header.flags),
         link_type: nl_msg.header.link_layer_type.to_string().to_lowercase(),
         ..Default::default()
     };

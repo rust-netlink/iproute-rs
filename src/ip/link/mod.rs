@@ -2,5 +2,6 @@
 
 mod cli;
 mod show;
+mod flags;
 
 pub(crate) use self::cli::LinkCommand;
