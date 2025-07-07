@@ -61,10 +61,8 @@ where
             let mut stdout = std::io::stdout();
             let output = match fmt {
                 OutputFormat::Cli => s.to_cli_string(),
-                OutputFormat::Json => serde_json::to_string(&s)
-                    .expect("Failed to generate JSON string"),
-                OutputFormat::Yaml => serde_yaml::to_string(&s)
-                    .expect("Failed to generate YAML string"),
+                OutputFormat::Json => s.to_json_string(),
+                OutputFormat::Yaml => s.to_yaml_string(),
             };
             writeln!(stdout, "{output}").ok();
             std::process::exit(0);
