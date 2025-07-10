@@ -4,8 +4,16 @@ use std::io::Write;
 
 use crate::CliError;
 
-pub trait CanDisplay {
+pub trait CanDisplay: serde::Serialize + Sized {
     fn gen_string(&self) -> String;
+
+    fn to_json_string(&self) -> String {
+        serde_json::to_string(self).expect("Failed to generate JSON string")
+    }
+
+    fn to_yaml_string(&self) -> String {
+        serde_yaml::to_string(self).expect("Failed to generate JSON string")
+    }
 }
 
 impl<T> CanDisplay for &[T]
@@ -36,14 +44,6 @@ impl CanDisplay for String {
 pub trait CanOutput: serde::Serialize + CanDisplay + Sized {
     fn to_cli_string(&self) -> String {
         self.gen_string()
-    }
-
-    fn to_json_string(&self) -> String {
-        serde_json::to_string(self).expect("Failed to generate JSON string")
-    }
-
-    fn to_yaml_string(&self) -> String {
-        serde_yaml::to_string(self).expect("Failed to generate JSON string")
     }
 }
 
