@@ -137,7 +137,7 @@ pub(crate) fn parse_nl_msg_to_iface(
             LinkAttribute::Group(v) => {
                 ret.group = resolve_ip_link_group_name(v)
             }
-            LinkAttribute::Mode(v) => ret.linkmode = link_mode_to_string(v),
+            LinkAttribute::Mode(v) => ret.linkmode = v.to_string(),
             LinkAttribute::Controller(d) => ret.controller_ifindex = Some(d),
             _ => {
                 // println!("Remains {:?}", nl_attr);
@@ -152,16 +152,6 @@ fn resolve_ip_link_group_name(id: u32) -> String {
     match id {
         0 => "default".into(),
         _ => id.to_string(),
-    }
-}
-
-// TODO: https://github.com/rust-netlink/netlink-packet-route/pull/171
-fn link_mode_to_string(mode: u8) -> String {
-    match mode {
-        0 => "DEFAULT".into(),
-        1 => "DORMANT".into(),
-        2 => "TESTING".into(),
-        _ => format!("UNKNOWN:{mode}"),
     }
 }
 
