@@ -47,6 +47,13 @@ async fn main() -> Result<(), CliError> {
                 .action(clap::ArgAction::SetTrue)
                 .global(true),
         )
+        .arg(
+            clap::Arg::new("DETAILS")
+                .short('d')
+                .help("Interface details")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        )
         .subcommand_required(true)
         .subcommand(LinkCommand::gen_command());
 
