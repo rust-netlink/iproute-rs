@@ -10,7 +10,7 @@ use rtnetlink::packet_route::link::LinkInfo;
 use rtnetlink::{
     packet_core::Nla as _,
     packet_route::link::{
-        AfSpecInet6, AfSpecUnspec, LinkAttribute, LinkLayerType, LinkMessage,
+        AfSpecInet6, AfSpecUnspec, LinkAttribute, LinkMessage,
     },
 };
 use serde::Serialize;
@@ -28,6 +28,11 @@ const IFLA_TSO_MAX_SIZE: u16 = 59;
 const IFLA_TSO_MAX_SEGS: u16 = 60;
 const IFLA_ALLMULTI: u16 = 61;
 
+const VLAN_FLAG_REORDER_HDR: u32 = 0x1;
+const VLAN_FLAG_GVRP: u32 = 0x2;
+const VLAN_FLAG_LOOSE_BINDING: u32 = 0x4;
+const VLAN_FLAG_MVRP: u32 = 0x8;
+
 fn default_nla_to_string(default_nla: &DefaultNla) -> String {
     let val_len = default_nla.value_len();
     let mut val = vec![0u8; val_len];
@@ -41,14 +46,55 @@ fn default_nla_to_string(default_nla: &DefaultNla) -> String {
 
 #[derive(Serialize)]
 #[serde(untagged)]
-enum CliLinkInfoData {}
+enum CliLinkInfoData {
+    Vlan {
+        protocol: String,
+        id: u16,
+        flags: Vec<String>,
+    },
+}
 
 impl CliLinkInfoData {
     fn new(info_data: &InfoData) -> Self {
         match info_data {
             InfoData::Bridge(_info_bridge) => todo!(),
             InfoData::Tun(_info_tun) => todo!(),
-            InfoData::Vlan(_info_vlan) => todo!(),
+            InfoData::Vlan(info_vlan) => {
+                use rtnetlink::packet_route::link::InfoVlan;
+                let mut id = 0;
+                let mut flags = Vec::new();
+                let mut protocol = String::new();
+
+                for nla in info_vlan {
+                    match nla {
+                        InfoVlan::Id(v) => id = *v,
+                        InfoVlan::Flags((flags_val, _)) => {
+                            if flags_val & VLAN_FLAG_REORDER_HDR != 0 {
+                                flags.push("REORDER_HDR".to_string());
+                            }
+                            if flags_val & VLAN_FLAG_GVRP != 0 {
+                                flags.push("GVRP".to_string());
+                            }
+                            if flags_val & VLAN_FLAG_LOOSE_BINDING != 0 {
+                                flags.push("LOOSE_BINDING".to_string());
+                            }
+                            if flags_val & VLAN_FLAG_MVRP != 0 {
+                                flags.push("MVRP".to_string());
+                            }
+                        }
+                        InfoVlan::Protocol(v) => {
+                            protocol = v.to_string().to_uppercase();
+                        }
+                        _ => (),
+                    }
+                }
+
+                Self::Vlan {
+                    id,
+                    flags,
+                    protocol,
+                }
+            }
             InfoData::Veth(_info_veth) => todo!(),
             InfoData::Vxlan(_info_vxlan) => todo!(),
             InfoData::Bond(_info_bond) => todo!(),
@@ -78,7 +124,17 @@ impl CliLinkInfoData {
 impl std::fmt::Display for CliLinkInfoData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            _ => todo!(),
+            CliLinkInfoData::Vlan {
+                id,
+                flags,
+                protocol,
+            } => {
+                write!(f, "protocol {} ", protocol)?;
+                write!(f, "id {} ", id)?;
+                if !flags.is_empty() {
+                    write!(f, "<{}>", flags.as_slice().join(","))?;
+                }
+            }
         }
 
         Ok(())
@@ -127,10 +183,7 @@ pub(crate) struct CliLinkInfoDetails {
 }
 
 impl CliLinkInfoDetails {
-    fn new_with_type(
-        link_type: LinkLayerType,
-        nl_attrs: &[LinkAttribute],
-    ) -> Self {
+    fn new(nl_attrs: &[LinkAttribute]) -> Self {
         let mut linkinfo = None;
         let mut promiscuity = 0;
         let mut allmulti = 0;
@@ -347,20 +400,18 @@ impl CanDisplay for CliLinkInfo {
 impl CanOutput for CliLinkInfo {}
 
 pub(crate) async fn handle_show(
-    _opts: &[&str],
+    opts: &[&str],
     include_details: bool,
 ) -> Result<Vec<CliLinkInfo>, CliError> {
     let (connection, handle, _) = rtnetlink::new_connection()?;
 
     tokio::spawn(connection);
 
-    let link_get_handle = handle.link().get();
+    let mut link_get_handle = handle.link().get();
 
-    /*
-    if let Some(iface_name) = filter.iface_name.as_ref() {
+    if let Some(iface_name) = opts.first() {
         link_get_handle = link_get_handle.match_name(iface_name.to_string());
     }
-    */
 
     let mut links = link_get_handle.execute();
     let mut ifaces: Vec<CliLinkInfo> = Vec::new();
@@ -385,10 +436,8 @@ pub(crate) fn parse_nl_msg_to_iface(
         ..Default::default()
     };
 
-    ret.details = include_details.then_some(CliLinkInfoDetails::new_with_type(
-        nl_msg.header.link_layer_type,
-        &nl_msg.attributes,
-    ));
+    ret.details =
+        include_details.then(|| CliLinkInfoDetails::new(&nl_msg.attributes));
 
     for nl_attr in nl_msg.attributes {
         match nl_attr {
