@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
+use std::ffi::CStr;
 
 use futures_util::stream::TryStreamExt;
+use rtnetlink::packet_core::DefaultNla;
+use rtnetlink::packet_route::link::InfoData;
+use rtnetlink::packet_route::link::LinkInfo;
 use rtnetlink::{
     packet_core::Nla as _,
     packet_route::link::{
@@ -17,91 +21,84 @@ use iproute_rs::{
 };
 
 // Use constants until support is added to netlink-packet-route
+const IFLA_PARENT_DEV_NAME: u16 = 56;
+const IFLA_PARENT_DEV_BUS_NAME: u16 = 57;
 const IFLA_GRO_MAX_SIZE: u16 = 58;
 const IFLA_TSO_MAX_SIZE: u16 = 59;
 const IFLA_TSO_MAX_SEGS: u16 = 60;
 const IFLA_ALLMULTI: u16 = 61;
 
+fn default_nla_to_string(default_nla: &DefaultNla) -> String {
+    let val_len = default_nla.value_len();
+    let mut val = vec![0u8; val_len];
+    default_nla.emit_value(&mut val);
+    CStr::from_bytes_with_nul(&val)
+        .expect("String nla to be nul-terminated and not contain interior nuls")
+        .to_str()
+        .expect("To be valid UTF-8")
+        .to_string()
+}
+
 #[derive(Serialize)]
 #[serde(untagged)]
-enum CliLinkTypeDetails {}
+enum CliLinkInfoData {}
 
-impl CliLinkTypeDetails {
-    fn new(link_type: LinkLayerType, nl_attrs: &[LinkAttribute]) -> Self {
-        match link_type {
-            LinkLayerType::Loopback => todo!(),
-            LinkLayerType::Ether => todo!(),
-            LinkLayerType::Netrom => todo!(),
-            LinkLayerType::Eether => todo!(),
-            LinkLayerType::Ax25 => todo!(),
-            LinkLayerType::Pronet => todo!(),
-            LinkLayerType::Chaos => todo!(),
-            LinkLayerType::Ieee802 => todo!(),
-            LinkLayerType::Arcnet => todo!(),
-            LinkLayerType::Appletlk => todo!(),
-            LinkLayerType::Dlci => todo!(),
-            LinkLayerType::Atm => todo!(),
-            LinkLayerType::Metricom => todo!(),
-            LinkLayerType::Ieee1394 => todo!(),
-            LinkLayerType::Eui64 => todo!(),
-            LinkLayerType::Infiniband => todo!(),
-            LinkLayerType::Slip => todo!(),
-            LinkLayerType::Cslip => todo!(),
-            LinkLayerType::Slip6 => todo!(),
-            LinkLayerType::Cslip6 => todo!(),
-            LinkLayerType::Rsrvd => todo!(),
-            LinkLayerType::Adapt => todo!(),
-            LinkLayerType::Rose => todo!(),
-            LinkLayerType::X25 => todo!(),
-            LinkLayerType::Hwx25 => todo!(),
-            LinkLayerType::Can => todo!(),
-            LinkLayerType::Ppp => todo!(),
-            LinkLayerType::Hdlc => todo!(),
-            LinkLayerType::Lapb => todo!(),
-            LinkLayerType::Ddcmp => todo!(),
-            LinkLayerType::Rawhdlc => todo!(),
-            LinkLayerType::Rawip => todo!(),
-            LinkLayerType::Tunnel => todo!(),
-            LinkLayerType::Tunnel6 => todo!(),
-            LinkLayerType::Frad => todo!(),
-            LinkLayerType::Skip => todo!(),
-            LinkLayerType::Localtlk => todo!(),
-            LinkLayerType::Fddi => todo!(),
-            LinkLayerType::Bif => todo!(),
-            LinkLayerType::Sit => todo!(),
-            LinkLayerType::Ipddp => todo!(),
-            LinkLayerType::Ipgre => todo!(),
-            LinkLayerType::Pimreg => todo!(),
-            LinkLayerType::Hippi => todo!(),
-            LinkLayerType::Ash => todo!(),
-            LinkLayerType::Econet => todo!(),
-            LinkLayerType::Irda => todo!(),
-            LinkLayerType::Fcpp => todo!(),
-            LinkLayerType::Fcal => todo!(),
-            LinkLayerType::Fcpl => todo!(),
-            LinkLayerType::Fcfabric => todo!(),
-            LinkLayerType::Ieee802Tr => todo!(),
-            LinkLayerType::Ieee80211 => todo!(),
-            LinkLayerType::Ieee80211Prism => todo!(),
-            LinkLayerType::Ieee80211Radiotap => todo!(),
-            LinkLayerType::Ieee802154 => todo!(),
-            LinkLayerType::Ieee802154Monitor => todo!(),
-            LinkLayerType::Phonet => todo!(),
-            LinkLayerType::PhonetPipe => todo!(),
-            LinkLayerType::Caif => todo!(),
-            LinkLayerType::Ip6gre => todo!(),
-            LinkLayerType::Netlink => todo!(),
-            LinkLayerType::Sixlowpan => todo!(),
-            LinkLayerType::Vsockmon => todo!(),
-            LinkLayerType::Void => todo!(),
-            LinkLayerType::None => todo!(),
+impl CliLinkInfoData {
+    fn new(info_data: &InfoData) -> Self {
+        match info_data {
+            InfoData::Bridge(_info_bridge) => todo!(),
+            InfoData::Tun(_info_tun) => todo!(),
+            InfoData::Vlan(_info_vlan) => todo!(),
+            InfoData::Veth(_info_veth) => todo!(),
+            InfoData::Vxlan(_info_vxlan) => todo!(),
+            InfoData::Bond(_info_bond) => todo!(),
+            InfoData::IpVlan(_info_ip_vlan) => todo!(),
+            InfoData::IpVtap(_info_ip_vtap) => todo!(),
+            InfoData::MacVlan(_info_mac_vlan) => todo!(),
+            InfoData::MacVtap(_info_mac_vtap) => todo!(),
+            InfoData::GreTap(_info_gre_tap) => todo!(),
+            InfoData::GreTap6(_info_gre_tap6) => todo!(),
+            InfoData::SitTun(_info_sit_tun) => todo!(),
+            InfoData::GreTun(_info_gre_tun) => todo!(),
+            InfoData::GreTun6(_info_gre_tun6) => todo!(),
+            InfoData::Vti(_info_vti) => todo!(),
+            InfoData::Vrf(_info_vrf) => todo!(),
+            InfoData::Gtp(_info_gtp) => todo!(),
+            InfoData::Ipoib(_info_ipoib) => todo!(),
+            InfoData::Xfrm(_info_xfrm) => todo!(),
+            InfoData::MacSec(_info_mac_sec) => todo!(),
+            InfoData::Hsr(_info_hsr) => todo!(),
+            InfoData::Geneve(_info_geneve) => todo!(),
+            InfoData::Other(_items) => todo!(),
             _ => todo!(),
         }
     }
 }
 
-impl std::fmt::Display for CliLinkTypeDetails {
+impl std::fmt::Display for CliLinkInfoData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            _ => todo!(),
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Serialize)]
+pub(crate) struct CliLinkInfoKindNData {
+    info_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    info_data: Option<CliLinkInfoData>,
+}
+
+impl std::fmt::Display for CliLinkInfoKindNData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "\n    ")?;
+        write!(f, "{} ", self.info_kind)?;
+        if let Some(data) = &self.info_data {
+            write!(f, "{data} ")?;
+        }
         Ok(())
     }
 }
@@ -112,6 +109,8 @@ pub(crate) struct CliLinkInfoDetails {
     allmulti: u32,
     min_mtu: u32,
     max_mtu: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    linkinfo: Option<CliLinkInfoKindNData>,
     #[serde(skip_serializing_if = "String::is_empty")]
     inet6_addr_gen_mode: String,
     num_tx_queues: u32,
@@ -121,8 +120,10 @@ pub(crate) struct CliLinkInfoDetails {
     tso_max_size: u32,
     tso_max_segs: u32,
     gro_max_size: u32,
-    #[serde(flatten)]
-    link_type_details: CliLinkTypeDetails,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    parentbus: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    parentdev: String,
 }
 
 impl CliLinkInfoDetails {
@@ -130,8 +131,7 @@ impl CliLinkInfoDetails {
         link_type: LinkLayerType,
         nl_attrs: &[LinkAttribute],
     ) -> Self {
-        let link_type_details = CliLinkTypeDetails::new(link_type, nl_attrs);
-
+        let mut linkinfo = None;
         let mut promiscuity = 0;
         let mut allmulti = 0;
         let mut min_mtu = 0;
@@ -144,6 +144,8 @@ impl CliLinkInfoDetails {
         let mut tso_max_segs = 0;
         let mut gro_max_size = 0;
         let mut inet6_addr_gen_mode = String::new();
+        let mut parentbus = String::new();
+        let mut parentdev = String::new();
 
         for nl_attr in nl_attrs {
             match nl_attr {
@@ -158,6 +160,12 @@ impl CliLinkInfoDetails {
                 LinkAttribute::GsoMaxSize(g) => gso_max_size = *g,
                 LinkAttribute::GsoMaxSegs(g) => gso_max_segs = *g,
                 LinkAttribute::Other(default_nla) => match default_nla.kind() {
+                    IFLA_PARENT_DEV_BUS_NAME => {
+                        parentbus = default_nla_to_string(default_nla);
+                    }
+                    IFLA_PARENT_DEV_NAME => {
+                        parentdev = default_nla_to_string(default_nla);
+                    }
                     IFLA_GRO_MAX_SIZE => {
                         let mut val = [0u8; 4];
                         default_nla.emit_value(&mut val);
@@ -180,6 +188,27 @@ impl CliLinkInfoDetails {
                     }
                     _ => { /* println!("Remains {:?}", default_nla); */ }
                 },
+                LinkAttribute::LinkInfo(info) => {
+                    // println!("LinkInfo: {:?}", info);
+                    let mut info_kind = String::new();
+                    let mut info_data = Option::None;
+                    for nla in info {
+                        match nla {
+                            LinkInfo::Kind(t) => {
+                                info_kind = t.to_string();
+                            }
+                            LinkInfo::Data(data) => {
+                                info_data = Some(CliLinkInfoData::new(data));
+                            }
+                            _ => (),
+                        }
+                    }
+
+                    linkinfo = Some(CliLinkInfoKindNData {
+                        info_kind,
+                        info_data,
+                    });
+                }
                 _ => {
                     // println!("Remains {:?}", nl_attr);
                 }
@@ -191,15 +220,17 @@ impl CliLinkInfoDetails {
             allmulti,
             min_mtu,
             max_mtu,
+            linkinfo,
             inet6_addr_gen_mode,
             num_tx_queues,
             num_rx_queues,
             gso_max_size,
             gso_max_segs,
-            link_type_details,
             tso_max_size,
             tso_max_segs,
             gro_max_size,
+            parentbus,
+            parentdev,
         }
     }
 }
@@ -208,11 +239,17 @@ impl std::fmt::Display for CliLinkInfoDetails {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            " promiscuity {}  allmulti {} minmtu {} maxmtu {} addrgenmode {} numtxqueues {} numrxqueues {} gso_max_size {} gso_max_segs {} tso_max_size {} tso_max_segs {} gro_max_size {} {}",
-            self.promiscuity,
-            self.allmulti,
-            self.min_mtu,
-            self.max_mtu,
+            " promiscuity {}  allmulti {} minmtu {} maxmtu {} ",
+            self.promiscuity, self.allmulti, self.min_mtu, self.max_mtu,
+        )?;
+
+        if let Some(linkinfo) = &self.linkinfo {
+            write!(f, "{linkinfo}")?;
+        }
+
+        write!(
+            f,
+            "addrgenmode {} numtxqueues {} numrxqueues {} gso_max_size {} gso_max_segs {} tso_max_size {} tso_max_segs {} gro_max_size {} ",
             self.inet6_addr_gen_mode,
             self.num_tx_queues,
             self.num_rx_queues,
@@ -221,8 +258,15 @@ impl std::fmt::Display for CliLinkInfoDetails {
             self.tso_max_size,
             self.tso_max_segs,
             self.gro_max_size,
-            self.link_type_details
         )?;
+
+        if !self.parentbus.is_empty() {
+            write!(f, "parentbus {} ", self.parentbus)?;
+        }
+        if !self.parentdev.is_empty() {
+            write!(f, "parentdev {} ", self.parentdev)?;
+        }
+
         Ok(())
     }
 }
