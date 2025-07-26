@@ -44,6 +44,7 @@ pub fn link_flags_to_string(mut flags: LinkFlags) -> Vec<String> {
                 // Compatible with iproute2, but we still append `CONTROLLER`
                 // after iproute2 flags.
                 ret.push("MASTER".into());
+                flags.remove(flag)
             } else if flag == LinkFlags::LowerUp {
                 ret.push("LOWER_UP".into());
                 flags.remove(flag)

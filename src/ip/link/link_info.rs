@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use rtnetlink::packet_route::link::{InfoData, InfoPortData, LinkInfo};
+use rtnetlink::packet_route::link::{
+    BondArpValidate, InfoData, InfoPortData, LinkInfo,
+};
 use serde::Serialize;
 
 use iproute_rs::mac_to_string;
@@ -139,6 +141,32 @@ pub(crate) enum CliLinkInfoData {
         nf_call_iptables: u8,
         nf_call_ip6tables: u8,
         nf_call_arptables: u8,
+    },
+    Veth,
+    Bond {
+        mode: String,
+        miimon: u32,
+        updelay: u32,
+        downdelay: u32,
+        peer_notify_delay: u32,
+        use_carrier: u8,
+        arp_interval: u32,
+        arp_missed_max: u8,
+        arp_validate: Option<String>,
+        arp_all_targets: String,
+        primary_reselect: String,
+        fail_over_mac: String,
+        xmit_hash_policy: String,
+        resend_igmp: u32,
+        num_peer_notif: u8,
+        all_slaves_active: u8,
+        min_links: u32,
+        lp_interval: u32,
+        packets_per_slave: u32,
+        ad_lacp_active: String,
+        ad_lacp_rate: String,
+        ad_select: String,
+        tlb_dynamic_lb: u8,
     },
 }
 
@@ -607,9 +635,117 @@ impl CliLinkInfoData {
                     protocol,
                 }
             }
-            InfoData::Veth(_info_veth) => todo!(),
+            InfoData::Veth(_) => CliLinkInfoData::Veth,
             InfoData::Vxlan(_info_vxlan) => todo!(),
-            InfoData::Bond(_info_bond) => todo!(),
+            InfoData::Bond(info_bond) => {
+                let mut mode = String::new();
+                let mut miimon = 0;
+                let mut updelay = 0;
+                let mut downdelay = 0;
+                let mut peer_notify_delay = 0;
+                let mut use_carrier = 0;
+                let mut arp_interval = 0;
+                let mut arp_missed_max = 0;
+                let mut arp_validate = None;
+                let mut arp_all_targets = String::new();
+                let mut primary_reselect = String::new();
+                let mut fail_over_mac = String::new();
+                let mut xmit_hash_policy = String::new();
+                let mut resend_igmp = 0;
+                let mut num_peer_notif = 0;
+                let mut all_slaves_active = 0;
+                let mut min_links = 0;
+                let mut lp_interval = 0;
+                let mut packets_per_slave = 0;
+                let mut ad_lacp_active = String::new();
+                let mut ad_lacp_rate = String::new();
+                let mut ad_select = String::new();
+                let mut tlb_dynamic_lb = 0;
+
+                for nla in info_bond {
+                    use rtnetlink::packet_route::link::InfoBond;
+                    match nla {
+                        InfoBond::Mode(v) => mode = v.to_string(),
+                        InfoBond::MiiMon(v) => miimon = *v,
+                        InfoBond::UpDelay(v) => updelay = *v,
+                        InfoBond::DownDelay(v) => downdelay = *v,
+                        InfoBond::PeerNotifDelay(v) => peer_notify_delay = *v,
+                        InfoBond::UseCarrier(v) => use_carrier = *v,
+                        InfoBond::ArpInterval(v) => arp_interval = *v,
+                        InfoBond::MissedMax(v) => arp_missed_max = *v,
+                        InfoBond::ArpValidate(v) => {
+                            if matches!(v, BondArpValidate::None) {
+                                arp_validate = None
+                            } else {
+                                arp_validate = Some(v.to_string())
+                            }
+                        }
+                        InfoBond::ArpAllTargets(v) => {
+                            arp_all_targets = v.to_string()
+                        }
+                        InfoBond::PrimaryReselect(v) => {
+                            primary_reselect = v.to_string()
+                        }
+                        InfoBond::FailOverMac(v) => {
+                            fail_over_mac = v.to_string()
+                        }
+                        InfoBond::XmitHashPolicy(v) => {
+                            xmit_hash_policy = v.to_string()
+                        }
+                        InfoBond::ResendIgmp(v) => resend_igmp = *v,
+                        InfoBond::NumPeerNotif(v) => num_peer_notif = *v,
+                        InfoBond::AllPortsActive(v) => all_slaves_active = *v,
+                        InfoBond::MinLinks(v) => min_links = *v,
+                        InfoBond::LpInterval(v) => lp_interval = *v,
+                        InfoBond::PacketsPerPort(v) => packets_per_slave = *v,
+                        InfoBond::AdLacpActive(v) => {
+                            ad_lacp_active =
+                                if *v == 1 { "on" } else { "off" }.to_string()
+                        }
+                        InfoBond::AdLacpRate(v) => {
+                            ad_lacp_rate = if *v == 1 { "fast" } else { "slow" }
+                                .to_string()
+                        }
+                        InfoBond::AdSelect(v) => {
+                            ad_select = match *v {
+                                0 => "stable",
+                                1 => "bandwidth",
+                                2 => "count",
+                                3 => "hash",
+                                _ => "unknown",
+                            }
+                            .to_string()
+                        }
+                        InfoBond::TlbDynamicLb(v) => tlb_dynamic_lb = *v,
+                        _ => (), /* println!("Remains {:?}", nla) */
+                    }
+                }
+                Self::Bond {
+                    mode,
+                    miimon,
+                    updelay,
+                    downdelay,
+                    peer_notify_delay,
+                    use_carrier,
+                    arp_interval,
+                    arp_missed_max,
+                    arp_validate,
+                    arp_all_targets,
+                    primary_reselect,
+                    fail_over_mac,
+                    xmit_hash_policy,
+                    resend_igmp,
+                    num_peer_notif,
+                    all_slaves_active,
+                    min_links,
+                    lp_interval,
+                    packets_per_slave,
+                    ad_lacp_active,
+                    ad_lacp_rate,
+                    ad_select,
+                    tlb_dynamic_lb,
+                }
+            }
             InfoData::IpVlan(_info_ip_vlan) => todo!(),
             InfoData::IpVtap(_info_ip_vtap) => todo!(),
             InfoData::MacVlan(_info_mac_vlan) => todo!(),
@@ -745,6 +881,52 @@ impl std::fmt::Display for CliLinkInfoData {
                 } else {
                     write!(f, "mab off")?;
                 }
+            }
+            CliLinkInfoData::Veth => (),
+            CliLinkInfoData::Bond {
+                mode,
+                miimon,
+                updelay,
+                downdelay,
+                peer_notify_delay,
+                use_carrier,
+                arp_interval,
+                arp_missed_max,
+                arp_validate,
+                arp_all_targets,
+                primary_reselect,
+                fail_over_mac,
+                xmit_hash_policy,
+                resend_igmp,
+                num_peer_notif: num_grat_arp,
+                all_slaves_active,
+                min_links,
+                lp_interval,
+                packets_per_slave: packaets_per_slave,
+                ad_lacp_active: lacp_active,
+                ad_lacp_rate: lacp_rate,
+                ad_select,
+                tlb_dynamic_lb,
+            } => {
+                let arp_validate =
+                    arp_validate.as_ref().map_or("none", |s| s.as_str());
+
+                write!(
+                    f,
+                    "mode {mode} miimon {miimon} updelay {updelay} downdelay \
+                     {downdelay} peer_notify_delay {peer_notify_delay} \
+                     use_carrier {use_carrier} arp_interval {arp_interval} \
+                     arp_missed_max {arp_missed_max} arp_validate \
+                     {arp_validate} arp_all_targets {arp_all_targets} \
+                     primary_reselect {primary_reselect} fail_over_mac \
+                     {fail_over_mac} xmit_hash_policy {xmit_hash_policy} \
+                     resend_igmp {resend_igmp} num_grat_arp {num_grat_arp} \
+                     all_slaves_active {all_slaves_active} min_links \
+                     {min_links} lp_interval {lp_interval} packets_per_slave \
+                     {packaets_per_slave} lacp_active {lacp_active} lacp_rate \
+                     {lacp_rate} ad_select {ad_select} tlb_dynamic_lb \
+                     {tlb_dynamic_lb}",
+                )?;
             }
             CliLinkInfoData::Bridge {
                 forward_delay,

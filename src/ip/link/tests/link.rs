@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use serde_json::Value;
+
 use crate::tests::{exec_cmd, get_ip_cli_path};
 
 const TEST_NETNS: &str = "iproute-rs-test";
@@ -179,7 +181,12 @@ fn test_link_show_json() {
 
     let our_output = exec_in_netns(&[cli_path.as_str(), "-j", "link", "show"]);
 
-    pretty_assertions::assert_eq!(expected_output, our_output);
+    let expected_json: Value =
+        serde_json::from_str(&expected_output).expect("To be valid json");
+    let our_json: Value =
+        serde_json::from_str(&our_output).expect("To be valid json");
+
+    pretty_assertions::assert_eq!(expected_json, our_json);
 }
 
 #[test]
