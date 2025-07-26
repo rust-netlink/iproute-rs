@@ -3,11 +3,18 @@
 use std::fmt::Write;
 
 pub fn mac_to_string(data: &[u8]) -> String {
+    let as_ip = data.len() == 4;
+    let sep = if as_ip { '.' } else { ':' };
     let mut rt = String::new();
     for (i, m) in data.iter().enumerate().take(data.len()) {
-        write!(rt, "{m:02x}").ok();
+        if as_ip {
+            write!(rt, "{m}").ok();
+        } else {
+            write!(rt, "{m:02x}").ok();
+        }
+
         if i != data.len() - 1 {
-            rt.push(':');
+            rt.push(sep);
         }
     }
     rt
