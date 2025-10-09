@@ -40,6 +40,8 @@ pub(crate) struct CliLinkInfo {
     address: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     broadcast: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    permaddr: String,
     #[serde(skip)]
     link_netns: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -96,6 +98,10 @@ impl std::fmt::Display for CliLinkInfo {
             write_with_color!(f, CliColor::Mac, "{}", self.address)?;
             write!(f, " brd ")?;
             write_with_color!(f, CliColor::Mac, "{}", self.broadcast)?;
+        }
+        if !self.permaddr.is_empty() {
+            write!(f, " permaddr ")?;
+            write_with_color!(f, CliColor::Mac, "{}", self.permaddr)?;
         }
 
         if !self.link_netns.is_empty() {
@@ -164,6 +170,8 @@ pub(crate) async fn parse_nl_msg_to_iface(
     ret.details =
         include_details.then(|| CliLinkInfoDetails::new(&nl_msg.attributes));
 
+    let mut temp_permaddr = String::new();
+
     for nl_attr in nl_msg.attributes {
         match nl_attr {
             LinkAttribute::IfName(name) => ret.ifname = name,
@@ -171,6 +179,9 @@ pub(crate) async fn parse_nl_msg_to_iface(
             LinkAttribute::Address(mac) => ret.address = mac_to_string(&mac),
             LinkAttribute::Broadcast(mac) => {
                 ret.broadcast = mac_to_string(&mac)
+            }
+            LinkAttribute::PermAddress(mac) => {
+                temp_permaddr = mac_to_string(&mac)
             }
             LinkAttribute::Qdisc(qdisc) => ret.qdisc = qdisc,
             LinkAttribute::OperState(state) => {
@@ -200,6 +211,11 @@ pub(crate) async fn parse_nl_msg_to_iface(
                 // println!("Remains {:?}", nl_attr);
             }
         }
+    }
+
+    // Only set permaddr if it differs from the current address
+    if !temp_permaddr.is_empty() && temp_permaddr != ret.address {
+        ret.permaddr = temp_permaddr;
     }
 
     Ok(ret)
