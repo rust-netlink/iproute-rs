@@ -24,7 +24,17 @@ fn setup() {
     exec_cmd(&["ip", "netns", "add", TEST_NETNS]);
 
     // Add vlan over dummy interface
-    exec_in_netns(&["ip", "link", "add", "link", "dummy0", "type", "dummy"]);
+    exec_in_netns(&["ip", "link", "add", "dummy0", "type", "dummy"]);
+    exec_in_netns(&[
+        "ip",
+        "link",
+        "property",
+        "add",
+        "dev",
+        "dummy0",
+        "altname",
+        "dmmy-zero",
+    ]);
     exec_in_netns(&[
         "ip", "link", "add", "link", "dummy0", "name", "dummy0.1", "type",
         "vlan", "id", "1",

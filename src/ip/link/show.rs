@@ -5,7 +5,7 @@ use std::os::fd::AsRawFd;
 
 use futures_util::stream::StreamExt;
 use futures_util::stream::TryStreamExt;
-use rtnetlink::packet_route::link::{LinkAttribute, LinkMessage};
+use rtnetlink::packet_route::link::{LinkAttribute, LinkMessage, Prop};
 use serde::Serialize;
 
 use super::flags::link_flags_to_string;
@@ -47,6 +47,8 @@ pub(crate) struct CliLinkInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(flatten)]
     details: Option<CliLinkInfoDetails>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    altnames: Vec<String>,
 }
 
 impl std::fmt::Display for CliLinkInfo {
@@ -104,6 +106,10 @@ impl std::fmt::Display for CliLinkInfo {
 
         if let Some(details) = &self.details {
             write!(f, "{details}",)?;
+        }
+
+        for altname in &self.altnames {
+            write!(f, "\n    altname {altname}")?;
         }
         Ok(())
     }
@@ -183,6 +189,13 @@ pub(crate) async fn parse_nl_msg_to_iface(
             LinkAttribute::Controller(d) => ret.controller_ifindex = Some(d),
             LinkAttribute::Link(i) => ret.link_index = Some(i),
             LinkAttribute::LinkNetNsId(i) => ret.link_netnsid = Some(i),
+            LinkAttribute::PropList(props) => {
+                for prop in props {
+                    if let Prop::AltIfName(altname) = prop {
+                        ret.altnames.push(altname);
+                    }
+                }
+            }
             _ => {
                 // println!("Remains {:?}", nl_attr);
             }
