@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use rtnetlink::packet_route::link::{InfoData, InfoPortData, LinkInfo};
 use serde::Serialize;
 
