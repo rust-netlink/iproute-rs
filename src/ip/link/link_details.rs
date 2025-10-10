@@ -7,7 +7,36 @@ use rtnetlink::{
 };
 use serde::Serialize;
 
-use crate::link::link_info::CliLinkInfoKindNData;
+use crate::link::link_info::{CliLinkInfoData, CliLinkInfoKindNData};
+
+#[derive(Serialize)]
+struct CliLinkInfoCombined {
+    info_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    info_data: Option<CliLinkInfoData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    info_slave_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    info_slave_data: Option<CliLinkInfoData>,
+}
+
+impl std::fmt::Display for CliLinkInfoCombined {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "\n    ")?;
+        write!(f, "{} ", self.info_kind)?;
+        if let Some(data) = &self.info_data {
+            write!(f, "{data} ")?;
+        }
+
+        if let Some(slave_kind) = &self.info_slave_kind {
+            write!(f, "\n    {}_slave ", slave_kind)?;
+            if let Some(slave_data) = &self.info_slave_data {
+                write!(f, "{slave_data} ")?;
+            }
+        }
+        Ok(())
+    }
+}
 
 // Use constants until support is added to netlink-packet-route
 const IFLA_PARENT_DEV_NAME: u16 = 56;
@@ -58,7 +87,7 @@ pub(crate) struct CliLinkInfoDetails {
     min_mtu: u32,
     max_mtu: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    linkinfo: Option<CliLinkInfoKindNData>,
+    linkinfo: Option<CliLinkInfoCombined>,
     #[serde(skip_serializing_if = "String::is_empty")]
     inet6_addr_gen_mode: String,
     num_tx_queues: u32,
@@ -148,7 +177,25 @@ impl CliLinkInfoDetails {
                     _ => { /* println!("Remains {:?}", default_nla); */ }
                 },
                 LinkAttribute::LinkInfo(info) => {
-                    linkinfo = CliLinkInfoKindNData::new(info);
+                    let main_info = CliLinkInfoKindNData::new(info);
+                    let slave_info = CliLinkInfoKindNData::new_slave(info);
+
+                    // Combine main info and slave info into one structure
+                    if let Some(main) = main_info {
+                        let (slave_kind, slave_data) =
+                            if let Some(slave) = slave_info {
+                                (Some(slave.info_kind), slave.info_data)
+                            } else {
+                                (None, None)
+                            };
+
+                        linkinfo = Some(CliLinkInfoCombined {
+                            info_kind: main.info_kind,
+                            info_data: main.info_data,
+                            info_slave_kind: slave_kind,
+                            info_slave_data: slave_data,
+                        });
+                    }
                 }
                 _ => {
                     // println!("Remains {:?}", nl_attr);
