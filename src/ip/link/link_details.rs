@@ -16,6 +16,8 @@ const IFLA_GRO_MAX_SIZE: u16 = 58;
 const IFLA_TSO_MAX_SIZE: u16 = 59;
 const IFLA_TSO_MAX_SEGS: u16 = 60;
 const IFLA_ALLMULTI: u16 = 61;
+const IFLA_GSO_IPV4_MAX_SIZE: u16 = 63;
+const IFLA_GRO_IPV4_MAX_SIZE: u16 = 64;
 
 fn get_addr_gen_mode(af_spec_unspec: &[AfSpecUnspec]) -> String {
     af_spec_unspec
@@ -66,6 +68,8 @@ pub(crate) struct CliLinkInfoDetails {
     tso_max_size: u32,
     tso_max_segs: u32,
     gro_max_size: u32,
+    gso_ipv4_max_size: u32,
+    gro_ipv4_max_size: u32,
     #[serde(skip_serializing_if = "String::is_empty")]
     parentbus: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -86,6 +90,8 @@ impl CliLinkInfoDetails {
         let mut tso_max_size = 0;
         let mut tso_max_segs = 0;
         let mut gro_max_size = 0;
+        let mut gso_ipv4_max_size = 0;
+        let mut gro_ipv4_max_size = 0;
         let mut inet6_addr_gen_mode = String::new();
         let mut parentbus = String::new();
         let mut parentdev = String::new();
@@ -129,6 +135,16 @@ impl CliLinkInfoDetails {
                         default_nla.emit_value(&mut val);
                         allmulti = u32::from_ne_bytes(val);
                     }
+                    IFLA_GSO_IPV4_MAX_SIZE => {
+                        let mut val = [0u8; 4];
+                        default_nla.emit_value(&mut val);
+                        gso_ipv4_max_size = u32::from_ne_bytes(val);
+                    }
+                    IFLA_GRO_IPV4_MAX_SIZE => {
+                        let mut val = [0u8; 4];
+                        default_nla.emit_value(&mut val);
+                        gro_ipv4_max_size = u32::from_ne_bytes(val);
+                    }
                     _ => { /* println!("Remains {:?}", default_nla); */ }
                 },
                 LinkAttribute::LinkInfo(info) => {
@@ -154,6 +170,8 @@ impl CliLinkInfoDetails {
             tso_max_size,
             tso_max_segs,
             gro_max_size,
+            gso_ipv4_max_size,
+            gro_ipv4_max_size,
             parentbus,
             parentdev,
         }
@@ -164,7 +182,7 @@ impl std::fmt::Display for CliLinkInfoDetails {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            " promiscuity {}  allmulti {} minmtu {} maxmtu {} ",
+            " promiscuity {} allmulti {} minmtu {} maxmtu {} ",
             self.promiscuity, self.allmulti, self.min_mtu, self.max_mtu,
         )?;
 
@@ -174,7 +192,7 @@ impl std::fmt::Display for CliLinkInfoDetails {
 
         write!(
             f,
-            "addrgenmode {} numtxqueues {} numrxqueues {} gso_max_size {} gso_max_segs {} tso_max_size {} tso_max_segs {} gro_max_size {} ",
+            "addrgenmode {} numtxqueues {} numrxqueues {} gso_max_size {} gso_max_segs {} tso_max_size {} tso_max_segs {} gro_max_size {} gso_ipv4_max_size {} gro_ipv4_max_size {} ",
             self.inet6_addr_gen_mode,
             self.num_tx_queues,
             self.num_rx_queues,
@@ -183,6 +201,8 @@ impl std::fmt::Display for CliLinkInfoDetails {
             self.tso_max_size,
             self.tso_max_segs,
             self.gro_max_size,
+            self.gso_ipv4_max_size,
+            self.gro_ipv4_max_size,
         )?;
 
         if !self.parentbus.is_empty() {
