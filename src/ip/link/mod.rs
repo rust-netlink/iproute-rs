@@ -10,4 +10,7 @@ mod show;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use self::cli::LinkCommand;
+pub(crate) use self::{
+    cli::LinkCommand,
+    show::{CliLinkInfo, handle_show},
+};

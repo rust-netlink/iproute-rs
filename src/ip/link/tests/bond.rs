@@ -62,7 +62,6 @@ fn test_link_detailed_show_json_bond_port() {
     })
 }
 
-/// and `dummy_name` are unique among tests.
 fn with_bond_iface<T>(bond_name: &str, dummy_name: &str, test: T)
 where
     T: FnOnce() + std::panic::UnwindSafe,
@@ -76,7 +75,7 @@ where
     exec_cmd(&["ip", "link", "set", bond_name, "up"]);
 
     // Wait 1 second for bridge ID to be stable
-    // std::thread::sleep(std::time::Duration::from_secs(1));
+    std::thread::sleep(std::time::Duration::from_secs(1));
 
     let result = std::panic::catch_unwind(|| {
         test();

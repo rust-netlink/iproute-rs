@@ -9,7 +9,7 @@ use iproute_rs::{
 use rtnetlink::packet_route::link::{LinkAttribute, LinkMessage, Prop};
 use serde::Serialize;
 
-use super::flags::link_flags_to_string;
+use super::{super::address::CliAddressInfo, flags::link_flags_to_string};
 use crate::link::detail::CliLinkInfoDetail;
 
 #[derive(Serialize, Default)]
@@ -28,6 +28,7 @@ pub(crate) struct CliLinkInfo {
     #[serde(skip)]
     controller_ifindex: Option<u32>,
     operstate: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     linkmode: String,
     group: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -48,6 +49,32 @@ pub(crate) struct CliLinkInfo {
     details: Option<CliLinkInfoDetail>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     altnames: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    addr_info: Option<Vec<CliAddressInfo>>,
+}
+
+impl CliLinkInfo {
+    fn remove_link_mode(&mut self) {
+        self.linkmode = String::new();
+    }
+
+    fn remove_inet6_addr_gen_mode(&mut self) {
+        if let Some(d) = self.details.as_mut() {
+            d.remove_inet6_addr_gen_mode();
+        }
+    }
+
+    fn initialize_addr_info(&mut self) {
+        self.addr_info = Some(vec![]);
+    }
+
+    // For `ip address show`, we want to remove some details that are not
+    // present in the original ip command.
+    pub fn show_only_addr_details(&mut self) {
+        self.initialize_addr_info();
+        self.remove_link_mode();
+        self.remove_inet6_addr_gen_mode();
+    }
 }
 
 impl std::fmt::Display for CliLinkInfo {
@@ -85,7 +112,12 @@ impl std::fmt::Display for CliLinkInfo {
         } else {
             write!(f, "{} ", self.operstate)?;
         }
-        write!(f, "mode {} group {} ", self.linkmode, self.group,)?;
+
+        if !self.linkmode.is_empty() {
+            write!(f, "mode {} ", self.linkmode)?;
+        }
+        write!(f, "group {} ", self.group)?;
+
         if let Some(v) = self.txqlen {
             write!(f, "qlen {v}")?;
         }
@@ -114,6 +146,13 @@ impl std::fmt::Display for CliLinkInfo {
         for altname in &self.altnames {
             write!(f, "\n    altname {altname}")?;
         }
+
+        if let Some(addr_info) = &self.addr_info {
+            for addr in addr_info {
+                write!(f, "\n    {}", addr)?;
+            }
+        }
+
         Ok(())
     }
 }
@@ -154,6 +193,16 @@ pub(crate) async fn handle_show(
     }
 
     Ok(ifaces)
+}
+
+impl CliLinkInfo {
+    pub(crate) fn get_ifindex(&self) -> u32 {
+        self.ifindex
+    }
+
+    pub(crate) fn add_address(&mut self, addr_info: CliAddressInfo) {
+        self.addr_info.get_or_insert_default().push(addr_info);
+    }
 }
 
 pub(crate) async fn parse_nl_msg_to_iface(
