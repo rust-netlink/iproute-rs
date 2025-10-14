@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod address;
 mod link;
 
 #[cfg(test)]
@@ -9,7 +10,7 @@ use std::io::IsTerminal;
 
 use iproute_rs::{CliColor, CliError, OutputFormat, print_result_and_exit};
 
-use self::link::LinkCommand;
+use self::{address::AddressCommand, link::LinkCommand};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), CliError> {
@@ -55,7 +56,8 @@ async fn main() -> Result<(), CliError> {
                 .global(true),
         )
         .subcommand_required(true)
-        .subcommand(LinkCommand::gen_command());
+        .subcommand(LinkCommand::gen_command())
+        .subcommand(AddressCommand::gen_command());
 
     let matches = app.get_matches_mut();
 
@@ -78,6 +80,13 @@ async fn main() -> Result<(), CliError> {
         print_result_and_exit(Ok(app.render_version().to_string()), fmt);
     } else if let Some(matches) = matches.subcommand_matches(LinkCommand::CMD) {
         print_result_and_exit(LinkCommand::handle(matches).await, fmt);
+    } else if let Some(matches) =
+        matches.subcommand_matches(AddressCommand::CMD)
+    {
+        print_result_and_exit(AddressCommand::handle(matches).await, fmt);
+    } else {
+        app.print_help()?;
+        println!();
     }
 
     Ok(())
