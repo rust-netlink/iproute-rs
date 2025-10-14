@@ -87,6 +87,14 @@ impl CliColor {
             }
         })
     }
+
+    pub fn address_color(family: &str) -> Self {
+        match family {
+            "inet" => Self::Ipv4Addr,
+            "inet6" => Self::Ipv6Addr,
+            _ => Self::Clear,
+        }
+    }
 }
 
 #[macro_export]

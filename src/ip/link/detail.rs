@@ -133,6 +133,10 @@ impl CliLinkInfoDetail {
             parentdev,
         }
     }
+
+    pub fn remove_inet6_addr_gen_mode(&mut self) {
+        self.inet6_addr_gen_mode = String::new();
+    }
 }
 
 impl std::fmt::Display for CliLinkInfoDetail {
@@ -151,12 +155,15 @@ impl std::fmt::Display for CliLinkInfoDetail {
             write!(f, "{linkinfo}")?;
         }
 
+        if !self.inet6_addr_gen_mode.is_empty() {
+            write!(f, "addrgenmode {} ", self.inet6_addr_gen_mode)?;
+        }
+
         write!(
             f,
-            "addrgenmode {} numtxqueues {} numrxqueues {} gso_max_size {} \
-             gso_max_segs {} tso_max_size {} tso_max_segs {} gro_max_size {} \
+            "numtxqueues {} numrxqueues {} gso_max_size {} gso_max_segs {} \
+             tso_max_size {} tso_max_segs {} gro_max_size {} \
              gso_ipv4_max_size {} gro_ipv4_max_size {} ",
-            self.inet6_addr_gen_mode,
             self.num_tx_queues,
             self.num_rx_queues,
             self.gso_max_size,
