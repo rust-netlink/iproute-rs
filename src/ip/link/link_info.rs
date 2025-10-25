@@ -8,7 +8,8 @@ use serde::Serialize;
 use iproute_rs::mac_to_string;
 
 /// Format bridge ID to match iproute2's format:
-/// Priority is 4 hex digits, MAC address bytes use minimal formatting (no leading zeros for bytes < 0x10)
+/// Priority is 4 hex digits, MAC address bytes use minimal formatting (no
+/// leading zeros for bytes < 0x10)
 fn format_bridge_id(priority: u16, mac_bytes: [u8; 6]) -> String {
     format!(
         "{:04x}.{:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
@@ -28,11 +29,8 @@ const VLAN_FLAG_LOOSE_BINDING: u32 = 0x4;
 const VLAN_FLAG_MVRP: u32 = 0x8;
 
 // Additional bridge constants not yet in netlink-packet-route
-const IFLA_BR_FDB_N_LEARNED: u16 = 48;
-const IFLA_BR_FDB_MAX_LEARNED: u16 = 49;
 const IFLA_BR_NO_LL_LEARN: u16 = 51;
 const IFLA_BR_VLAN_MCAST_SNOOPING: u16 = 52;
-const IFLA_BR_MST_ENABLED: u16 = 53;
 
 #[derive(Serialize)]
 #[serde(untagged)]
@@ -72,15 +70,11 @@ pub(crate) enum CliLinkInfoData {
         bcast_flood: bool,
         mcast_to_unicast: bool,
         neigh_suppress: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        neigh_vlan_suppress: Option<bool>,
         group_fwd_mask: String,
         group_fwd_mask_str: String,
         vlan_tunnel: bool,
         isolated: bool,
         locked: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        mab: Option<bool>,
     },
     Bridge {
         forward_delay: u32,
@@ -103,10 +97,6 @@ pub(crate) enum CliLinkInfoData {
         tcn_timer: u64,
         topology_change_timer: u64,
         gc_timer: u64,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        fdb_n_learned: Option<u32>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        fdb_max_learned: Option<u32>,
         vlan_default_pvid: u16,
         #[serde(skip_serializing_if = "Option::is_none")]
         vlan_stats_enabled: Option<u8>,
@@ -118,7 +108,6 @@ pub(crate) enum CliLinkInfoData {
         mcast_snooping: u8,
         no_linklocal_learn: u8,
         mcast_vlan_snooping: u8,
-        mst_enabled: u8,
         mcast_router: u8,
         mcast_query_use_ifaddr: u8,
         mcast_querier: u8,
@@ -204,12 +193,10 @@ impl CliLinkInfoData {
                 let mut bcast_flood = false;
                 let mut mcast_to_unicast = false;
                 let mut neigh_suppress = false;
-                let mut neigh_vlan_suppress = None;
                 let mut group_fwd_mask: u16 = 0;
                 let mut vlan_tunnel = false;
                 let mut isolated = false;
                 let mut locked = false;
-                let mut mab = None;
 
                 for nla in info_bridge_port {
                     match nla {
@@ -292,14 +279,10 @@ impl CliLinkInfoData {
                             mcast_to_unicast = *v
                         }
                         InfoBridgePort::NeighSupress(v) => neigh_suppress = *v,
-                        InfoBridgePort::NeighVlanSupress(v) => {
-                            neigh_vlan_suppress = Some(*v)
-                        }
                         InfoBridgePort::GroupFwdMask(v) => group_fwd_mask = *v,
                         InfoBridgePort::VlanTunnel(v) => vlan_tunnel = *v,
                         InfoBridgePort::Isolated(v) => isolated = *v,
                         InfoBridgePort::Locked(v) => locked = *v,
-                        InfoBridgePort::Mab(v) => mab = Some(*v),
                         _ => (),
                     }
                 }
@@ -340,13 +323,11 @@ impl CliLinkInfoData {
                     bcast_flood,
                     mcast_to_unicast,
                     neigh_suppress,
-                    neigh_vlan_suppress,
                     group_fwd_mask: group_fwd_mask_string,
                     group_fwd_mask_str,
                     vlan_tunnel,
                     isolated,
                     locked,
-                    mab,
                 }
             }
             _ => todo!("Other port types not yet implemented"),
@@ -401,11 +382,8 @@ impl CliLinkInfoData {
                 let mut mcast_stats_enabled = None;
                 let mut mcast_igmp_version = None;
                 let mut mcast_mld_version = None;
-                let mut fdb_n_learned = None;
-                let mut fdb_max_learned = None;
                 let mut no_linklocal_learn = 0;
                 let mut mcast_vlan_snooping = 0;
-                let mut mst_enabled = 0;
 
                 for nla in info_bridge {
                     match nla {
@@ -511,18 +489,6 @@ impl CliLinkInfoData {
                         InfoBridge::Other(nla) => {
                             use rtnetlink::packet_core::Nla;
                             match nla.kind() {
-                                IFLA_BR_FDB_N_LEARNED => {
-                                    let mut val = [0u8; 4];
-                                    nla.emit_value(&mut val);
-                                    fdb_n_learned =
-                                        Some(u32::from_ne_bytes(val));
-                                }
-                                IFLA_BR_FDB_MAX_LEARNED => {
-                                    let mut val = [0u8; 4];
-                                    nla.emit_value(&mut val);
-                                    fdb_max_learned =
-                                        Some(u32::from_ne_bytes(val));
-                                }
                                 IFLA_BR_NO_LL_LEARN => {
                                     let mut val = [0u8; 1];
                                     nla.emit_value(&mut val);
@@ -532,11 +498,6 @@ impl CliLinkInfoData {
                                     let mut val = [0u8; 1];
                                     nla.emit_value(&mut val);
                                     mcast_vlan_snooping = val[0];
-                                }
-                                IFLA_BR_MST_ENABLED => {
-                                    let mut val = [0u8; 1];
-                                    nla.emit_value(&mut val);
-                                    mst_enabled = val[0];
                                 }
                                 _ => (),
                             }
@@ -566,8 +527,6 @@ impl CliLinkInfoData {
                     tcn_timer,
                     topology_change_timer,
                     gc_timer,
-                    fdb_n_learned,
-                    fdb_max_learned,
                     vlan_default_pvid,
                     vlan_stats_enabled,
                     vlan_stats_per_port,
@@ -576,7 +535,6 @@ impl CliLinkInfoData {
                     mcast_snooping,
                     no_linklocal_learn,
                     mcast_vlan_snooping,
-                    mst_enabled,
                     mcast_router,
                     mcast_query_use_ifaddr,
                     mcast_querier,
@@ -811,13 +769,11 @@ impl std::fmt::Display for CliLinkInfoData {
                 bcast_flood,
                 mcast_to_unicast,
                 neigh_suppress,
-                neigh_vlan_suppress,
                 group_fwd_mask,
                 group_fwd_mask_str,
                 vlan_tunnel,
                 isolated,
                 locked,
-                mab,
             } => {
                 let format_timer = |val: u64| -> String {
                     let seconds = val as f64 / 100.0;
@@ -866,21 +822,11 @@ impl std::fmt::Display for CliLinkInfoData {
                 write!(f, "bcast_flood {} ", on_off(*bcast_flood))?;
                 write!(f, "mcast_to_unicast {} ", on_off(*mcast_to_unicast))?;
                 write!(f, "neigh_suppress {} ", on_off(*neigh_suppress))?;
-                if let Some(v) = neigh_vlan_suppress {
-                    write!(f, "neigh_vlan_suppress {} ", on_off(*v))?;
-                } else {
-                    write!(f, "neigh_vlan_suppress off ")?;
-                }
                 write!(f, "group_fwd_mask {} ", group_fwd_mask)?;
                 write!(f, "group_fwd_mask_str {} ", group_fwd_mask_str)?;
                 write!(f, "vlan_tunnel {} ", on_off(*vlan_tunnel))?;
                 write!(f, "isolated {} ", on_off(*isolated))?;
                 write!(f, "locked {} ", on_off(*locked))?;
-                if let Some(v) = mab {
-                    write!(f, "mab {}", on_off(*v))?;
-                } else {
-                    write!(f, "mab off")?;
-                }
             }
             CliLinkInfoData::Veth => (),
             CliLinkInfoData::Bond {
@@ -947,8 +893,6 @@ impl std::fmt::Display for CliLinkInfoData {
                 tcn_timer,
                 topology_change_timer,
                 gc_timer,
-                fdb_n_learned,
-                fdb_max_learned,
                 vlan_default_pvid,
                 vlan_stats_enabled,
                 vlan_stats_per_port,
@@ -957,7 +901,6 @@ impl std::fmt::Display for CliLinkInfoData {
                 mcast_snooping,
                 no_linklocal_learn,
                 mcast_vlan_snooping,
-                mst_enabled,
                 mcast_router,
                 mcast_query_use_ifaddr,
                 mcast_querier,
@@ -1013,12 +956,6 @@ impl std::fmt::Display for CliLinkInfoData {
                     format_timer(*topology_change_timer)
                 )?;
                 write!(f, "gc_timer {} ", format_timer(*gc_timer))?;
-                if let Some(v) = fdb_n_learned {
-                    write!(f, "fdb_n_learned {} ", v)?;
-                }
-                if let Some(v) = fdb_max_learned {
-                    write!(f, "fdb_max_learned {} ", v)?;
-                }
                 write!(f, "vlan_default_pvid {} ", vlan_default_pvid)?;
                 if let Some(v) = vlan_stats_enabled {
                     write!(f, "vlan_stats_enabled {} ", v)?;
@@ -1038,7 +975,6 @@ impl std::fmt::Display for CliLinkInfoData {
                 write!(f, "mcast_snooping {} ", mcast_snooping)?;
                 write!(f, "no_linklocal_learn {} ", no_linklocal_learn)?;
                 write!(f, "mcast_vlan_snooping {} ", mcast_vlan_snooping)?;
-                write!(f, "mst_enabled {} ", mst_enabled)?;
                 write!(f, "mcast_router {} ", mcast_router)?;
                 write!(
                     f,
@@ -1135,7 +1071,8 @@ impl CliLinkInfoKindNData {
                     // but skip this for now - we'll handle it separately
                 }
                 LinkInfo::PortData(_data) => {
-                    // Skip port data in this structure - it's handled separately
+                    // Skip port data in this structure - it's handled
+                    // separately
                 }
                 _ => (),
             }
