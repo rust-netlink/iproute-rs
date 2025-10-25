@@ -106,51 +106,6 @@ fn normalize_timers_json(output: &str) -> String {
     result
 }
 
-#[cfg(test)]
-#[ctor::ctor]
-fn setup() {
-    println!("setup network namespace and interfaces for tests");
-
-    // Create network namespace (delete first if it exists)
-    let netns_list = exec_cmd(&["ip", "netns", "list"]);
-    if netns_list.contains(TEST_NETNS) {
-        exec_cmd(&["ip", "netns", "del", TEST_NETNS]);
-    }
-    exec_cmd(&["ip", "netns", "add", TEST_NETNS]);
-
-    // Add vlan over dummy interface
-    exec_in_netns(&["ip", "link", "add", "dummy0", "type", "dummy"]);
-    exec_in_netns(&[
-        "ip",
-        "link",
-        "property",
-        "add",
-        "dev",
-        "dummy0",
-        "altname",
-        "dmmy-zero",
-    ]);
-    exec_in_netns(&["ip", "link", "add", "br0", "type", "bridge"]);
-    exec_in_netns(&[
-        "ip", "link", "add", "link", "dummy0", "name", "dummy0.1", "type",
-        "vlan", "id", "1",
-    ]);
-    exec_in_netns(&["ip", "link", "set", "dev", "dummy0.1", "master", "br0"]);
-
-    exec_in_netns(&["ip", "link", "set", "dummy0", "up"]);
-    exec_in_netns(&["ip", "link", "set", "dummy0.1", "up"]);
-    exec_in_netns(&["ip", "link", "set", "br0", "up"]);
-}
-
-#[cfg(test)]
-#[ctor::dtor]
-fn teardown() {
-    println!("teardown network namespace for tests");
-
-    // Delete network namespace
-    exec_cmd(&["ip", "netns", "del", TEST_NETNS]);
-}
-
 #[test]
 fn test_link_show() {
     let cli_path = get_ip_cli_path();

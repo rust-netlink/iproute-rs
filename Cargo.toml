@@ -27,4 +27,3 @@ tokio = { version = "1.30", features = ["rt", "net", "time", "macros"] }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
-ctor = "0.5.0"
