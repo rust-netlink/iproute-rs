@@ -1,19 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
-use std::os::fd::AsRawFd;
+use std::{collections::HashMap, os::fd::AsRawFd};
 
-use futures_util::stream::StreamExt;
-use futures_util::stream::TryStreamExt;
+use futures_util::stream::{StreamExt, TryStreamExt};
+use iproute_rs::{
+    CanDisplay, CanOutput, CliColor, CliError, mac_to_string, write_with_color,
+};
 use rtnetlink::packet_route::link::{LinkAttribute, LinkMessage, Prop};
 use serde::Serialize;
 
 use super::flags::link_flags_to_string;
-use iproute_rs::{
-    CanDisplay, CanOutput, CliColor, CliError, mac_to_string, write_with_color,
-};
-
-use crate::link::link_details::CliLinkInfoDetails;
+use crate::link::detail::CliLinkInfoDetail;
 
 #[derive(Serialize, Default)]
 pub(crate) struct CliLinkInfo {
@@ -48,7 +45,7 @@ pub(crate) struct CliLinkInfo {
     link_netnsid: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(flatten)]
-    details: Option<CliLinkInfoDetails>,
+    details: Option<CliLinkInfoDetail>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     altnames: Vec<String>,
 }
@@ -168,7 +165,7 @@ pub(crate) async fn parse_nl_msg_to_iface(
     };
 
     ret.details =
-        include_details.then(|| CliLinkInfoDetails::new(&nl_msg.attributes));
+        include_details.then(|| CliLinkInfoDetail::new(&nl_msg.attributes));
 
     let mut temp_permaddr = String::new();
 

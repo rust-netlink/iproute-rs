@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 mod cli;
+mod detail;
 mod flags;
-mod link_details;
+mod ifaces;
 mod link_info;
 mod show;
 

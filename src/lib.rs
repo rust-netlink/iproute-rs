@@ -5,9 +5,9 @@ mod error;
 mod mac;
 mod result;
 
-pub use self::color::CliColor;
-pub use self::error::CliError;
-pub use self::mac::mac_to_string;
-pub use self::result::{
-    CanDisplay, CanOutput, OutputFormat, print_result_and_exit,
+pub use self::{
+    color::CliColor,
+    error::CliError,
+    mac::mac_to_string,
+    result::{CanDisplay, CanOutput, OutputFormat, print_result_and_exit},
 };
