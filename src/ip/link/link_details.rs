@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use std::ffi::CStr;
 
 use rtnetlink::packet_core::DefaultNla;
