@@ -12,7 +12,8 @@ fn exec_in_netns(args: &[&str]) -> String {
 }
 
 /// Normalize timer values in output to avoid test flakiness
-/// Timer values can vary slightly between consecutive calls due to kernel timing
+/// Timer values can vary slightly between consecutive calls due to kernel
+/// timing
 fn normalize_timers(output: &str) -> String {
     let timer_names = [
         "hello_timer",
@@ -26,7 +27,8 @@ fn normalize_timers(output: &str) -> String {
 
     let mut result = output.to_string();
     for timer_name in timer_names {
-        // Find and replace timer values like "gc_timer    0.05" with "gc_timer    0.00"
+        // Find and replace timer values like "gc_timer    0.05" with "gc_timer
+        // 0.00"
         let mut new_result = String::new();
         let mut remaining = result.as_str();
 
@@ -73,7 +75,8 @@ fn normalize_timers_json(output: &str) -> String {
 
     let mut result = output.to_string();
     for timer_name in timer_names {
-        // Find and replace JSON timer values like "\"gc_timer\":5" or "\"gc_timer\":0.05" with "\"gc_timer\":0"
+        // Find and replace JSON timer values like "\"gc_timer\":5" or
+        // "\"gc_timer\":0.05" with "\"gc_timer\":0"
         let search_pattern = format!("\"{}\":", timer_name);
         let mut new_result = String::new();
         let mut remaining = result.as_str();

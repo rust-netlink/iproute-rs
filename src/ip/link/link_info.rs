@@ -4,7 +4,8 @@ use serde::Serialize;
 use iproute_rs::mac_to_string;
 
 /// Format bridge ID to match iproute2's format:
-/// Priority is 4 hex digits, MAC address bytes use minimal formatting (no leading zeros for bytes < 0x10)
+/// Priority is 4 hex digits, MAC address bytes use minimal formatting (no
+/// leading zeros for bytes < 0x10)
 fn format_bridge_id(priority: u16, mac_bytes: [u8; 6]) -> String {
     format!(
         "{:04x}.{:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
@@ -951,7 +952,8 @@ impl CliLinkInfoKindNData {
                     // but skip this for now - we'll handle it separately
                 }
                 LinkInfo::PortData(_data) => {
-                    // Skip port data in this structure - it's handled separately
+                    // Skip port data in this structure - it's handled
+                    // separately
                 }
                 _ => (),
             }

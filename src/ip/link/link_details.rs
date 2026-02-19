@@ -239,7 +239,9 @@ impl std::fmt::Display for CliLinkInfoDetails {
 
         write!(
             f,
-            "addrgenmode {} numtxqueues {} numrxqueues {} gso_max_size {} gso_max_segs {} tso_max_size {} tso_max_segs {} gro_max_size {} gso_ipv4_max_size {} gro_ipv4_max_size {} ",
+            "addrgenmode {} numtxqueues {} numrxqueues {} gso_max_size {} \
+             gso_max_segs {} tso_max_size {} tso_max_segs {} gro_max_size {} \
+             gso_ipv4_max_size {} gro_ipv4_max_size {} ",
             self.inet6_addr_gen_mode,
             self.num_tx_queues,
             self.num_rx_queues,
