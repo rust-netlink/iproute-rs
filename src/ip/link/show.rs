@@ -134,11 +134,7 @@ pub(crate) async fn handle_show(
 
     tokio::spawn(connection);
 
-    let mut link_get_handle = handle.link().get();
-
-    if let Some(iface_name) = opts.first() {
-        link_get_handle = link_get_handle.match_name(iface_name.to_string());
-    }
+    let link_get_handle = handle.link().get();
 
     let mut links = link_get_handle.execute();
     let mut ifaces: Vec<CliLinkInfo> = Vec::new();
@@ -149,6 +145,13 @@ pub(crate) async fn handle_show(
 
     resolve_controller_and_link_names(&mut ifaces);
     resolve_netns_names(&mut ifaces).await?;
+
+    // In order to resolved interface index to interface name and netns name,
+    // we cannot use kernel side interface filter, but need to dump everything,
+    // then filter here
+    if let Some(iface_name) = opts.first() {
+        ifaces.retain(|i| i.ifname.as_str() == *iface_name);
+    }
 
     Ok(ifaces)
 }

@@ -22,8 +22,16 @@ jobs:
       - name: Install necessary dependencies
         run: |
           sudo apt update
-          sudo apt install "linux-modules-extra-$(uname -r)"
+          sudo apt install -y "linux-modules-extra-$(uname -r)"
           sudo modprobe vrf
+      - name: Install iproute2 lastest git build
+        run: |
+          sudo apt-get -y remove iproute2
+          git clone https://git.kernel.org/pub/scm/network/iproute2/iproute2.git
+          cd iproute2
+          ./configure --prefix=/usr
+          make -j5
+          sudo make install
 
       - name: Install Rust Stable
         run: |

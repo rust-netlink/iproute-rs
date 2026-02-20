@@ -2,16 +2,10 @@
 
 use iproute_rs::mac_to_string;
 use rtnetlink::packet_route::link::{
-    BridgePortState, InfoBridge, InfoBridgePort, VlanProtocol,
+    BridgeBooleanOptionFlags as BoolOptFlags, BridgePortState, InfoBridge,
+    InfoBridgePort, VlanProtocol,
 };
 use serde::Serialize;
-
-// Additional bridge constants not yet in netlink-packet-route
-const IFLA_BR_FDB_N_LEARNED: u16 = 48;
-const IFLA_BR_FDB_MAX_LEARNED: u16 = 49;
-const IFLA_BR_NO_LL_LEARN: u16 = 51;
-const IFLA_BR_VLAN_MCAST_SNOOPING: u16 = 52;
-const IFLA_BR_MST_ENABLED: u16 = 53;
 
 #[derive(Serialize)]
 pub(crate) struct CliLinkInfoDataBridge {
@@ -48,9 +42,16 @@ pub(crate) struct CliLinkInfoDataBridge {
     #[serde(skip_serializing_if = "String::is_empty")]
     group_addr: String,
     mcast_snooping: u8,
-    no_linklocal_learn: u8,
-    mcast_vlan_snooping: u8,
-    mst_enabled: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    no_linklocal_learn: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mcast_vlan_snooping: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mst_enabled: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mdb_offload_fail_notification: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fdb_local_vlan_0: Option<u8>,
     mcast_router: u8,
     mcast_query_use_ifaddr: u8,
     mcast_querier: u8,
@@ -124,9 +125,11 @@ impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
         let mut mcast_mld_version = None;
         let mut fdb_n_learned = None;
         let mut fdb_max_learned = None;
-        let mut no_linklocal_learn = 0;
-        let mut mcast_vlan_snooping = 0;
-        let mut mst_enabled = 0;
+        let mut no_linklocal_learn = None;
+        let mut mcast_vlan_snooping = None;
+        let mut mst_enabled = None;
+        let mut mdb_offload_fail_notification = None;
+        let mut fdb_local_vlan_0 = None;
 
         for nla in info {
             match nla {
@@ -223,35 +226,41 @@ impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
                 InfoBridge::MulticastMldVersion(v) => {
                     mcast_mld_version = Some(*v)
                 }
-                InfoBridge::Other(nla) => {
-                    use rtnetlink::packet_core::Nla;
-                    match nla.kind() {
-                        IFLA_BR_FDB_N_LEARNED => {
-                            let mut val = [0u8; 4];
-                            nla.emit_value(&mut val);
-                            fdb_n_learned = Some(u32::from_ne_bytes(val));
-                        }
-                        IFLA_BR_FDB_MAX_LEARNED => {
-                            let mut val = [0u8; 4];
-                            nla.emit_value(&mut val);
-                            fdb_max_learned = Some(u32::from_ne_bytes(val));
-                        }
-                        IFLA_BR_NO_LL_LEARN => {
-                            let mut val = [0u8; 1];
-                            nla.emit_value(&mut val);
-                            no_linklocal_learn = val[0];
-                        }
-                        IFLA_BR_VLAN_MCAST_SNOOPING => {
-                            let mut val = [0u8; 1];
-                            nla.emit_value(&mut val);
-                            mcast_vlan_snooping = val[0];
-                        }
-                        IFLA_BR_MST_ENABLED => {
-                            let mut val = [0u8; 1];
-                            nla.emit_value(&mut val);
-                            mst_enabled = val[0];
-                        }
-                        _ => (),
+                InfoBridge::FdbNLearned(v) => fdb_n_learned = Some(*v),
+                InfoBridge::FdbMaxLearned(v) => fdb_max_learned = Some(*v),
+                InfoBridge::MultiBoolOpt(opts) => {
+                    if opts.mask.contains(BoolOptFlags::NoLinkLocalLearn) {
+                        no_linklocal_learn = Some(
+                            opts.value
+                                .contains(BoolOptFlags::NoLinkLocalLearn)
+                                .into(),
+                        );
+                    }
+                    if opts.mask.contains(BoolOptFlags::VlanMulticastSnooping) {
+                        mcast_vlan_snooping = Some(
+                            opts.value
+                                .contains(BoolOptFlags::VlanMulticastSnooping)
+                                .into(),
+                        );
+                    }
+                    if opts.mask.contains(BoolOptFlags::MstEnable) {
+                        mst_enabled = Some(
+                            opts.value.contains(BoolOptFlags::MstEnable).into(),
+                        );
+                    }
+                    if opts.mask.contains(BoolOptFlags::MdbOffloadFailNotif) {
+                        mdb_offload_fail_notification = Some(
+                            opts.value
+                                .contains(BoolOptFlags::MdbOffloadFailNotif)
+                                .into(),
+                        );
+                    }
+                    if opts.mask.contains(BoolOptFlags::FdbLocalVlan0) {
+                        fdb_local_vlan_0 = Some(
+                            opts.value
+                                .contains(BoolOptFlags::FdbLocalVlan0)
+                                .into(),
+                        );
                     }
                 }
                 _ => (),
@@ -290,6 +299,8 @@ impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
             no_linklocal_learn,
             mcast_vlan_snooping,
             mst_enabled,
+            mdb_offload_fail_notification,
+            fdb_local_vlan_0,
             mcast_router,
             mcast_query_use_ifaddr,
             mcast_querier,
@@ -368,9 +379,21 @@ impl std::fmt::Display for CliLinkInfoDataBridge {
             write!(f, "group_address {} ", self.group_addr)?;
         }
         write!(f, "mcast_snooping {} ", self.mcast_snooping)?;
-        write!(f, "no_linklocal_learn {} ", self.no_linklocal_learn)?;
-        write!(f, "mcast_vlan_snooping {} ", self.mcast_vlan_snooping)?;
-        write!(f, "mst_enabled {} ", self.mst_enabled)?;
+        if let Some(v) = self.no_linklocal_learn {
+            write!(f, "no_linklocal_learn {v} ")?;
+        }
+        if let Some(v) = self.mcast_vlan_snooping {
+            write!(f, "mcast_vlan_snooping {v} ")?;
+        }
+        if let Some(v) = self.mst_enabled {
+            write!(f, "mst_enabled {v} ")?;
+        }
+        if let Some(v) = self.mdb_offload_fail_notification {
+            write!(f, "mdb_offload_fail_notification {v} ")?;
+        }
+        if let Some(v) = self.fdb_local_vlan_0 {
+            write!(f, "fdb_local_vlan_0 {v} ")?;
+        }
         write!(f, "mcast_router {} ", self.mcast_router)?;
         write!(f, "mcast_query_use_ifaddr {} ", self.mcast_query_use_ifaddr)?;
         write!(f, "mcast_querier {} ", self.mcast_querier)?;

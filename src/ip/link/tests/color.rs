@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-use crate::tests::{exec_cmd, get_ip_cli_path};
+use crate::tests::{exec_cmd, ip_rs_exec_cmd};
 
 const COLOR_CLEAR: &str = "\x1b[0m";
 
 #[test]
 fn test_ip_link_show_color_always() {
-    let cli_path = get_ip_cli_path();
+    let expected_output = exec_cmd(&["ip", "-c=always", "link", "show", "lo"]);
 
-    let expected_output = exec_cmd(&["ip", "-c=always", "link", "show"]);
-
-    let our_output =
-        exec_cmd(&[cli_path.as_str(), "-c=always", "link", "show"]);
+    let our_output = ip_rs_exec_cmd(&["-c=always", "link", "show", "lo"]);
 
     assert!(our_output.contains(COLOR_CLEAR));
 
@@ -20,11 +17,9 @@ fn test_ip_link_show_color_always() {
 
 #[test]
 fn test_ip_link_show_color_auto_without_terminal() {
-    let cli_path = get_ip_cli_path();
+    let expected_output = exec_cmd(&["ip", "-c=auto", "link", "show", "lo"]);
 
-    let expected_output = exec_cmd(&["ip", "-c=auto", "link", "show"]);
-
-    let our_output = exec_cmd(&[cli_path.as_str(), "-c=auto", "link", "show"]);
+    let our_output = ip_rs_exec_cmd(&["-c=auto", "link", "show", "lo"]);
 
     assert!(!our_output.contains(COLOR_CLEAR));
 
@@ -33,11 +28,9 @@ fn test_ip_link_show_color_auto_without_terminal() {
 
 #[test]
 fn test_ip_link_show_color_never() {
-    let cli_path = get_ip_cli_path();
+    let expected_output = exec_cmd(&["ip", "-c=never", "link", "show", "lo"]);
 
-    let expected_output = exec_cmd(&["ip", "-c=never", "link", "show"]);
-
-    let our_output = exec_cmd(&[cli_path.as_str(), "-c=never", "link", "show"]);
+    let our_output = ip_rs_exec_cmd(&["-c=never", "link", "show", "lo"]);
 
     assert!(!our_output.contains(COLOR_CLEAR));
 

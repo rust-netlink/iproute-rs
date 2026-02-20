@@ -82,7 +82,8 @@ impl CliColor {
                     false
                 }
             } else {
-                false
+                // iproute assume dark color if unknown
+                true
             }
         })
     }

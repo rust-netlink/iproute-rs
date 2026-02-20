@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-#[cfg(test)]
+mod bridge;
 mod color;
-
-#[cfg(test)]
-mod link;
+mod loopback;
