@@ -1,24 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use std::ffi::CStr;
-
-use rtnetlink::{
-    packet_core::{DefaultNla, Nla as _},
-    packet_route::link::{AfSpecInet6, AfSpecUnspec, LinkAttribute},
-};
+use rtnetlink::packet_route::link::{AfSpecInet6, AfSpecUnspec, LinkAttribute};
 use serde::Serialize;
 
 use crate::link::link_info::CliLinkInfo;
-
-// Use constants until support is added to netlink-packet-route
-const IFLA_PARENT_DEV_NAME: u16 = 56;
-const IFLA_PARENT_DEV_BUS_NAME: u16 = 57;
-const IFLA_GRO_MAX_SIZE: u16 = 58;
-const IFLA_TSO_MAX_SIZE: u16 = 59;
-const IFLA_TSO_MAX_SEGS: u16 = 60;
-const IFLA_ALLMULTI: u16 = 61;
-const IFLA_GSO_IPV4_MAX_SIZE: u16 = 63;
-const IFLA_GRO_IPV4_MAX_SIZE: u16 = 64;
 
 fn get_addr_gen_mode(af_spec_unspec: &[AfSpecUnspec]) -> String {
     af_spec_unspec
@@ -40,16 +25,6 @@ fn get_addr_gen_mode(af_spec_unspec: &[AfSpecUnspec]) -> String {
         .next()
         .map(|i| i.to_string())
         .unwrap_or_default()
-}
-fn default_nla_to_string(default_nla: &DefaultNla) -> String {
-    let val_len = default_nla.value_len();
-    let mut val = vec![0u8; val_len];
-    default_nla.emit_value(&mut val);
-    CStr::from_bytes_with_nul(&val)
-        .expect("String nla to be nul-terminated and not contain interior nuls")
-        .to_str()
-        .expect("To be valid UTF-8")
-        .to_string()
 }
 
 #[derive(Serialize)]
@@ -100,6 +75,7 @@ impl CliLinkInfoDetail {
         for nl_attr in nl_attrs {
             match nl_attr {
                 LinkAttribute::Promiscuity(p) => promiscuity = *p,
+                LinkAttribute::AllMulticast(a) => allmulti = *a,
                 LinkAttribute::MinMtu(m) => min_mtu = *m,
                 LinkAttribute::MaxMtu(m) => max_mtu = *m,
                 LinkAttribute::AfSpecUnspec(a) => {
@@ -109,45 +85,13 @@ impl CliLinkInfoDetail {
                 LinkAttribute::NumRxQueues(n) => num_rx_queues = *n,
                 LinkAttribute::GsoMaxSize(g) => gso_max_size = *g,
                 LinkAttribute::GsoMaxSegs(g) => gso_max_segs = *g,
-                LinkAttribute::Other(default_nla) => match default_nla.kind() {
-                    IFLA_PARENT_DEV_BUS_NAME => {
-                        parentbus = default_nla_to_string(default_nla);
-                    }
-                    IFLA_PARENT_DEV_NAME => {
-                        parentdev = default_nla_to_string(default_nla);
-                    }
-                    IFLA_GRO_MAX_SIZE => {
-                        let mut val = [0u8; 4];
-                        default_nla.emit_value(&mut val);
-                        gro_max_size = u32::from_ne_bytes(val);
-                    }
-                    IFLA_TSO_MAX_SIZE => {
-                        let mut val = [0u8; 4];
-                        default_nla.emit_value(&mut val);
-                        tso_max_size = u32::from_ne_bytes(val);
-                    }
-                    IFLA_TSO_MAX_SEGS => {
-                        let mut val = [0u8; 4];
-                        default_nla.emit_value(&mut val);
-                        tso_max_segs = u32::from_ne_bytes(val);
-                    }
-                    IFLA_ALLMULTI => {
-                        let mut val = [0u8; 4];
-                        default_nla.emit_value(&mut val);
-                        allmulti = u32::from_ne_bytes(val);
-                    }
-                    IFLA_GSO_IPV4_MAX_SIZE => {
-                        let mut val = [0u8; 4];
-                        default_nla.emit_value(&mut val);
-                        gso_ipv4_max_size = u32::from_ne_bytes(val);
-                    }
-                    IFLA_GRO_IPV4_MAX_SIZE => {
-                        let mut val = [0u8; 4];
-                        default_nla.emit_value(&mut val);
-                        gro_ipv4_max_size = u32::from_ne_bytes(val);
-                    }
-                    _ => { /* println!("Remains {:?}", default_nla); */ }
-                },
+                LinkAttribute::TsoMaxSize(t) => tso_max_size = *t,
+                LinkAttribute::TsoMaxSegs(t) => tso_max_segs = *t,
+                LinkAttribute::GroMaxSize(g) => gro_max_size = *g,
+                LinkAttribute::GsoIpv4MaxSize(g) => gso_ipv4_max_size = *g,
+                LinkAttribute::GroIpv4MaxSize(g) => gro_ipv4_max_size = *g,
+                LinkAttribute::ParentDevName(n) => parentdev = n.clone(),
+                LinkAttribute::ParentDevBusName(n) => parentbus = n.clone(),
                 LinkAttribute::LinkInfo(info) => {
                     linkinfo = info.as_slice().try_into().ok();
                 }
