@@ -188,11 +188,7 @@ pub(crate) async fn parse_nl_msg_to_iface(
                 // TODO: impl Display for State in rust-netlink
                 ret.operstate = format!("{state:?}").to_uppercase()
             }
-            LinkAttribute::TxQueueLen(v) => {
-                if v > 0 {
-                    ret.txqlen = Some(v)
-                }
-            }
+            LinkAttribute::TxQueueLen(v) if v > 0 => ret.txqlen = Some(v),
             LinkAttribute::Group(v) => {
                 ret.group = resolve_ip_link_group_name(v)
             }
