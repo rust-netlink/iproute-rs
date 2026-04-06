@@ -5,6 +5,10 @@ use serde::Serialize;
 
 use crate::link::link_info::CliLinkInfo;
 
+fn should_skip_netns_immutable(val: &Option<bool>) -> bool {
+    matches!(val, None | Some(false))
+}
+
 fn get_addr_gen_mode(af_spec_unspec: &[AfSpecUnspec]) -> String {
     af_spec_unspec
         .iter()
@@ -33,6 +37,11 @@ pub(crate) struct CliLinkInfoDetail {
     allmulti: u32,
     min_mtu: u32,
     max_mtu: u32,
+    #[serde(
+        skip_serializing_if = "should_skip_netns_immutable",
+        rename = "netns-immutable"
+    )]
+    netns_immutable: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     linkinfo: Option<CliLinkInfo>,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -71,6 +80,7 @@ impl CliLinkInfoDetail {
         let mut inet6_addr_gen_mode = String::new();
         let mut parentbus = String::new();
         let mut parentdev = String::new();
+        let mut netns_immutable = None;
 
         for nl_attr in nl_attrs {
             match nl_attr {
@@ -90,6 +100,7 @@ impl CliLinkInfoDetail {
                 LinkAttribute::GroMaxSize(g) => gro_max_size = *g,
                 LinkAttribute::GsoIpv4MaxSize(g) => gso_ipv4_max_size = *g,
                 LinkAttribute::GroIpv4MaxSize(g) => gro_ipv4_max_size = *g,
+                LinkAttribute::NetnsImmutable(v) => netns_immutable = Some(*v),
                 LinkAttribute::ParentDevName(n) => parentdev = n.clone(),
                 LinkAttribute::ParentDevBusName(n) => parentbus = n.clone(),
                 LinkAttribute::LinkInfo(info) => {
@@ -117,6 +128,7 @@ impl CliLinkInfoDetail {
             gro_max_size,
             gso_ipv4_max_size,
             gro_ipv4_max_size,
+            netns_immutable,
             parentbus,
             parentdev,
         }
@@ -130,6 +142,10 @@ impl std::fmt::Display for CliLinkInfoDetail {
             " promiscuity {} allmulti {} minmtu {} maxmtu {} ",
             self.promiscuity, self.allmulti, self.min_mtu, self.max_mtu,
         )?;
+
+        if self.netns_immutable == Some(true) {
+            write!(f, "netns-immutable ")?;
+        }
 
         if let Some(linkinfo) = &self.linkinfo {
             write!(f, "{linkinfo}")?;
