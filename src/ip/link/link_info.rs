@@ -9,6 +9,7 @@ use super::ifaces::{
     bridge::{CliLinkInfoDataBridge, CliLinkInfoDataBridgePort},
     vlan::CliLinkInfoDataVlan,
 };
+use crate::link::ifaces::bond::{CliLinkInfoDataBond, CliLinkInfoDataBondPort};
 
 #[derive(Serialize)]
 pub(super) struct CliLinkInfo {
@@ -84,6 +85,7 @@ impl std::fmt::Display for CliLinkInfo {
 pub(crate) enum CliLinkInfoData {
     Vlan(Box<CliLinkInfoDataVlan>),
     Bridge(Box<CliLinkInfoDataBridge>),
+    Bond(Box<CliLinkInfoDataBond>),
 }
 
 impl TryFrom<&InfoData> for CliLinkInfoData {
@@ -95,6 +97,7 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
                 Ok(Self::Bridge(Box::new(v.as_slice().into())))
             }
             InfoData::Vlan(v) => Ok(Self::Vlan(Box::new(v.as_slice().into()))),
+            InfoData::Bond(v) => Ok(Self::Bond(Box::new(v.as_slice().into()))),
             _ => Err(()),
         }
     }
@@ -105,6 +108,7 @@ impl std::fmt::Display for CliLinkInfoData {
         match self {
             CliLinkInfoData::Vlan(v) => write!(f, "{v}"),
             CliLinkInfoData::Bridge(v) => write!(f, "{v}"),
+            CliLinkInfoData::Bond(v) => write!(f, "{v}"),
         }
     }
 }
@@ -113,12 +117,14 @@ impl std::fmt::Display for CliLinkInfoData {
 #[serde(untagged)]
 pub(crate) enum CliLinkInfoPortData {
     BridgePort(CliLinkInfoDataBridgePort),
+    BondPort(CliLinkInfoDataBondPort),
 }
 
 impl std::fmt::Display for CliLinkInfoPortData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CliLinkInfoPortData::BridgePort(v) => write!(f, "{v}"),
+            CliLinkInfoPortData::BondPort(v) => write!(f, "{v}"),
         }
     }
 }
@@ -130,6 +136,9 @@ impl TryFrom<&InfoPortData> for CliLinkInfoPortData {
         match info_data {
             InfoPortData::BridgePort(v) => {
                 Ok(Self::BridgePort(v.as_slice().into()))
+            }
+            InfoPortData::BondPort(v) => {
+                Ok(Self::BondPort(v.as_slice().into()))
             }
             _ => Err(()),
         }
