@@ -15,7 +15,7 @@ use self::link::LinkCommand;
 async fn main() -> Result<(), CliError> {
     let mut app = clap::Command::new("iproute-rs")
         .version(clap::crate_version!())
-        .author("Gris Ge <fge@redhat.com>")
+        .author(clap::crate_authors!())
         .about("Command line of rust-netlink")
         .arg(
             clap::Arg::new("VERSION")
