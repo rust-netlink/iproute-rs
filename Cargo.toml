@@ -1,5 +1,6 @@
 [package]
 readme = "README.md"
+authors = ["Gris Ge <cnfourt@gmail.com>"]
 name = "iproute-rs"
 version = "0.1.0"
 edition = "2024"
