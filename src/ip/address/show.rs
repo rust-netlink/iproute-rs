@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use futures_util::TryStreamExt;
+use indexmap::IndexMap;
 use iproute_rs::{CanDisplay, CanOutput, CliColor, write_with_color};
 use rtnetlink::packet_route::{
     AddressFamily,
@@ -22,8 +23,8 @@ pub(crate) struct CliAddressInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     broadcast: Option<String>,
     scope: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tentative: Option<bool>,
+    #[serde(flatten, skip_serializing_if = "IndexMap::is_empty")]
+    flags: IndexMap<String, bool>,
     #[serde(skip_serializing_if = "String::is_empty")]
     protocol: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -31,6 +32,68 @@ pub(crate) struct CliAddressInfo {
     valid_life_time: u32,
     preferred_life_time: u32,
 }
+
+#[derive(Clone, Copy)]
+struct AddressFlagData {
+    name: &'static str,
+    mask: AddressFlags,
+}
+
+// equal to iproute2 `struct ifa_flag_data_t` in `ipaddress.c`
+const ADDRESS_FLAG_DATA: &[AddressFlagData] = &[
+    AddressFlagData {
+        name: "secondary",
+        mask: AddressFlags::Secondary,
+    },
+    AddressFlagData {
+        name: "temporary",
+        mask: AddressFlags::Secondary,
+    },
+    AddressFlagData {
+        name: "nodad",
+        mask: AddressFlags::Nodad,
+    },
+    AddressFlagData {
+        name: "optimistic",
+        mask: AddressFlags::Optimistic,
+    },
+    AddressFlagData {
+        name: "dadfailed",
+        mask: AddressFlags::Dadfailed,
+    },
+    AddressFlagData {
+        name: "home",
+        mask: AddressFlags::Homeaddress,
+    },
+    AddressFlagData {
+        name: "deprecated",
+        mask: AddressFlags::Deprecated,
+    },
+    AddressFlagData {
+        name: "tentative",
+        mask: AddressFlags::Tentative,
+    },
+    AddressFlagData {
+        name: "permanent",
+        mask: AddressFlags::Permanent,
+    },
+    AddressFlagData {
+        name: "mngtmpaddr",
+        mask: AddressFlags::Managetempaddr,
+    },
+    AddressFlagData {
+        name: "noprefixroute",
+        mask: AddressFlags::Noprefixroute,
+    },
+    AddressFlagData {
+        name: "autojoin",
+        mask: AddressFlags::Mcautojoin,
+    },
+    AddressFlagData {
+        name: "stable-privacy",
+        mask: AddressFlags::StablePrivacy,
+    },
+];
 
 impl std::fmt::Display for CliAddressInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -52,9 +115,7 @@ impl std::fmt::Display for CliAddressInfo {
             )?;
         }
         write!(f, " scope {} ", self.scope)?;
-        if Some(true) == self.tentative {
-            write!(f, "tentative ")?;
-        }
+        self.write_flags(f)?;
 
         if !self.protocol.is_empty() {
             write!(f, "proto {} ", self.protocol)?;
@@ -68,14 +129,25 @@ impl std::fmt::Display for CliAddressInfo {
             if self.valid_life_time == u32::MAX {
                 "forever".to_string()
             } else {
-                self.valid_life_time.to_string()
+                format!("{}sec", self.valid_life_time)
             },
             if self.preferred_life_time == u32::MAX {
                 "forever".to_string()
             } else {
-                self.preferred_life_time.to_string()
+                format!("{}sec", self.preferred_life_time)
             }
         )?;
+        Ok(())
+    }
+}
+
+impl CliAddressInfo {
+    fn write_flags(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for flag_name in self.flags.iter().filter_map(|(flag_name, value)| {
+            if *value { Some(flag_name) } else { None }
+        }) {
+            write!(f, "{} ", flag_name)?;
+        }
         Ok(())
     }
 }
@@ -95,6 +167,39 @@ fn addr_scope_to_cli_string(addr_scope: &AddressScope) -> String {
     }
 }
 
+fn get_address_flags(
+    family: AddressFamily,
+    flags: AddressFlags,
+) -> IndexMap<String, bool> {
+    let mut ret = IndexMap::new();
+    let mut flags = flags;
+
+    for flag_data in ADDRESS_FLAG_DATA {
+        if flag_data.mask == AddressFlags::Permanent {
+            if !flags.contains(flag_data.mask) {
+                ret.insert("dynamic".to_string(), true);
+            }
+        } else if flags.contains(flag_data.mask) {
+            if flag_data.mask == AddressFlags::Secondary
+                && family == AddressFamily::Inet6
+            {
+                ret.insert("temporary".to_string(), true);
+            } else {
+                ret.insert(flag_data.name.to_string(), true);
+            }
+        }
+        flags.remove(flag_data.mask);
+    }
+    // iproute2 shows unknown flags in hex format, to support so
+    // the IndexMap<String, bool> need to be changed to IndexMap<String, String>
+    // which is overskill for this unknown flags. Let's just log a debug info
+    // and wait bug report.
+    if !flags.is_empty() {
+        log::debug!("Unknown address flags: {:02x}", flags.bits());
+    }
+    ret
+}
+
 fn parse_nl_msg_to_address(
     nl_msg: AddressMessage,
 ) -> Result<CliAddressInfo, CliError> {
@@ -104,7 +209,8 @@ fn parse_nl_msg_to_address(
     let prefixlen = nl_msg.header.prefix_len;
     let mut broadcast = None;
     let scope = addr_scope_to_cli_string(&nl_msg.header.scope);
-    let mut tentative = None;
+    let mut flags =
+        AddressFlags::from_bits_retain(nl_msg.header.flags.bits().into());
     let mut label = String::new();
     let mut valid_life_time = u32::MAX;
     let mut preferred_life_time = u32::MAX;
@@ -129,10 +235,7 @@ fn parse_nl_msg_to_address(
                 preferred_life_time = c.ifa_preferred;
             }
             AddressAttribute::Flags(f) => {
-                // If there is no tentative flag the field should be None
-                tentative = (nl_msg.header.family == AddressFamily::Inet6
-                    && f.contains(AddressFlags::Tentative))
-                .then_some(true);
+                flags = f;
             }
             AddressAttribute::Protocol(p) => {
                 protocol = p.to_string();
@@ -143,19 +246,21 @@ fn parse_nl_msg_to_address(
         }
     }
 
-    Ok(CliAddressInfo {
+    let cli_addr_info = CliAddressInfo {
         index,
         family,
         local,
         prefixlen,
         broadcast,
         scope,
-        tentative,
+        flags: get_address_flags(nl_msg.header.family, flags),
         label,
         valid_life_time,
         preferred_life_time,
         protocol,
-    })
+    };
+
+    Ok(cli_addr_info)
 }
 
 pub(crate) async fn handle_show(

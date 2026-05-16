@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use iproute_rs::CliError;
-
 use super::show::handle_show;
-use crate::link::CliLinkInfo;
+use crate::{CliError, link::CliLinkInfo};
 
 pub(crate) struct AddressCommand;
 
