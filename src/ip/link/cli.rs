@@ -12,12 +12,18 @@ impl LinkCommand {
     pub(crate) fn gen_command() -> clap::Command {
         clap::Command::new(Self::CMD)
             .about("network device configuration")
+            .alias("lin")
+            .alias("li")
+            .alias("l")
             .subcommand_required(false)
             .subcommand(
                 clap::Command::new("show")
                     .about("show links")
                     .alias("list")
                     .alias("lst")
+                    .alias("ls")
+                    .alias("li")
+                    .alias("l")
                     .arg(
                         clap::Arg::new("options")
                             .action(clap::ArgAction::Append)
