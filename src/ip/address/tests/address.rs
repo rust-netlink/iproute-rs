@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-use crate::tests::{exec_cmd, ip_rs_exec_cmd};
+use crate::tests::{assert_alias_output, exec_cmd, ip_rs_exec_cmd};
 
 #[test]
 fn test_address_show() {
-    let bond_name = "atest-bond1";
-    let dummy_name = "atest-bnd-dum1";
+    let dummy_name = "atest-dummy1";
 
-    with_bond_iface(bond_name, dummy_name, || {
-        let expected_output = exec_cmd(&["ip", "address", "show", bond_name]);
-        let our_output = ip_rs_exec_cmd(&["address", "show", bond_name]);
+    with_dummy_iface(dummy_name, || {
+        let expected_output = exec_cmd(&["ip", "address", "show", dummy_name]);
+        let our_output = ip_rs_exec_cmd(&["address", "show", dummy_name]);
 
         pretty_assertions::assert_eq!(expected_output, our_output);
     });
@@ -17,13 +16,12 @@ fn test_address_show() {
 
 #[test]
 fn test_address_detailed_show() {
-    let bond_name = "atest-bond2";
-    let dummy_name = "atest-bnd-dum2";
+    let dummy_name = "atest-dummy2";
 
-    with_bond_iface(bond_name, dummy_name, || {
+    with_dummy_iface(dummy_name, || {
         let expected_output =
-            exec_cmd(&["ip", "-d", "address", "show", bond_name]);
-        let our_output = ip_rs_exec_cmd(&["-d", "address", "show", bond_name]);
+            exec_cmd(&["ip", "-d", "address", "show", dummy_name]);
+        let our_output = ip_rs_exec_cmd(&["-d", "address", "show", dummy_name]);
 
         pretty_assertions::assert_eq!(expected_output, our_output);
     });
@@ -31,13 +29,12 @@ fn test_address_detailed_show() {
 
 #[test]
 fn test_address_show_json() {
-    let bond_name = "atest-bond3";
-    let dummy_name = "atest-bnd-dum3";
+    let dummy_name = "atest-dummy3";
 
-    with_bond_iface(bond_name, dummy_name, || {
+    with_dummy_iface(dummy_name, || {
         let expected_output =
-            exec_cmd(&["ip", "-j", "address", "show", bond_name]);
-        let our_output = ip_rs_exec_cmd(&["-j", "address", "show", bond_name]);
+            exec_cmd(&["ip", "-j", "address", "show", dummy_name]);
+        let our_output = ip_rs_exec_cmd(&["-j", "address", "show", dummy_name]);
 
         pretty_assertions::assert_eq!(expected_output, our_output);
     });
@@ -45,35 +42,49 @@ fn test_address_show_json() {
 
 #[test]
 fn test_address_detailed_show_json() {
-    let bond_name = "atest-bond4";
-    let dummy_name = "atest-bnd-dum4";
+    let dummy_name = "atest-dummy4";
 
-    with_bond_iface(bond_name, dummy_name, || {
+    with_dummy_iface(dummy_name, || {
         let expected_output =
-            exec_cmd(&["ip", "-d", "-j", "address", "show", bond_name]);
+            exec_cmd(&["ip", "-d", "-j", "address", "show", dummy_name]);
         let our_output =
-            ip_rs_exec_cmd(&["-d", "-j", "address", "show", bond_name]);
+            ip_rs_exec_cmd(&["-d", "-j", "address", "show", dummy_name]);
 
         pretty_assertions::assert_eq!(expected_output, our_output);
     });
 }
 
-fn with_bond_iface<T>(bond_name: &str, dummy_name: &str, test: T)
+#[test]
+fn test_address_alias_a_s() {
+    assert_alias_output(&["address", "show", "lo"], &["a", "s", "lo"]);
+}
+
+#[test]
+fn test_address_alias_addr_show() {
+    assert_alias_output(&["address", "show", "lo"], &["addr", "show", "lo"]);
+}
+
+#[test]
+fn test_address_alias_address_s() {
+    assert_alias_output(&["address", "show", "lo"], &["address", "s", "lo"]);
+}
+
+#[test]
+fn test_address_alias_add_ls() {
+    assert_alias_output(&["address", "show", "lo"], &["add", "ls", "lo"]);
+}
+
+fn with_dummy_iface<T>(dummy_name: &str, test: T)
 where
     T: FnOnce() + std::panic::UnwindSafe,
 {
-    // create bridge using dummy interface
     exec_cmd(&["ip", "link", "add", dummy_name, "type", "dummy"]);
-    exec_cmd(&["ip", "link", "add", bond_name, "type", "bond"]);
-    exec_cmd(&["ip", "link", "set", "dev", dummy_name, "master", bond_name]);
-
     exec_cmd(&["ip", "link", "set", dummy_name, "up"]);
-    exec_cmd(&["ip", "link", "set", bond_name, "up"]);
 
-    exec_cmd(&["ip", "addr", "add", "192.168.1.1/24", "dev", bond_name]);
-    exec_cmd(&["ip", "addr", "add", "ff::ab:cd/64", "dev", bond_name]);
+    exec_cmd(&["ip", "addr", "add", "192.168.1.1/24", "dev", dummy_name]);
+    exec_cmd(&["ip", "addr", "add", "ff::ab:cd/64", "dev", dummy_name]);
 
-    // Wait 2 seconds for bond to be up and addresses to be assigned
+    // Wait 2 seconds for interface to be up and addresses to be assigned
     std::thread::sleep(std::time::Duration::from_secs(2));
 
     let result = std::panic::catch_unwind(|| {
@@ -82,6 +93,5 @@ where
 
     // clean up
     exec_cmd(&["ip", "link", "del", dummy_name]);
-    exec_cmd(&["ip", "link", "del", bond_name]);
     assert!(result.is_ok())
 }

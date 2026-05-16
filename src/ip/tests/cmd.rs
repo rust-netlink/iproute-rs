@@ -15,6 +15,12 @@ pub(crate) fn exec_cmd(args: &[&str]) -> String {
         .expect("Failed to convert command output to String")
 }
 
+pub(crate) fn assert_alias_output(expected_args: &[&str], alias_args: &[&str]) {
+    let expected_output = ip_rs_exec_cmd(expected_args);
+    let our_output = ip_rs_exec_cmd(alias_args);
+    pretty_assertions::assert_eq!(expected_output, our_output);
+}
+
 pub(crate) fn ip_rs_exec_cmd(args: &[&str]) -> String {
     let mut cur_exec_path =
         std::env::current_exe().expect("No current exec path");
