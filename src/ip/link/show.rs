@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, os::fd::AsRawFd};
+use std::{collections::HashMap, io::ErrorKind, os::fd::AsRawFd};
 
 use futures_util::stream::{StreamExt, TryStreamExt};
 use iproute_rs::{
@@ -331,7 +331,15 @@ async fn resolve_netns_names(
     for netns in netnses {
         let netns = netns?;
         let name = netns.file_name().into_string().unwrap_or_default();
-        let file = std::fs::File::open(netns.path())?;
+        let file_res = std::fs::File::open(netns.path());
+        // Skip netnses that are not found (might be deleted)
+        if file_res
+            .as_ref()
+            .is_err_and(|e| e.kind() == ErrorKind::NotFound)
+        {
+            continue;
+        }
+        let file = file_res?;
 
         if let Some(id) =
             get_netns_id_from_fd(&mut handle, file.as_raw_fd() as u32).await
