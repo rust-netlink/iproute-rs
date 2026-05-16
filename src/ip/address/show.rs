@@ -24,6 +24,10 @@ pub(crate) struct CliAddressInfo {
     scope: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     tentative: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dynamic: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mngtmpaddr: Option<bool>,
     #[serde(skip_serializing_if = "String::is_empty")]
     protocol: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -56,6 +60,14 @@ impl std::fmt::Display for CliAddressInfo {
             write!(f, "tentative ")?;
         }
 
+        if Some(true) == self.dynamic {
+            write!(f, "dynamic ")?;
+        }
+
+        if Some(true) == self.mngtmpaddr {
+            write!(f, "mngtmpaddr ")?;
+        }
+
         if !self.protocol.is_empty() {
             write!(f, "proto {} ", self.protocol)?;
         }
@@ -68,12 +80,12 @@ impl std::fmt::Display for CliAddressInfo {
             if self.valid_life_time == u32::MAX {
                 "forever".to_string()
             } else {
-                self.valid_life_time.to_string()
+                format!("{}sec", self.valid_life_time)
             },
             if self.preferred_life_time == u32::MAX {
                 "forever".to_string()
             } else {
-                self.preferred_life_time.to_string()
+                format!("{}sec", self.preferred_life_time)
             }
         )?;
         Ok(())
@@ -105,6 +117,8 @@ fn parse_nl_msg_to_address(
     let mut broadcast = None;
     let scope = addr_scope_to_cli_string(&nl_msg.header.scope);
     let mut tentative = None;
+    let mut dynamic = None;
+    let mut mngtmpaddr = None;
     let mut label = String::new();
     let mut valid_life_time = u32::MAX;
     let mut preferred_life_time = u32::MAX;
@@ -133,6 +147,10 @@ fn parse_nl_msg_to_address(
                 tentative = (nl_msg.header.family == AddressFamily::Inet6
                     && f.contains(AddressFlags::Tentative))
                 .then_some(true);
+                dynamic =
+                    (!f.contains(AddressFlags::Permanent)).then_some(true);
+                mngtmpaddr =
+                    f.contains(AddressFlags::Managetempaddr).then_some(true);
             }
             AddressAttribute::Protocol(p) => {
                 protocol = p.to_string();
@@ -151,6 +169,8 @@ fn parse_nl_msg_to_address(
         broadcast,
         scope,
         tentative,
+        dynamic,
+        mngtmpaddr,
         label,
         valid_life_time,
         preferred_life_time,
