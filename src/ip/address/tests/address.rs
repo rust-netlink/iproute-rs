@@ -82,7 +82,42 @@ where
     exec_cmd(&["ip", "link", "set", dummy_name, "up"]);
 
     exec_cmd(&["ip", "addr", "add", "192.168.1.1/24", "dev", dummy_name]);
+    exec_cmd(&["ip", "addr", "add", "192.168.1.2/24", "dev", dummy_name]);
     exec_cmd(&["ip", "addr", "add", "ff::ab:cd/64", "dev", dummy_name]);
+    exec_cmd(&[
+        "ip",
+        "addr",
+        "add",
+        "2001:db8:beef::1/64",
+        "dev",
+        dummy_name,
+        "valid_lft",
+        "21384",
+        "preferred_lft",
+        "21384",
+        "scope",
+        "global",
+        "mngtmpaddr",
+        "proto",
+        "kernel_ra",
+    ]);
+    exec_cmd(&[
+        "ip",
+        "addr",
+        "add",
+        "2001:db8:beef::2/64",
+        "dev",
+        dummy_name,
+        "valid_lft",
+        "21381",
+        "preferred_lft",
+        "21381",
+        "scope",
+        "global",
+        "home",
+        "proto",
+        "kernel_ra",
+    ]);
 
     // Wait 2 seconds for interface to be up and addresses to be assigned
     std::thread::sleep(std::time::Duration::from_secs(2));
