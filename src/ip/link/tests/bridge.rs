@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::tests::{exec_cmd, ip_rs_exec_cmd};
+use crate::tests::{NetnsGuard, with_netns};
 
 /// Normalize timer values in output to avoid test flakiness
 /// Timer values can vary slightly between consecutive calls due to kernel
@@ -97,83 +97,88 @@ fn normalize_timers_json(output: &str) -> String {
 
 #[test]
 fn test_link_detailed_show_bridge() {
-    let br_name = "test-br0";
-    let dummy_name = "test-dummy0";
+    with_netns(|ns| {
+        let br_name = "test-br0";
+        let dummy_name = "test-dummy0";
 
-    with_bridge_iface(br_name, dummy_name, || {
-        let expected_output = exec_cmd(&["ip", "-d", "link", "show", br_name]);
-
-        let our_output = ip_rs_exec_cmd(&["-d", "link", "show", br_name]);
-
-        pretty_assertions::assert_eq!(
-            normalize_timers(&expected_output),
-            normalize_timers(&our_output)
-        );
+        with_bridge_iface(ns, br_name, dummy_name, || {
+            let expected_output =
+                ns.exec_cmd(&["ip", "-d", "link", "show", br_name]);
+            let our_output =
+                ns.ip_rs_exec_cmd(&["-d", "link", "show", br_name]);
+            pretty_assertions::assert_eq!(
+                normalize_timers(&expected_output),
+                normalize_timers(&our_output)
+            );
+        })
     })
 }
 
 #[test]
 fn test_link_detailed_show_json_bridge() {
-    let br_name = "test-br1";
-    let dummy_name = "test-dummy1";
-    with_bridge_iface(br_name, dummy_name, || {
-        let expected_output =
-            exec_cmd(&["ip", "-d", "-j", "link", "show", br_name]);
-
-        let our_output = ip_rs_exec_cmd(&["-d", "-j", "link", "show", br_name]);
-
-        pretty_assertions::assert_eq!(
-            normalize_timers_json(&expected_output),
-            normalize_timers_json(&our_output)
-        );
+    with_netns(|ns| {
+        let br_name = "test-br1";
+        let dummy_name = "test-dummy1";
+        with_bridge_iface(ns, br_name, dummy_name, || {
+            let expected_output =
+                ns.exec_cmd(&["ip", "-d", "-j", "link", "show", br_name]);
+            let our_output =
+                ns.ip_rs_exec_cmd(&["-d", "-j", "link", "show", br_name]);
+            pretty_assertions::assert_eq!(
+                normalize_timers_json(&expected_output),
+                normalize_timers_json(&our_output)
+            );
+        })
     })
 }
 
 #[test]
 fn test_link_detailed_show_bridge_port() {
-    let br_name = "test-br2";
-    let dummy_name = "test-dummy2";
+    with_netns(|ns| {
+        let br_name = "test-br2";
+        let dummy_name = "test-dummy2";
 
-    with_bridge_iface(br_name, dummy_name, || {
-        let expected_output =
-            exec_cmd(&["ip", "-d", "link", "show", dummy_name]);
-
-        let our_output = ip_rs_exec_cmd(&["-d", "link", "show", dummy_name]);
-
-        pretty_assertions::assert_eq!(
-            normalize_timers(&expected_output),
-            normalize_timers(&our_output)
-        );
+        with_bridge_iface(ns, br_name, dummy_name, || {
+            let expected_output =
+                ns.exec_cmd(&["ip", "-d", "link", "show", dummy_name]);
+            let our_output =
+                ns.ip_rs_exec_cmd(&["-d", "link", "show", dummy_name]);
+            pretty_assertions::assert_eq!(
+                normalize_timers(&expected_output),
+                normalize_timers(&our_output)
+            );
+        })
     })
 }
 
 #[test]
 fn test_link_detailed_show_json_bridge_port() {
-    let br_name = "test-br3";
-    let dummy_name = "test-dummy3";
-    with_bridge_iface(br_name, dummy_name, || {
-        let expected_output =
-            exec_cmd(&["ip", "-d", "-j", "link", "show", dummy_name]);
-
-        let our_output =
-            ip_rs_exec_cmd(&["-d", "-j", "link", "show", dummy_name]);
-
-        pretty_assertions::assert_eq!(
-            normalize_timers_json(&expected_output),
-            normalize_timers_json(&our_output)
-        );
+    with_netns(|ns| {
+        let br_name = "test-br3";
+        let dummy_name = "test-dummy3";
+        with_bridge_iface(ns, br_name, dummy_name, || {
+            let expected_output =
+                ns.exec_cmd(&["ip", "-d", "-j", "link", "show", dummy_name]);
+            let our_output =
+                ns.ip_rs_exec_cmd(&["-d", "-j", "link", "show", dummy_name]);
+            pretty_assertions::assert_eq!(
+                normalize_timers_json(&expected_output),
+                normalize_timers_json(&our_output)
+            );
+        })
     })
 }
 
-/// Since all test cases are running simultaneously, please make sure `br_name`
-/// and `dummy_name` are unique among tests.
-fn with_bridge_iface<T>(br_name: &str, dummy_name: &str, test: T)
-where
-    T: FnOnce() + std::panic::UnwindSafe,
+fn with_bridge_iface<T>(
+    ns: &NetnsGuard,
+    br_name: &str,
+    dummy_name: &str,
+    test: T,
+) where
+    T: FnOnce(),
 {
-    // create bridge using dummy interface
-    exec_cmd(&["ip", "link", "add", dummy_name, "type", "dummy"]);
-    exec_cmd(&[
+    ns.exec_cmd(&["ip", "link", "add", dummy_name, "type", "dummy"]);
+    ns.exec_cmd(&[
         "ip",
         "link",
         "add",
@@ -183,23 +188,10 @@ where
         "stp_state",
         "0",
     ]);
-    exec_cmd(&["ip", "link", "set", "dev", dummy_name, "master", br_name]);
+    ns.exec_cmd(&["ip", "link", "set", "dev", dummy_name, "master", br_name]);
 
-    exec_cmd(&["ip", "link", "set", dummy_name, "up"]);
-    exec_cmd(&["ip", "link", "set", br_name, "up"]);
+    ns.exec_cmd(&["ip", "link", "set", dummy_name, "up"]);
+    ns.exec_cmd(&["ip", "link", "set", br_name, "up"]);
 
-    // Wait 1 second for bridge ID to be stable
-    std::thread::sleep(std::time::Duration::from_secs(1));
-
-    let result = std::panic::catch_unwind(|| {
-        test();
-    });
-
-    // clean up
-    let _ = exec_cmd(&["ip", "link", "del", dummy_name]);
-    let _ = exec_cmd(&["ip", "link", "del", br_name]);
-
-    if let Err(e) = result {
-        std::panic::resume_unwind(e);
-    }
+    test();
 }

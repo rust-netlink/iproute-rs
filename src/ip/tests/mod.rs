@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-mod cmd;
+mod netns;
 
-pub(crate) use self::cmd::{assert_alias_output, exec_cmd, ip_rs_exec_cmd};
+pub(crate) use self::netns::{NetnsGuard, with_netns};
