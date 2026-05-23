@@ -17,6 +17,15 @@ impl From<&str> for CliError {
     }
 }
 
+impl From<String> for CliError {
+    fn from(msg: String) -> Self {
+        Self {
+            code: DEFAULT_ERROR_CODE,
+            msg,
+        }
+    }
+}
+
 impl std::fmt::Display for CliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "error {}: {}", self.code, self.msg)
