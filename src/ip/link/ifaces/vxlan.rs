@@ -179,107 +179,107 @@ impl From<&[InfoVxlan]> for CliLinkInfoDataVxlan {
 
 impl std::fmt::Display for CliLinkInfoDataVxlan {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "id {} ", self.id)?;
+        write!(f, "id {}", self.id)?;
         if let Some(v) = self.group {
-            write!(f, "group {v} ")?;
+            write!(f, " group {v}")?;
         }
         if let Some(v) = self.group6 {
-            write!(f, "group6 {v} ")?;
+            write!(f, " group6 {v}")?;
         }
         if let Some(v) = self.local {
-            write!(f, "local {v} ")?;
+            write!(f, " local {v}")?;
         }
         if let Some(v) = self.local6 {
-            write!(f, "local6 {v} ")?;
+            write!(f, " local6 {v}")?;
         }
         if let Some(v) = &self.link_name {
-            write!(f, "dev {v} ")?;
+            write!(f, " dev {v}")?;
         } else if let Some(v) = self.link {
-            write!(f, "dev if{v} ")?;
+            write!(f, " dev if{v}")?;
         }
         if let Some((low, high)) = self.port_range {
-            write!(f, "srcport {low} {high} ")?;
+            write!(f, " srcport {low} {high}")?;
         }
         if self.port > 0 {
-            write!(f, "dstport {} ", self.port)?;
+            write!(f, " dstport {}", self.port)?;
         }
         if self.ttl == 0 {
             if self.ttl_inherit {
-                write!(f, "ttl inherit ")?;
+                write!(f, " ttl inherit")?;
             } else {
-                write!(f, "ttl auto ")?;
+                write!(f, " ttl auto")?;
             }
         } else {
-            write!(f, "ttl {} ", self.ttl)?;
+            write!(f, " ttl {}", self.ttl)?;
         }
         if self.tos > 0 {
-            write!(f, "tos {} ", self.tos)?;
+            write!(f, " tos {}", self.tos)?;
         }
         if self.label > 0 {
-            write!(f, "label 0x{:x} ", self.label)?;
+            write!(f, " label 0x{:x}", self.label)?;
         }
         if !self.learning {
-            write!(f, "nolearning ")?;
+            write!(f, " nolearning")?;
         }
         if let Some(v) = self.df.as_ref()
             && v != "unset"
         {
-            write!(f, "df {v} ")?;
+            write!(f, " df {v}")?;
         }
-        write!(f, "ageing {} ", self.ageing)?;
+        write!(f, " ageing {}", self.ageing)?;
         if self.limit > 0 {
-            write!(f, "limit {} ", self.limit)?;
+            write!(f, " limit {}", self.limit)?;
         }
         if self.proxy {
-            write!(f, "proxy ")?;
+            write!(f, " proxy")?;
         }
         if self.rsc {
-            write!(f, "rsc ")?;
+            write!(f, " rsc")?;
         }
         if self.l2miss {
-            write!(f, "l2miss ")?;
+            write!(f, " l2miss")?;
         }
         if self.l3miss {
-            write!(f, "l3miss ")?;
+            write!(f, " l3miss")?;
         }
         if self.collect_metadata {
-            write!(f, "collect_md ")?;
+            write!(f, " collect_md")?;
         }
         if !self.udp_csum {
-            write!(f, "noudpcsum ")?;
+            write!(f, " noudpcsum")?;
         }
         if self.udp_zero_csum6_tx {
-            write!(f, "udp6zerocsumtx ")?;
+            write!(f, " udp6zerocsumtx")?;
         }
         if self.udp_zero_csum6_rx {
-            write!(f, "udp6zerocsumrx ")?;
+            write!(f, " udp6zerocsumrx")?;
         }
         if self.remcsum_tx {
-            write!(f, "remcsumtx ")?;
+            write!(f, " remcsumtx")?;
         }
         if self.remcsum_rx {
-            write!(f, "remcsumrx ")?;
+            write!(f, " remcsumrx")?;
         }
         if self.gbp {
-            write!(f, "gbp ")?;
+            write!(f, " gbp")?;
         }
         if self.gpe {
-            write!(f, "gpe ")?;
+            write!(f, " gpe")?;
         }
         if self.remcsum_no_partial {
-            write!(f, "remcsum_nopartial ")?;
+            write!(f, " remcsum_nopartial")?;
         }
         if self.vnifilter {
-            write!(f, "vnifilter ")?;
+            write!(f, " vnifilter")?;
         }
         if !self.localbypass {
-            write!(f, "nolocalbypass ")?;
+            write!(f, " nolocalbypass")?;
         }
         if self.label_policy > 0 {
-            write!(f, "label_policy {} ", self.label_policy)?;
+            write!(f, " label_policy {}", self.label_policy)?;
         }
         if self.reserved_bits > 0 {
-            write!(f, "reserved_bits 0x{:x}", self.reserved_bits)?;
+            write!(f, " reserved_bits 0x{:x}", self.reserved_bits)?;
         }
         Ok(())
     }
