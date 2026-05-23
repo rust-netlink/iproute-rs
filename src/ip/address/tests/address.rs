@@ -2,118 +2,100 @@
 
 use crate::tests::{NetnsGuard, with_netns};
 
-fn with_dummy_iface<T>(ns: &NetnsGuard, dummy_name: &str, test: T) -> T::Output
+const DUMMY_NAME: &str = "test-dummy";
+
+fn with_dummy_iface<T>(test: T)
 where
-    T: FnOnce(),
+    T: FnOnce(&NetnsGuard),
 {
-    ns.exec_cmd(&["ip", "link", "add", dummy_name, "type", "dummy"]);
-    ns.exec_cmd(&["ip", "link", "set", dummy_name, "up"]);
+    with_netns(|ns| {
+        ns.exec_cmd(&["ip", "link", "add", DUMMY_NAME, "type", "dummy"]);
+        ns.exec_cmd(&["ip", "link", "set", DUMMY_NAME, "up"]);
 
-    ns.exec_cmd(&["ip", "addr", "add", "192.168.1.1/24", "dev", dummy_name]);
-    ns.exec_cmd(&["ip", "addr", "add", "192.168.1.2/24", "dev", dummy_name]);
-    ns.exec_cmd(&["ip", "addr", "add", "ff::ab:cd/64", "dev", dummy_name]);
-    ns.exec_cmd(&[
-        "ip",
-        "addr",
-        "add",
-        "2001:db8:beef::1/64",
-        "dev",
-        dummy_name,
-        "valid_lft",
-        "21384",
-        "preferred_lft",
-        "21384",
-        "scope",
-        "global",
-        "mngtmpaddr",
-        "proto",
-        "kernel_ra",
-    ]);
-    ns.exec_cmd(&[
-        "ip",
-        "addr",
-        "add",
-        "2001:db8:beef::2/64",
-        "dev",
-        dummy_name,
-        "valid_lft",
-        "21381",
-        "preferred_lft",
-        "21381",
-        "scope",
-        "global",
-        "home",
-        "proto",
-        "kernel_ra",
-    ]);
+        ns.exec_cmd(&[
+            "ip",
+            "addr",
+            "add",
+            "192.168.1.1/24",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        ns.exec_cmd(&[
+            "ip",
+            "addr",
+            "add",
+            "192.168.1.2/24",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        ns.exec_cmd(&["ip", "addr", "add", "ff::ab:cd/64", "dev", DUMMY_NAME]);
+        ns.exec_cmd(&[
+            "ip",
+            "addr",
+            "add",
+            "2001:db8:beef::1/64",
+            "dev",
+            DUMMY_NAME,
+            "valid_lft",
+            "21384",
+            "preferred_lft",
+            "21384",
+            "scope",
+            "global",
+            "mngtmpaddr",
+            "proto",
+            "kernel_ra",
+        ]);
+        ns.exec_cmd(&[
+            "ip",
+            "addr",
+            "add",
+            "2001:db8:beef::2/64",
+            "dev",
+            DUMMY_NAME,
+            "valid_lft",
+            "21381",
+            "preferred_lft",
+            "21381",
+            "scope",
+            "global",
+            "home",
+            "proto",
+            "kernel_ra",
+        ]);
 
-    // Wait 2 seconds for interface to be up and addresses to be assigned
-    std::thread::sleep(std::time::Duration::from_secs(2));
+        // Wait 2 seconds for interface to be up and addresses to be assigned
+        std::thread::sleep(std::time::Duration::from_secs(2));
 
-    test();
+        test(ns);
+    });
 }
 
 #[test]
 fn test_address_show() {
-    with_netns(|ns| {
-        let dummy_name = "atest-dummy1";
-
-        with_dummy_iface(ns, dummy_name, || {
-            let expected_output =
-                ns.exec_cmd(&["ip", "address", "show", dummy_name]);
-            let our_output =
-                ns.ip_rs_exec_cmd(&["address", "show", dummy_name]);
-
-            pretty_assertions::assert_eq!(expected_output, our_output);
-        });
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
 
 #[test]
 fn test_address_detailed_show() {
-    with_netns(|ns| {
-        let dummy_name = "atest-dummy2";
-
-        with_dummy_iface(ns, dummy_name, || {
-            let expected_output =
-                ns.exec_cmd(&["ip", "-d", "address", "show", dummy_name]);
-            let our_output =
-                ns.ip_rs_exec_cmd(&["-d", "address", "show", dummy_name]);
-
-            pretty_assertions::assert_eq!(expected_output, our_output);
-        });
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-d", "address", "show", DUMMY_NAME]);
     });
 }
 
 #[test]
 fn test_address_show_json() {
-    with_netns(|ns| {
-        let dummy_name = "atest-dummy3";
-
-        with_dummy_iface(ns, dummy_name, || {
-            let expected_output =
-                ns.exec_cmd(&["ip", "-j", "address", "show", dummy_name]);
-            let our_output =
-                ns.ip_rs_exec_cmd(&["-j", "address", "show", dummy_name]);
-
-            pretty_assertions::assert_eq!(expected_output, our_output);
-        });
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-j", "address", "show", DUMMY_NAME]);
     });
 }
 
 #[test]
 fn test_address_detailed_show_json() {
-    with_netns(|ns| {
-        let dummy_name = "atest-dummy4";
-
-        with_dummy_iface(ns, dummy_name, || {
-            let expected_output =
-                ns.exec_cmd(&["ip", "-d", "-j", "address", "show", dummy_name]);
-            let our_output =
-                ns.ip_rs_exec_cmd(&["-d", "-j", "address", "show", dummy_name]);
-
-            pretty_assertions::assert_eq!(expected_output, our_output);
-        });
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-d", "-j", "address", "show", DUMMY_NAME]);
     });
 }
 

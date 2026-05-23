@@ -2,81 +2,54 @@
 
 use crate::tests::{NetnsGuard, with_netns};
 
+const VETH_NAME: &str = "test-veth";
+const VETH_PEER_NAME: &str = "test-veth-peer";
+
 #[test]
 fn test_link_show_veth() {
-    with_netns(|ns| {
-        let ifname = "tveth0";
-        let peer = "tveth0_peer";
-
-        with_veth_iface(ns, ifname, peer, || {
-            let expected_output = ns.exec_cmd(&["ip", "link", "show", ifname]);
-
-            let our_output = ns.ip_rs_exec_cmd(&["link", "show", ifname]);
-
-            pretty_assertions::assert_eq!(expected_output, our_output);
-        });
+    with_veth_iface(|ns| {
+        ns.assert_eq_output(&["link", "show", VETH_NAME]);
     });
 }
 
 #[test]
 fn test_link_detailed_show_veth() {
-    with_netns(|ns| {
-        let ifname = "tveth1";
-        let peer = "tveth1_peer";
-
-        with_veth_iface(ns, ifname, peer, || {
-            let expected_output =
-                ns.exec_cmd(&["ip", "-d", "link", "show", ifname]);
-
-            let our_output = ns.ip_rs_exec_cmd(&["-d", "link", "show", ifname]);
-
-            pretty_assertions::assert_eq!(expected_output, our_output);
-        });
+    with_veth_iface(|ns| {
+        ns.assert_eq_output(&["-d", "link", "show", VETH_NAME]);
     });
 }
 
 #[test]
 fn test_link_show_veth_json() {
-    with_netns(|ns| {
-        let ifname = "tveth2";
-        let peer = "tveth2_peer";
-
-        with_veth_iface(ns, ifname, peer, || {
-            let expected_output =
-                ns.exec_cmd(&["ip", "-j", "link", "show", ifname]);
-
-            let our_output = ns.ip_rs_exec_cmd(&["-j", "link", "show", ifname]);
-
-            pretty_assertions::assert_eq!(expected_output, our_output);
-        });
+    with_veth_iface(|ns| {
+        ns.assert_eq_output(&["-j", "link", "show", VETH_NAME]);
     });
 }
 
 #[test]
 fn test_link_detailed_show_veth_json() {
-    with_netns(|ns| {
-        let ifname = "tveth3";
-        let peer = "tveth3_peer";
-
-        with_veth_iface(ns, ifname, peer, || {
-            let expected_output =
-                ns.exec_cmd(&["ip", "-d", "-j", "link", "show", ifname]);
-
-            let our_output =
-                ns.ip_rs_exec_cmd(&["-d", "-j", "link", "show", ifname]);
-
-            pretty_assertions::assert_eq!(expected_output, our_output);
-        });
+    with_veth_iface(|ns| {
+        ns.assert_eq_output(&["-d", "-j", "link", "show", VETH_NAME]);
     });
 }
 
-fn with_veth_iface<T>(ns: &NetnsGuard, name: &str, peer: &str, test: T)
+fn with_veth_iface<T>(test: T)
 where
-    T: FnOnce(),
+    T: FnOnce(&NetnsGuard),
 {
-    ns.ip_rs_exec_cmd(&["link", "add", name, "type", "veth", "peer", peer]);
-    ns.exec_cmd(&["ip", "link", "set", name, "up"]);
-    ns.exec_cmd(&["ip", "link", "set", peer, "up"]);
+    with_netns(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "add",
+            VETH_NAME,
+            "type",
+            "veth",
+            "peer",
+            VETH_PEER_NAME,
+        ]);
+        ns.exec_cmd(&["ip", "link", "set", VETH_NAME, "up"]);
+        ns.exec_cmd(&["ip", "link", "set", VETH_PEER_NAME, "up"]);
 
-    test();
+        test(ns);
+    });
 }

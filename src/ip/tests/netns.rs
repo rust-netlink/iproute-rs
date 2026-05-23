@@ -5,6 +5,12 @@ use std::{
     process::Command,
 };
 
+pub struct Outputs {
+    #[allow(dead_code)]
+    pub expected: String,
+    pub actual: String,
+}
+
 pub struct NetnsGuard {
     pub name: String,
 }
@@ -18,6 +24,7 @@ impl NetnsGuard {
             .unwrap()
             .as_nanos()
             .hash(&mut hasher);
+
         let name = format!("test_ns_{}", hasher.finish(),);
         assert!(
             Command::new("ip")
@@ -26,7 +33,7 @@ impl NetnsGuard {
                 .expect("failed to create netns")
                 .success()
         );
-        // std::thread::sleep(std::time::Duration::from_secs(5));
+
         Self { name }
     }
 
@@ -86,6 +93,29 @@ impl NetnsGuard {
         let expected_output = self.ip_rs_exec_cmd(expected_args);
         let our_output = self.ip_rs_exec_cmd(alias_args);
         pretty_assertions::assert_eq!(expected_output, our_output);
+    }
+
+    pub fn assert_eq_output_map(
+        &self,
+        args: &[&str],
+        map: impl Fn(String) -> String,
+    ) -> Outputs {
+        let mut ip_args = vec!["ip"];
+        ip_args.extend_from_slice(args);
+
+        let expected_output = map(self.exec_cmd(&ip_args));
+        let our_output = map(self.ip_rs_exec_cmd(args));
+
+        pretty_assertions::assert_eq!(&expected_output, &our_output);
+
+        Outputs {
+            expected: expected_output,
+            actual: our_output,
+        }
+    }
+
+    pub fn assert_eq_output(&self, args: &[&str]) -> Outputs {
+        self.assert_eq_output_map(args, std::convert::identity)
     }
 }
 
