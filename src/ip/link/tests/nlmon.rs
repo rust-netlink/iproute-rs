@@ -2,76 +2,44 @@
 
 use crate::tests::{NetnsGuard, with_netns};
 
+const NLMON_NAME: &str = "test-nlmon";
+
 #[test]
 fn test_link_show_nlmon() {
-    with_netns(|ns| {
-        let ifname = "tnlm0";
-
-        with_nlmon_iface(ns, ifname, || {
-            let expected_output = ns.exec_cmd(&["ip", "link", "show", ifname]);
-
-            let our_output = ns.ip_rs_exec_cmd(&["link", "show", ifname]);
-
-            pretty_assertions::assert_eq!(expected_output, our_output);
-        })
+    with_nlmon_iface(|ns| {
+        ns.assert_eq_output(&["link", "show", NLMON_NAME]);
     });
 }
 
 #[test]
 fn test_link_detailed_show_nlmon() {
-    with_netns(|ns| {
-        let ifname = "tnlm1";
-
-        with_nlmon_iface(ns, ifname, || {
-            let expected_output =
-                ns.exec_cmd(&["ip", "-d", "link", "show", ifname]);
-
-            let our_output = ns.ip_rs_exec_cmd(&["-d", "link", "show", ifname]);
-
-            pretty_assertions::assert_eq!(expected_output, our_output);
-        });
+    with_nlmon_iface(|ns| {
+        ns.assert_eq_output(&["-d", "link", "show", NLMON_NAME]);
     });
 }
 
 #[test]
 fn test_link_show_nlmon_json() {
-    with_netns(|ns| {
-        let ifname = "tnlm2";
-
-        with_nlmon_iface(ns, ifname, || {
-            let expected_output =
-                ns.exec_cmd(&["ip", "-j", "link", "show", ifname]);
-
-            let our_output = ns.ip_rs_exec_cmd(&["-j", "link", "show", ifname]);
-
-            pretty_assertions::assert_eq!(expected_output, our_output);
-        });
+    with_nlmon_iface(|ns| {
+        ns.assert_eq_output(&["-j", "link", "show", NLMON_NAME]);
     });
 }
 
 #[test]
 fn test_link_detailed_show_nlmon_json() {
-    with_netns(|ns| {
-        let ifname = "tnlm3";
-
-        with_nlmon_iface(ns, ifname, || {
-            let expected_output =
-                ns.exec_cmd(&["ip", "-d", "-j", "link", "show", ifname]);
-
-            let our_output =
-                ns.ip_rs_exec_cmd(&["-d", "-j", "link", "show", ifname]);
-
-            pretty_assertions::assert_eq!(expected_output, our_output);
-        });
+    with_nlmon_iface(|ns| {
+        ns.assert_eq_output(&["-d", "-j", "link", "show", NLMON_NAME]);
     });
 }
 
-fn with_nlmon_iface<T>(ns: &NetnsGuard, name: &str, test: T)
+fn with_nlmon_iface<T>(test: T)
 where
-    T: FnOnce(),
+    T: FnOnce(&NetnsGuard),
 {
-    ns.ip_rs_exec_cmd(&["link", "add", name, "type", "nlmon"]);
-    ns.exec_cmd(&["ip", "link", "set", name, "up"]);
+    with_netns(|ns| {
+        ns.ip_rs_exec_cmd(&["link", "add", NLMON_NAME, "type", "nlmon"]);
+        ns.exec_cmd(&["ip", "link", "set", NLMON_NAME, "up"]);
 
-    test();
+        test(ns);
+    });
 }
