@@ -378,5 +378,10 @@ fn resolve_controller_and_link_names(links: &mut [CliLinkInfo]) {
                 link.link_index = None;
             }
         }
+
+        // Resolve VxLAN link ifindex to interface name
+        if let Some(ref mut details) = link.details {
+            details.resolve_vxlan_link(&index_2_name);
+        }
     }
 }

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
+
 use rtnetlink::packet_route::link::{AfSpecInet6, AfSpecUnspec, LinkAttribute};
 use serde::Serialize;
 
@@ -136,6 +138,15 @@ impl CliLinkInfoDetail {
 
     pub fn remove_inet6_addr_gen_mode(&mut self) {
         self.inet6_addr_gen_mode = String::new();
+    }
+
+    pub(crate) fn resolve_vxlan_link(
+        &mut self,
+        index_2_name: &HashMap<u32, String>,
+    ) {
+        if let Some(ref mut linkinfo) = self.linkinfo {
+            linkinfo.resolve_vxlan_link(index_2_name);
+        }
     }
 }
 

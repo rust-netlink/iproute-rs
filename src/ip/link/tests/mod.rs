@@ -4,3 +4,4 @@ mod bond;
 mod bridge;
 mod color;
 mod loopback;
+mod vxlan;

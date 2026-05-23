@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::convert::TryFrom;
+use std::{collections::HashMap, convert::TryFrom};
 
 use rtnetlink::packet_route::link::{InfoData, InfoPortData, LinkInfo};
 use serde::Serialize;
@@ -8,6 +8,7 @@ use serde::Serialize;
 use super::ifaces::{
     bridge::{CliLinkInfoDataBridge, CliLinkInfoDataBridgePort},
     vlan::CliLinkInfoDataVlan,
+    vxlan::CliLinkInfoDataVxlan,
 };
 use crate::link::ifaces::bond::{CliLinkInfoDataBond, CliLinkInfoDataBondPort};
 
@@ -62,6 +63,17 @@ impl TryFrom<&[LinkInfo]> for CliLinkInfo {
     }
 }
 
+impl CliLinkInfo {
+    pub(crate) fn resolve_vxlan_link(
+        &mut self,
+        index_2_name: &HashMap<u32, String>,
+    ) {
+        if let Some(ref mut data) = self.info_data {
+            data.resolve_vxlan_link(index_2_name);
+        }
+    }
+}
+
 impl std::fmt::Display for CliLinkInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "\n    ")?;
@@ -86,6 +98,7 @@ pub(crate) enum CliLinkInfoData {
     Vlan(Box<CliLinkInfoDataVlan>),
     Bridge(Box<CliLinkInfoDataBridge>),
     Bond(Box<CliLinkInfoDataBond>),
+    Vxlan(Box<CliLinkInfoDataVxlan>),
 }
 
 impl TryFrom<&InfoData> for CliLinkInfoData {
@@ -98,7 +111,21 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
             }
             InfoData::Vlan(v) => Ok(Self::Vlan(Box::new(v.as_slice().into()))),
             InfoData::Bond(v) => Ok(Self::Bond(Box::new(v.as_slice().into()))),
+            InfoData::Vxlan(v) => {
+                Ok(Self::Vxlan(Box::new(v.as_slice().into())))
+            }
             _ => Err(()),
+        }
+    }
+}
+
+impl CliLinkInfoData {
+    pub(crate) fn resolve_vxlan_link(
+        &mut self,
+        index_2_name: &HashMap<u32, String>,
+    ) {
+        if let Self::Vxlan(vxlan) = self {
+            vxlan.resolve_link(index_2_name);
         }
     }
 }
@@ -109,6 +136,7 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::Vlan(v) => write!(f, "{v}"),
             CliLinkInfoData::Bridge(v) => write!(f, "{v}"),
             CliLinkInfoData::Bond(v) => write!(f, "{v}"),
+            CliLinkInfoData::Vxlan(v) => write!(f, "{v}"),
         }
     }
 }
