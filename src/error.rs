@@ -8,6 +8,15 @@ pub struct CliError {
     pub msg: String,
 }
 
+impl From<String> for CliError {
+    fn from(msg: String) -> Self {
+        Self {
+            code: DEFAULT_ERROR_CODE,
+            msg,
+        }
+    }
+}
+
 impl From<&str> for CliError {
     fn from(msg: &str) -> Self {
         Self {

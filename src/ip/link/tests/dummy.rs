@@ -59,8 +59,7 @@ fn with_dummy_iface<T>(name: &str, test: T)
 where
     T: FnOnce() + std::panic::UnwindSafe,
 {
-    exec_cmd(&[
-        "ip",
+    ip_rs_exec_cmd(&[
         "link",
         "add",
         name,
