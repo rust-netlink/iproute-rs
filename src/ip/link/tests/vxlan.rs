@@ -66,6 +66,9 @@ where
     });
 
     // clean up
-    exec_cmd(&["ip", "link", "del", vxlan_name]);
-    assert!(result.is_ok())
+    let _ = exec_cmd(&["ip", "link", "del", vxlan_name]);
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
 }
