@@ -3,5 +3,6 @@
 mod bond;
 mod bridge;
 mod color;
+mod dummy;
 mod loopback;
 mod vxlan;
