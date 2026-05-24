@@ -44,6 +44,8 @@ where
         "link",
         "add",
         vxlan_name,
+        "address",
+        "16:00:14:8a:28:cb",
         "type",
         "vxlan",
         "id",
@@ -51,6 +53,10 @@ where
         "dstport",
         &dstport.to_string(),
         "mcroute",
+        "df",
+        "inherit",
+        "ttl",
+        "inherit",
     ]);
 
     exec_cmd(&["ip", "link", "set", vxlan_name, "up"]);

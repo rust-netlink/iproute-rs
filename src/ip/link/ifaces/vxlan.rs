@@ -46,7 +46,7 @@ pub(crate) struct CliLinkInfoDataVxlan {
     gpe: bool,
     remcsum_no_partial: bool,
     ttl_inherit: bool,
-    df: u8,
+    df: Option<String>,
     vnifilter: bool,
     localbypass: bool,
     label_policy: u32,
@@ -93,7 +93,7 @@ impl From<&[InfoVxlan]> for CliLinkInfoDataVxlan {
         let mut gpe = false;
         let mut remcsum_no_partial = false;
         let mut ttl_inherit = false;
-        let mut df = 0;
+        let mut df = None;
         let mut vnifilter = false;
         let mut localbypass = true;
         let mut label_policy = 0;
@@ -129,7 +129,7 @@ impl From<&[InfoVxlan]> for CliLinkInfoDataVxlan {
                 InfoVxlan::Gpe(v) => gpe = *v,
                 InfoVxlan::RemCsumNoPartial(v) => remcsum_no_partial = *v,
                 InfoVxlan::TtlInherit(v) => ttl_inherit = *v,
-                InfoVxlan::Df(v) => df = *v,
+                InfoVxlan::Df(v) => df = Some(v.to_string()),
                 InfoVxlan::Vnifilter(v) => vnifilter = *v,
                 InfoVxlan::Localbypass(v) => localbypass = *v,
                 InfoVxlan::LabelPolicy(v) => label_policy = *v,
@@ -204,7 +204,11 @@ impl std::fmt::Display for CliLinkInfoDataVxlan {
             write!(f, "dstport {} ", self.port)?;
         }
         if self.ttl == 0 {
-            write!(f, "ttl auto ")?;
+            if self.ttl_inherit {
+                write!(f, "ttl inherit ")?;
+            } else {
+                write!(f, "ttl auto ")?;
+            }
         } else {
             write!(f, "ttl {} ", self.ttl)?;
         }
@@ -216,6 +220,11 @@ impl std::fmt::Display for CliLinkInfoDataVxlan {
         }
         if !self.learning {
             write!(f, "nolearning ")?;
+        }
+        if let Some(v) = self.df.as_ref()
+            && v != "unset"
+        {
+            write!(f, "df {v} ")?;
         }
         write!(f, "ageing {} ", self.ageing)?;
         if self.limit > 0 {
@@ -259,14 +268,6 @@ impl std::fmt::Display for CliLinkInfoDataVxlan {
         }
         if self.remcsum_no_partial {
             write!(f, "remcsum_nopartial ")?;
-        }
-        if self.ttl_inherit {
-            write!(f, "ttl_inherit ")?;
-        }
-        if self.df == 1 {
-            write!(f, "df set ")?;
-        } else if self.df == 2 {
-            write!(f, "df inherit ")?;
         }
         if self.vnifilter {
             write!(f, "vnifilter ")?;
