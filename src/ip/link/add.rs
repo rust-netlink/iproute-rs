@@ -48,6 +48,7 @@ impl LinkAddCommand {
             InfoKind::Nlmon => {
                 base_conf.apply(LinkNlmon::new(&base_conf.name))?
             }
+            InfoKind::Veth => base_conf.apply(base_conf.apply_veth()?)?,
             InfoKind::Vlan => {
                 base_conf.apply(base_conf.apply_vlan(&handle).await?)?
             }

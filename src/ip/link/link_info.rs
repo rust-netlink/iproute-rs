@@ -7,6 +7,7 @@ use serde::Serialize;
 
 use super::ifaces::{
     bridge::{CliLinkInfoDataBridge, CliLinkInfoDataBridgePort},
+    veth::CliLinkInfoDataVeth,
     vlan::CliLinkInfoDataVlan,
     vxlan::CliLinkInfoDataVxlan,
 };
@@ -96,6 +97,7 @@ impl std::fmt::Display for CliLinkInfo {
 #[serde(untagged)]
 pub(crate) enum CliLinkInfoData {
     Vlan(Box<CliLinkInfoDataVlan>),
+    Veth(Box<CliLinkInfoDataVeth>),
     Bridge(Box<CliLinkInfoDataBridge>),
     Bond(Box<CliLinkInfoDataBond>),
     Vxlan(Box<CliLinkInfoDataVxlan>),
@@ -110,6 +112,7 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
                 Ok(Self::Bridge(Box::new(v.as_slice().into())))
             }
             InfoData::Vlan(v) => Ok(Self::Vlan(Box::new(v.as_slice().into()))),
+            InfoData::Veth(v) => Ok(Self::Veth(Box::new(v.into()))),
             InfoData::Bond(v) => Ok(Self::Bond(Box::new(v.as_slice().into()))),
             InfoData::Vxlan(v) => {
                 Ok(Self::Vxlan(Box::new(v.as_slice().into())))
@@ -134,6 +137,7 @@ impl std::fmt::Display for CliLinkInfoData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CliLinkInfoData::Vlan(v) => write!(f, "{v}"),
+            CliLinkInfoData::Veth(v) => write!(f, "{v}"),
             CliLinkInfoData::Bridge(v) => write!(f, "{v}"),
             CliLinkInfoData::Bond(v) => write!(f, "{v}"),
             CliLinkInfoData::Vxlan(v) => write!(f, "{v}"),
