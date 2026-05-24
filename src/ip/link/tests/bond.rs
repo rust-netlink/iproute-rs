@@ -82,7 +82,10 @@ where
     });
 
     // clean up
-    exec_cmd(&["ip", "link", "del", dummy_name]);
-    exec_cmd(&["ip", "link", "del", bond_name]);
-    assert!(result.is_ok())
+    let _ = exec_cmd(&["ip", "link", "del", dummy_name]);
+    let _ = exec_cmd(&["ip", "link", "del", bond_name]);
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
 }
