@@ -12,6 +12,7 @@ mod show;
 mod tests;
 
 pub(crate) use self::{
+    add::LinkBaseConf,
     cli::LinkCommand,
     show::{CliLinkInfo, handle_show},
 };

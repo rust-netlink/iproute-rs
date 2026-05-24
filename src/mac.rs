@@ -34,7 +34,25 @@ pub fn parse_mac_str(s: &str) -> Result<Vec<u8>, CliError> {
 
 #[cfg(test)]
 mod tests {
-    use super::mac_to_string;
+    use super::*;
+
+    #[test]
+    fn test_parse_mac_str_ok() {
+        assert_eq!(
+            parse_mac_str("52:54:00:b0:52:d1").unwrap(),
+            vec![0x52, 0x54, 0x00, 0xb0, 0x52, 0xd1]
+        );
+    }
+
+    #[test]
+    fn test_parse_mac_str_invalid() {
+        assert!(parse_mac_str("zz:00:00:00:00:00").is_err());
+    }
+
+    #[test]
+    fn test_parse_mac_str_empty() {
+        assert!(parse_mac_str("").is_err());
+    }
 
     #[test]
     fn test_mac_to_string_ethernet() {

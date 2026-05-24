@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use futures_util::TryStreamExt;
 use iproute_rs::{CliError, parse_mac_str};
 use rtnetlink::{
     LinkDummy, LinkMessageBuilder,
@@ -37,9 +38,15 @@ impl LinkAddCommand {
 
         let base_conf = LinkBaseConf::parse(opts)?;
 
+        let (connection, handle, _) = rtnetlink::new_connection()?;
+        tokio::spawn(connection);
+
         let nl_msg = match base_conf.iface_type {
             InfoKind::Dummy => {
                 base_conf.apply(LinkDummy::new(&base_conf.name))?
+            }
+            InfoKind::Vlan => {
+                base_conf.apply(base_conf.apply_vlan(&handle).await?)?
             }
             t => {
                 return Err(CliError::from(format!(
@@ -48,9 +55,6 @@ impl LinkAddCommand {
             }
         };
 
-        let (connection, handle, _) = rtnetlink::new_connection()?;
-
-        tokio::spawn(connection);
         handle.link().add(nl_msg).execute().await?;
 
         Ok(vec![])
@@ -58,12 +62,12 @@ impl LinkAddCommand {
 }
 
 #[derive(Debug)]
-struct LinkBaseConf {
-    // link: Option<String>,
-    name: String,
-    address: Option<String>,
-    iface_type: InfoKind,
-    _iface_specific: Vec<String>,
+pub(crate) struct LinkBaseConf {
+    pub(crate) link: Option<String>,
+    pub(crate) name: String,
+    pub(crate) address: Option<String>,
+    pub(crate) iface_type: InfoKind,
+    pub(crate) iface_specific: Vec<String>,
 }
 
 impl LinkBaseConf {
@@ -75,6 +79,19 @@ impl LinkBaseConf {
             builder = builder.address(parse_mac_str(v)?)
         }
         Ok(builder.build())
+    }
+
+    pub(crate) async fn get_ifindex_by_name(
+        &self,
+        handle: &rtnetlink::Handle,
+        name: &str,
+    ) -> Result<u32, CliError> {
+        let mut links =
+            handle.link().get().match_name(name.to_string()).execute();
+        let link = links.try_next().await?.ok_or_else(|| {
+            CliError::from(format!("Device \"{name}\" does not exist"))
+        })?;
+        Ok(link.header.index)
     }
 
     fn parse(args: Vec<String>) -> Result<Self, CliError> {
@@ -112,8 +129,9 @@ impl LinkBaseConf {
 
             let address =
                 base_args_dict.remove("address").map(|s| s.to_string());
+            let link = base_args_dict.remove("link").map(|s| s.to_string());
 
-            let _iface_specific = if args.len() > type_index + 1 {
+            let iface_specific = if args.len() > type_index + 1 {
                 args[type_index + 2..].to_vec()
             } else {
                 Vec::new()
@@ -121,13 +139,101 @@ impl LinkBaseConf {
             Ok(Self {
                 name,
                 address,
+                link,
                 iface_type,
-                _iface_specific,
+                iface_specific,
             })
         } else {
             Err(CliError::from(
                 "Not enough information: \"type\" argument is required",
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(input: &[&str]) -> Vec<String> {
+        input.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn parse_basic_dummy() {
+        let conf =
+            LinkBaseConf::parse(args(&["eth0", "type", "dummy"])).unwrap();
+        assert_eq!(conf.name, "eth0");
+        assert_eq!(conf.iface_type, InfoKind::Dummy);
+        assert!(conf.address.is_none());
+        assert!(conf.link.is_none());
+        assert!(conf.iface_specific.is_empty());
+    }
+
+    #[test]
+    fn parse_with_address() {
+        let conf = LinkBaseConf::parse(args(&[
+            "name",
+            "eth0",
+            "address",
+            "00:11:22:33:44:55",
+            "type",
+            "dummy",
+        ]))
+        .unwrap();
+        assert_eq!(conf.name, "eth0");
+        assert_eq!(conf.address.as_deref(), Some("00:11:22:33:44:55"));
+        assert_eq!(conf.iface_type, InfoKind::Dummy);
+    }
+
+    #[test]
+    fn parse_with_link() {
+        let conf = LinkBaseConf::parse(args(&[
+            "link", "eth0", "name", "eth0.1", "type", "vlan", "id", "100",
+        ]))
+        .unwrap();
+        assert_eq!(conf.name, "eth0.1");
+        assert_eq!(conf.link.as_deref(), Some("eth0"));
+        assert_eq!(conf.iface_type, InfoKind::Vlan);
+        assert_eq!(conf.iface_specific, vec!["id", "100"]);
+    }
+
+    #[test]
+    fn parse_link_no_name_fails() {
+        let err = LinkBaseConf::parse(args(&["link", "eth0", "type", "dummy"]))
+            .unwrap_err();
+        assert!(err.msg.contains("name"));
+    }
+
+    #[test]
+    fn parse_missing_type() {
+        let err = LinkBaseConf::parse(args(&["eth0"])).unwrap_err();
+        assert!(err.msg.contains("type"));
+    }
+
+    #[test]
+    fn parse_type_at_end() {
+        let err = LinkBaseConf::parse(args(&["eth0", "type"])).unwrap_err();
+        assert!(err.msg.contains("type"));
+    }
+
+    #[test]
+    fn parse_empty_args() {
+        let err = LinkBaseConf::parse(args(&[])).unwrap_err();
+        assert!(err.msg.contains("type"));
+    }
+
+    #[test]
+    fn parse_no_name() {
+        let err = LinkBaseConf::parse(args(&["type", "dummy"])).unwrap_err();
+        assert!(err.msg.contains("name"));
+    }
+
+    #[test]
+    fn parse_odd_args_without_link() {
+        let conf =
+            LinkBaseConf::parse(args(&["foo", "bar", "baz", "type", "dummy"]))
+                .unwrap();
+        assert_eq!(conf.name, "foo");
     }
 }
