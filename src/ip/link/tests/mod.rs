@@ -6,5 +6,6 @@ mod color;
 mod dummy;
 mod loopback;
 mod nlmon;
+mod veth;
 mod vlan;
 mod vxlan;
