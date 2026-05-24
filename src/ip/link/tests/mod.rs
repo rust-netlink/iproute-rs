@@ -5,5 +5,6 @@ mod bridge;
 mod color;
 mod dummy;
 mod loopback;
+mod nlmon;
 mod vlan;
 mod vxlan;
