@@ -2,7 +2,10 @@
 
 use iproute_rs::CliError;
 
-use super::show::{CliLinkInfo, handle_show};
+use super::{
+    add::LinkAddCommand,
+    show::{CliLinkInfo, handle_show},
+};
 
 pub(crate) struct LinkCommand;
 
@@ -30,13 +33,7 @@ impl LinkCommand {
                             .trailing_var_arg(true),
                     ),
             )
-            .subcommand(
-                clap::Command::new("add").about("add virtual link").arg(
-                    clap::Arg::new("options")
-                        .action(clap::ArgAction::Append)
-                        .trailing_var_arg(true),
-                ),
-            )
+            .subcommand(LinkAddCommand::gen_command())
             .subcommand(
                 clap::Command::new("delete").about("delete virtual link"),
             )
@@ -50,9 +47,9 @@ impl LinkCommand {
     pub(crate) async fn handle(
         matches: &clap::ArgMatches,
     ) -> Result<Vec<CliLinkInfo>, CliError> {
-        if let Some(matches) = matches.subcommand_matches("add") {
-            println!("HAHA {matches:?}");
-            todo!()
+        if let Some(matches) = matches.subcommand_matches(LinkAddCommand::CMD) {
+            LinkAddCommand::handle(matches).await?;
+            Ok(vec![])
         } else if let Some(matches) = matches.subcommand_matches("show") {
             let opts: Vec<&str> = matches
                 .get_many::<String>("options")

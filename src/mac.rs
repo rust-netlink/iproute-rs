@@ -2,6 +2,8 @@
 
 use std::fmt::Write;
 
+use crate::CliError;
+
 pub fn mac_to_string(data: &[u8]) -> String {
     let as_ip = data.len() == 4;
     let sep = if as_ip { '.' } else { ':' };
@@ -18,6 +20,16 @@ pub fn mac_to_string(data: &[u8]) -> String {
         }
     }
     rt
+}
+
+pub fn parse_mac_str(s: &str) -> Result<Vec<u8>, CliError> {
+    let mut bytes = Vec::new();
+    for byte in s.split(':') {
+        let v = u8::from_str_radix(byte, 16)
+            .map_err(|_| CliError::from(format!("invalid MAC address: {s}")))?;
+        bytes.push(v);
+    }
+    Ok(bytes)
 }
 
 #[cfg(test)]
