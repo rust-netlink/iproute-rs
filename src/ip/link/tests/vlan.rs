@@ -247,7 +247,15 @@ where
     let parent_name = format!("p{vlan_name}");
 
     // create parent dummy interface using ip-rs
-    ip_rs_exec_cmd(&["link", "add", &parent_name, "type", "dummy"]);
+    ip_rs_exec_cmd(&[
+        "link",
+        "add",
+        &parent_name,
+        "address",
+        "0e:d1:49:08:27:84",
+        "type",
+        "dummy",
+    ]);
     exec_cmd(&["ip", "link", "set", &parent_name, "up"]);
 
     let mut args = vec![
