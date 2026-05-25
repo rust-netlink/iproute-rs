@@ -164,31 +164,31 @@ impl std::fmt::Display for CliLinkInfoDataBond {
         let arp_validate =
             self.arp_validate.as_ref().map_or("none", |s| s.as_str());
 
-        write!(f, "mode {} ", self.mode)?;
-        write!(f, "miimon {} ", self.miimon)?;
-        write!(f, "updelay {} ", self.updelay)?;
-        write!(f, "downdelay {} ", self.downdelay)?;
-        write!(f, "peer_notify_delay {} ", self.peer_notify_delay)?;
-        write!(f, "use_carrier {} ", self.use_carrier)?;
-        write!(f, "arp_interval {} ", self.arp_interval)?;
-        write!(f, "arp_missed_max {} ", self.arp_missed_max)?;
-        write!(f, "arp_validate {} ", arp_validate)?;
-        write!(f, "arp_all_targets {} ", self.arp_all_targets)?;
-        write!(f, "primary_reselect {} ", self.primary_reselect)?;
-        write!(f, "fail_over_mac {} ", self.fail_over_mac)?;
-        write!(f, "xmit_hash_policy {} ", self.xmit_hash_policy)?;
-        write!(f, "resend_igmp {} ", self.resend_igmp)?;
-        write!(f, "num_grat_arp {} ", self.num_peer_notif)?;
-        write!(f, "all_slaves_active {} ", self.all_slaves_active)?;
-        write!(f, "min_links {} ", self.min_links)?;
-        write!(f, "lp_interval {} ", self.lp_interval)?;
-        write!(f, "packets_per_slave {} ", self.packets_per_slave)?;
-        write!(f, "lacp_active {} ", self.ad_lacp_active)?;
-        write!(f, "lacp_rate {} ", self.ad_lacp_rate)?;
-        write!(f, "coupled_control {} ", on_off(self.coupled_control))?;
-        write!(f, "broadcast_neighbor {} ", on_off(self.broadcast_neighbor))?;
-        write!(f, "ad_select {} ", self.ad_select)?;
-        write!(f, "tlb_dynamic_lb {}", self.tlb_dynamic_lb)?;
+        write!(f, "mode {}", self.mode)?;
+        write!(f, " miimon {}", self.miimon)?;
+        write!(f, " updelay {}", self.updelay)?;
+        write!(f, " downdelay {}", self.downdelay)?;
+        write!(f, " peer_notify_delay {}", self.peer_notify_delay)?;
+        write!(f, " use_carrier {}", self.use_carrier)?;
+        write!(f, " arp_interval {}", self.arp_interval)?;
+        write!(f, " arp_missed_max {}", self.arp_missed_max)?;
+        write!(f, " arp_validate {}", arp_validate)?;
+        write!(f, " arp_all_targets {}", self.arp_all_targets)?;
+        write!(f, " primary_reselect {}", self.primary_reselect)?;
+        write!(f, " fail_over_mac {}", self.fail_over_mac)?;
+        write!(f, " xmit_hash_policy {}", self.xmit_hash_policy)?;
+        write!(f, " resend_igmp {}", self.resend_igmp)?;
+        write!(f, " num_grat_arp {}", self.num_peer_notif)?;
+        write!(f, " all_slaves_active {}", self.all_slaves_active)?;
+        write!(f, " min_links {}", self.min_links)?;
+        write!(f, " lp_interval {}", self.lp_interval)?;
+        write!(f, " packets_per_slave {}", self.packets_per_slave)?;
+        write!(f, " lacp_active {}", self.ad_lacp_active)?;
+        write!(f, " lacp_rate {}", self.ad_lacp_rate)?;
+        write!(f, " coupled_control {}", on_off(self.coupled_control))?;
+        write!(f, " broadcast_neighbor {}", on_off(self.broadcast_neighbor))?;
+        write!(f, " ad_select {}", self.ad_select)?;
+        write!(f, " tlb_dynamic_lb {}", self.tlb_dynamic_lb)?;
 
         Ok(())
     }
@@ -254,12 +254,12 @@ impl From<&[InfoBondPort]> for CliLinkInfoDataBondPort {
 
 impl std::fmt::Display for CliLinkInfoDataBondPort {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "state {} ", self.state)?;
-        write!(f, "mii_status {} ", self.mii_status)?;
-        write!(f, "link_failure_count {} ", self.link_failure_count)?;
-        write!(f, "perm_hwaddr {} ", self.perm_hwaddr)?;
-        write!(f, "queue_id {} ", self.queue_id)?;
-        write!(f, "prio {}", self.prio)?;
+        write!(f, "state {}", self.state)?;
+        write!(f, " mii_status {}", self.mii_status)?;
+        write!(f, " link_failure_count {}", self.link_failure_count)?;
+        write!(f, " perm_hwaddr {}", self.perm_hwaddr)?;
+        write!(f, " queue_id {}", self.queue_id)?;
+        write!(f, " prio {}", self.prio)?;
 
         Ok(())
     }

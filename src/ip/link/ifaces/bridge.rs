@@ -326,119 +326,119 @@ impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
 
 impl std::fmt::Display for CliLinkInfoDataBridge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "forward_delay {} ", self.forward_delay)?;
-        write!(f, "hello_time {} ", self.hello_time)?;
-        write!(f, "max_age {} ", self.max_age)?;
-        write!(f, "ageing_time {} ", self.ageing_time)?;
-        write!(f, "stp_state {} ", self.stp_state)?;
-        write!(f, "priority {} ", self.priority)?;
-        write!(f, "vlan_filtering {} ", self.vlan_filtering)?;
-        write!(f, "vlan_protocol {} ", self.vlan_protocol)?;
+        write!(f, "forward_delay {}", self.forward_delay)?;
+        write!(f, " hello_time {}", self.hello_time)?;
+        write!(f, " max_age {}", self.max_age)?;
+        write!(f, " ageing_time {}", self.ageing_time)?;
+        write!(f, " stp_state {}", self.stp_state)?;
+        write!(f, " priority {}", self.priority)?;
+        write!(f, " vlan_filtering {}", self.vlan_filtering)?;
+        write!(f, " vlan_protocol {}", self.vlan_protocol)?;
         if let Some(bid) = &self.bridge_id {
-            write!(f, "bridge_id {} ", bid)?;
+            write!(f, " bridge_id {}", bid)?;
         }
         if let Some(rid) = &self.root_id {
-            write!(f, "designated_root {} ", rid)?;
+            write!(f, " designated_root {}", rid)?;
         }
-        write!(f, "root_port {} ", self.root_port)?;
-        write!(f, "root_path_cost {} ", self.root_path_cost)?;
-        write!(f, "topology_change {} ", self.topology_change)?;
+        write!(f, " root_port {}", self.root_port)?;
+        write!(f, " root_path_cost {}", self.root_path_cost)?;
+        write!(f, " topology_change {}", self.topology_change)?;
         write!(
             f,
-            "topology_change_detected {} ",
+            " topology_change_detected {}",
             self.topology_change_detected
         )?;
-        write!(f, "hello_timer {} ", format_bridge_timer(self.hello_timer))?;
-        write!(f, "tcn_timer {} ", format_bridge_timer(self.tcn_timer))?;
+        write!(f, " hello_timer {}", format_bridge_timer(self.hello_timer))?;
+        write!(f, " tcn_timer {}", format_bridge_timer(self.tcn_timer))?;
         write!(
             f,
-            "topology_change_timer {} ",
+            " topology_change_timer {}",
             format_bridge_timer(self.topology_change_timer)
         )?;
-        write!(f, "gc_timer {} ", format_bridge_timer(self.gc_timer))?;
+        write!(f, " gc_timer {}", format_bridge_timer(self.gc_timer))?;
         if let Some(v) = self.fdb_n_learned {
-            write!(f, "fdb_n_learned {} ", v)?;
+            write!(f, " fdb_n_learned {}", v)?;
         }
         if let Some(v) = self.fdb_max_learned {
-            write!(f, "fdb_max_learned {} ", v)?;
+            write!(f, " fdb_max_learned {}", v)?;
         }
-        write!(f, "vlan_default_pvid {} ", self.vlan_default_pvid)?;
+        write!(f, " vlan_default_pvid {}", self.vlan_default_pvid)?;
         if let Some(v) = self.vlan_stats_enabled {
-            write!(f, "vlan_stats_enabled {} ", v)?;
+            write!(f, " vlan_stats_enabled {}", v)?;
         }
         if let Some(v) = self.vlan_stats_per_port {
-            write!(f, "vlan_stats_per_port {} ", v)?;
+            write!(f, " vlan_stats_per_port {}", v)?;
         }
         let mask_val: u16 = self.group_fwd_mask.parse().unwrap_or(0);
         if mask_val == 0 {
-            write!(f, "group_fwd_mask {} ", mask_val)?;
+            write!(f, " group_fwd_mask {}", mask_val)?;
         } else {
-            write!(f, "group_fwd_mask {:#x} ", mask_val)?;
+            write!(f, " group_fwd_mask {:#x}", mask_val)?;
         }
         if !self.group_addr.is_empty() {
-            write!(f, "group_address {} ", self.group_addr)?;
+            write!(f, " group_address {}", self.group_addr)?;
         }
-        write!(f, "mcast_snooping {} ", self.mcast_snooping)?;
+        write!(f, " mcast_snooping {}", self.mcast_snooping)?;
         if let Some(v) = self.no_linklocal_learn {
-            write!(f, "no_linklocal_learn {v} ")?;
+            write!(f, " no_linklocal_learn {v}")?;
         }
         if let Some(v) = self.mcast_vlan_snooping {
-            write!(f, "mcast_vlan_snooping {v} ")?;
+            write!(f, " mcast_vlan_snooping {v}")?;
         }
         if let Some(v) = self.mst_enabled {
-            write!(f, "mst_enabled {v} ")?;
+            write!(f, " mst_enabled {v}")?;
         }
         if let Some(v) = self.mdb_offload_fail_notification {
-            write!(f, "mdb_offload_fail_notification {v} ")?;
+            write!(f, " mdb_offload_fail_notification {v}")?;
         }
         if let Some(v) = self.fdb_local_vlan_0 {
-            write!(f, "fdb_local_vlan_0 {v} ")?;
+            write!(f, " fdb_local_vlan_0 {v}")?;
         }
-        write!(f, "mcast_router {} ", self.mcast_router)?;
-        write!(f, "mcast_query_use_ifaddr {} ", self.mcast_query_use_ifaddr)?;
-        write!(f, "mcast_querier {} ", self.mcast_querier)?;
-        write!(f, "mcast_hash_elasticity {} ", self.mcast_hash_elasticity)?;
-        write!(f, "mcast_hash_max {} ", self.mcast_hash_max)?;
-        write!(f, "mcast_last_member_count {} ", self.mcast_last_member_cnt)?;
+        write!(f, " mcast_router {}", self.mcast_router)?;
+        write!(f, " mcast_query_use_ifaddr {}", self.mcast_query_use_ifaddr)?;
+        write!(f, " mcast_querier {}", self.mcast_querier)?;
+        write!(f, " mcast_hash_elasticity {}", self.mcast_hash_elasticity)?;
+        write!(f, " mcast_hash_max {}", self.mcast_hash_max)?;
+        write!(f, " mcast_last_member_count {}", self.mcast_last_member_cnt)?;
         write!(
             f,
-            "mcast_startup_query_count {} ",
+            " mcast_startup_query_count {}",
             self.mcast_startup_query_cnt
         )?;
         write!(
             f,
-            "mcast_last_member_interval {} ",
+            " mcast_last_member_interval {}",
             self.mcast_last_member_intvl
         )?;
         write!(
             f,
-            "mcast_membership_interval {} ",
+            " mcast_membership_interval {}",
             self.mcast_membership_intvl
         )?;
-        write!(f, "mcast_querier_interval {} ", self.mcast_querier_intvl)?;
-        write!(f, "mcast_query_interval {} ", self.mcast_query_intvl)?;
+        write!(f, " mcast_querier_interval {}", self.mcast_querier_intvl)?;
+        write!(f, " mcast_query_interval {}", self.mcast_query_intvl)?;
         write!(
             f,
-            "mcast_query_response_interval {} ",
+            " mcast_query_response_interval {}",
             self.mcast_query_response_intvl
         )?;
         write!(
             f,
-            "mcast_startup_query_interval {} ",
+            " mcast_startup_query_interval {}",
             self.mcast_startup_query_intvl
         )?;
         if let Some(v) = self.mcast_stats_enabled {
-            write!(f, "mcast_stats_enabled {} ", v)?;
+            write!(f, " mcast_stats_enabled {}", v)?;
         }
         if let Some(v) = self.mcast_igmp_version {
-            write!(f, "mcast_igmp_version {} ", v)?;
+            write!(f, " mcast_igmp_version {}", v)?;
         }
         if let Some(v) = self.mcast_mld_version {
-            write!(f, "mcast_mld_version {} ", v)?;
+            write!(f, " mcast_mld_version {}", v)?;
         }
-        write!(f, "nf_call_iptables {} ", self.nf_call_iptables)?;
-        write!(f, "nf_call_ip6tables {} ", self.nf_call_ip6tables)?;
-        write!(f, "nf_call_arptables {}", self.nf_call_arptables)?;
+        write!(f, " nf_call_iptables {}", self.nf_call_iptables)?;
+        write!(f, " nf_call_ip6tables {}", self.nf_call_ip6tables)?;
+        write!(f, " nf_call_arptables {}", self.nf_call_arptables)?;
         Ok(())
     }
 }
@@ -639,60 +639,60 @@ impl std::fmt::Display for CliLinkInfoDataBridgePort {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let on_off = |val: bool| if val { "on" } else { "off" };
 
-        write!(f, "state {} ", self.state)?;
-        write!(f, "priority {} ", self.priority)?;
-        write!(f, "cost {} ", self.cost)?;
-        write!(f, "hairpin {} ", on_off(self.hairpin))?;
-        write!(f, "guard {} ", on_off(self.guard))?;
-        write!(f, "root_block {} ", on_off(self.root_block))?;
-        write!(f, "fastleave {} ", on_off(self.fastleave))?;
-        write!(f, "learning {} ", on_off(self.learning))?;
-        write!(f, "flood {} ", on_off(self.flood))?;
-        write!(f, "port_id {} ", self.id)?;
-        write!(f, "port_no {} ", self.no)?;
-        write!(f, "designated_port {} ", self.designated_port)?;
-        write!(f, "designated_cost {} ", self.designated_cost)?;
+        write!(f, "state {}", self.state)?;
+        write!(f, " priority {}", self.priority)?;
+        write!(f, " cost {}", self.cost)?;
+        write!(f, " hairpin {}", on_off(self.hairpin))?;
+        write!(f, " guard {}", on_off(self.guard))?;
+        write!(f, " root_block {}", on_off(self.root_block))?;
+        write!(f, " fastleave {}", on_off(self.fastleave))?;
+        write!(f, " learning {}", on_off(self.learning))?;
+        write!(f, " flood {}", on_off(self.flood))?;
+        write!(f, " port_id {}", self.id)?;
+        write!(f, " port_no {}", self.no)?;
+        write!(f, " designated_port {}", self.designated_port)?;
+        write!(f, " designated_cost {}", self.designated_cost)?;
         if let Some(bid) = &self.bridge_id {
-            write!(f, "designated_bridge {} ", bid)?;
+            write!(f, " designated_bridge {}", bid)?;
         }
         if let Some(rid) = &self.root_id {
-            write!(f, "designated_root {} ", rid)?;
+            write!(f, " designated_root {}", rid)?;
         }
-        write!(f, "hold_timer {} ", format_bridge_timer(self.hold_timer))?;
+        write!(f, " hold_timer {}", format_bridge_timer(self.hold_timer))?;
         write!(
             f,
-            "message_age_timer {} ",
+            " message_age_timer {}",
             format_bridge_timer(self.message_age_timer)
         )?;
         write!(
             f,
-            "forward_delay_timer {} ",
+            " forward_delay_timer {}",
             format_bridge_timer(self.forward_delay_timer)
         )?;
-        write!(f, "topology_change_ack {} ", self.topology_change_ack)?;
-        write!(f, "config_pending {} ", self.config_pending)?;
-        write!(f, "proxy_arp {} ", on_off(self.proxy_arp))?;
-        write!(f, "proxy_arp_wifi {} ", on_off(self.proxy_arp_wifi))?;
-        write!(f, "mcast_router {} ", self.multicast_router)?;
-        write!(f, "mcast_fast_leave {} ", on_off(self.fastleave))?;
-        write!(f, "mcast_flood {} ", on_off(self.mcast_flood))?;
-        write!(f, "bcast_flood {} ", on_off(self.bcast_flood))?;
-        write!(f, "mcast_to_unicast {} ", on_off(self.mcast_to_unicast))?;
-        write!(f, "neigh_suppress {} ", on_off(self.neigh_suppress))?;
+        write!(f, " topology_change_ack {}", self.topology_change_ack)?;
+        write!(f, " config_pending {}", self.config_pending)?;
+        write!(f, " proxy_arp {}", on_off(self.proxy_arp))?;
+        write!(f, " proxy_arp_wifi {}", on_off(self.proxy_arp_wifi))?;
+        write!(f, " mcast_router {}", self.multicast_router)?;
+        write!(f, " mcast_fast_leave {}", on_off(self.fastleave))?;
+        write!(f, " mcast_flood {}", on_off(self.mcast_flood))?;
+        write!(f, " bcast_flood {}", on_off(self.bcast_flood))?;
+        write!(f, " mcast_to_unicast {}", on_off(self.mcast_to_unicast))?;
+        write!(f, " neigh_suppress {}", on_off(self.neigh_suppress))?;
         if let Some(v) = self.neigh_vlan_suppress {
-            write!(f, "neigh_vlan_suppress {} ", on_off(v))?;
+            write!(f, " neigh_vlan_suppress {}", on_off(v))?;
         } else {
-            write!(f, "neigh_vlan_suppress off ")?;
+            write!(f, " neigh_vlan_suppress off")?;
         }
-        write!(f, "group_fwd_mask {} ", self.group_fwd_mask)?;
-        write!(f, "group_fwd_mask_str {} ", self.group_fwd_mask_str)?;
-        write!(f, "vlan_tunnel {} ", on_off(self.vlan_tunnel))?;
-        write!(f, "isolated {} ", on_off(self.isolated))?;
-        write!(f, "locked {} ", on_off(self.locked))?;
+        write!(f, " group_fwd_mask {}", self.group_fwd_mask)?;
+        write!(f, " group_fwd_mask_str {}", self.group_fwd_mask_str)?;
+        write!(f, " vlan_tunnel {}", on_off(self.vlan_tunnel))?;
+        write!(f, " isolated {}", on_off(self.isolated))?;
+        write!(f, " locked {}", on_off(self.locked))?;
         if let Some(v) = self.mab {
-            write!(f, "mab {}", on_off(v))?;
+            write!(f, " mab {}", on_off(v))?;
         } else {
-            write!(f, "mab off")?;
+            write!(f, " mab off")?;
         }
 
         Ok(())
