@@ -2,6 +2,7 @@
 
 mod address;
 mod link;
+mod neighbour;
 
 #[cfg(test)]
 mod tests;
@@ -9,6 +10,8 @@ mod tests;
 use std::io::IsTerminal;
 
 use iproute_rs::{CliColor, CliError, OutputFormat, print_result_and_exit};
+
+use crate::neighbour::NeighbourCommand;
 
 use self::{address::AddressCommand, link::LinkCommand};
 
@@ -55,9 +58,17 @@ async fn main() -> Result<(), CliError> {
                 .action(clap::ArgAction::SetTrue)
                 .global(true),
         )
+        .arg(
+            clap::Arg::new("STATISTICS")
+                .short('s')
+                .help("Show object statistics")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        )
         .subcommand_required(true)
         .subcommand(LinkCommand::gen_command())
-        .subcommand(AddressCommand::gen_command());
+        .subcommand(AddressCommand::gen_command())
+        .subcommand(NeighbourCommand::gen_command());
 
     let matches = app.get_matches_mut();
 
@@ -84,6 +95,10 @@ async fn main() -> Result<(), CliError> {
         matches.subcommand_matches(AddressCommand::CMD)
     {
         print_result_and_exit(AddressCommand::handle(matches).await, fmt);
+    } else if let Some(matches) =
+        matches.subcommand_matches(NeighbourCommand::CMD)
+    {
+        print_result_and_exit(NeighbourCommand::handle(matches).await, fmt);
     } else {
         app.print_help()?;
         println!();
