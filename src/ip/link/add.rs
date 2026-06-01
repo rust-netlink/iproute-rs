@@ -52,6 +52,9 @@ impl LinkAddCommand {
             InfoKind::Vlan => {
                 base_conf.apply(base_conf.apply_vlan(&handle).await?)?
             }
+            InfoKind::Bond => {
+                base_conf.apply(base_conf.apply_bond(&handle).await?)?
+            }
             t => {
                 return Err(CliError::from(format!(
                     "Unsupported device type: {t}"
