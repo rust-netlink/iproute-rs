@@ -426,10 +426,10 @@ impl std::fmt::Display for CliLinkInfoDataBridge {
         write!(f, " mcast_router {}", self.mcast_router)?;
         write!(f, " mcast_query_use_ifaddr {}", self.mcast_query_use_ifaddr)?;
         write!(f, " mcast_querier {}", self.mcast_querier)?;
-        if let Some(ref addr) = self.mcast_querier_ipv4_addr {
+        if let Some(addr) = &self.mcast_querier_ipv4_addr {
             write!(f, " mcast_querier_ipv4_addr {}", addr)?;
         }
-        if let Some(ref addr) = self.mcast_querier_ipv6_addr {
+        if let Some(addr) = &self.mcast_querier_ipv6_addr {
             write!(f, " mcast_querier_ipv6_addr {}", addr)?;
         }
         write!(f, " mcast_hash_elasticity {}", self.mcast_hash_elasticity)?;
@@ -732,7 +732,7 @@ fn format_bridge_timer(v: u64) -> String {
 }
 
 impl LinkBaseConf {
-    pub(crate) async fn apply_bridge(
+    pub(crate) fn apply_bridge(
         &self,
     ) -> Result<LinkMessageBuilder<LinkBridge>, CliError> {
         let mut builder = LinkBridge::new(&self.name);
