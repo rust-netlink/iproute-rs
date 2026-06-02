@@ -55,9 +55,7 @@ impl LinkAddCommand {
             InfoKind::Bond => {
                 base_conf.apply(base_conf.apply_bond(&handle).await?)?
             }
-            InfoKind::Bridge => {
-                base_conf.apply(base_conf.apply_bridge().await?)?
-            }
+            InfoKind::Bridge => base_conf.apply(base_conf.apply_bridge()?)?,
             t => {
                 return Err(CliError::from(format!(
                     "Unsupported device type: {t}"
