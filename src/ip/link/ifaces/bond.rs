@@ -15,6 +15,9 @@ use rtnetlink::{
 };
 use serde::Serialize;
 
+use super::parse::{
+    parse_from_str, parse_on_off_01, parse_u8, parse_u16, parse_u32,
+};
 use crate::link::LinkBaseConf;
 
 #[derive(Serialize)]
@@ -524,35 +527,4 @@ impl LinkBaseConf {
 
         Ok(builder)
     }
-}
-
-fn parse_on_off_01(s: &str) -> Result<bool, CliError> {
-    match s {
-        "on" | "1" => Ok(true),
-        "off" | "0" => Ok(false),
-        _ => Err(CliError::from(format!("expected on/off or 0/1, got {s}"))),
-    }
-}
-
-fn parse_u32(s: &str, name: &str) -> Result<u32, CliError> {
-    s.parse::<u32>()
-        .map_err(|_| CliError::from(format!("Invalid {name} value: {s}")))
-}
-
-fn parse_u8(s: &str, name: &str) -> Result<u8, CliError> {
-    s.parse::<u8>()
-        .map_err(|_| CliError::from(format!("Invalid {name} value: {s}")))
-}
-
-fn parse_u16(s: &str, name: &str) -> Result<u16, CliError> {
-    s.parse::<u16>()
-        .map_err(|_| CliError::from(format!("Invalid {name} value: {s}")))
-}
-
-fn parse_from_str<T: FromStr>(s: &str, name: &str) -> Result<T, CliError>
-where
-    T::Err: std::fmt::Display,
-{
-    s.parse::<T>()
-        .map_err(|e| CliError::from(format!("Invalid {name} value: {e}")))
 }

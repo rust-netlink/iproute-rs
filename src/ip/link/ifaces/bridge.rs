@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: MIT
 
-use iproute_rs::mac_to_string;
-use rtnetlink::packet_route::link::{
-    BridgeBooleanOptionFlags as BoolOptFlags, BridgePortState, InfoBridge,
-    InfoBridgePort, VlanProtocol,
+use iproute_rs::{CliError, mac_to_string, parse_mac_str};
+use rtnetlink::{
+    LinkBridge, LinkMessageBuilder,
+    packet_route::link::{
+        BridgeBooleanOptionFlags as BoolOptFlags, BridgeQuerierState,
+        InfoBridge, InfoBridgePort, VlanProtocol,
+    },
 };
 use serde::Serialize;
+
+use super::parse::{
+    parse_from_str, parse_on_off_01, parse_u8, parse_u16, parse_u32, parse_u64,
+};
+use crate::link::LinkBaseConf;
 
 #[derive(Serialize)]
 pub(crate) struct CliLinkInfoDataBridge {
@@ -74,6 +82,10 @@ pub(crate) struct CliLinkInfoDataBridge {
     nf_call_iptables: u8,
     nf_call_ip6tables: u8,
     nf_call_arptables: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mcast_querier_ipv4_addr: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mcast_querier_ipv6_addr: Option<String>,
 }
 
 impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
@@ -130,6 +142,8 @@ impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
         let mut mst_enabled = None;
         let mut mdb_offload_fail_notification = None;
         let mut fdb_local_vlan_0 = None;
+        let mut mcast_querier_ipv4_addr = None;
+        let mut mcast_querier_ipv6_addr = None;
 
         for nla in info {
             match nla {
@@ -263,6 +277,19 @@ impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
                         );
                     }
                 }
+                InfoBridge::MulticastQuerierState(states) => {
+                    for state in states {
+                        match state {
+                            BridgeQuerierState::Ipv4Address(a) => {
+                                mcast_querier_ipv4_addr = Some(a.to_string());
+                            }
+                            BridgeQuerierState::Ipv6Address(a) => {
+                                mcast_querier_ipv6_addr = Some(a.to_string());
+                            }
+                            _ => (),
+                        }
+                    }
+                }
                 _ => (),
             }
         }
@@ -320,6 +347,8 @@ impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
             nf_call_iptables,
             nf_call_ip6tables,
             nf_call_arptables,
+            mcast_querier_ipv4_addr,
+            mcast_querier_ipv6_addr,
         }
     }
 }
@@ -397,6 +426,12 @@ impl std::fmt::Display for CliLinkInfoDataBridge {
         write!(f, " mcast_router {}", self.mcast_router)?;
         write!(f, " mcast_query_use_ifaddr {}", self.mcast_query_use_ifaddr)?;
         write!(f, " mcast_querier {}", self.mcast_querier)?;
+        if let Some(ref addr) = self.mcast_querier_ipv4_addr {
+            write!(f, " mcast_querier_ipv4_addr {}", addr)?;
+        }
+        if let Some(ref addr) = self.mcast_querier_ipv6_addr {
+            write!(f, " mcast_querier_ipv6_addr {}", addr)?;
+        }
         write!(f, " mcast_hash_elasticity {}", self.mcast_hash_elasticity)?;
         write!(f, " mcast_hash_max {}", self.mcast_hash_max)?;
         write!(f, " mcast_last_member_count {}", self.mcast_last_member_cnt)?;
@@ -524,15 +559,7 @@ impl From<&[InfoBridgePort]> for CliLinkInfoDataBridgePort {
         for nla in info {
             match nla {
                 InfoBridgePort::State(v) => {
-                    state = match v {
-                        BridgePortState::Disabled => "disabled".to_string(),
-                        BridgePortState::Listening => "listening".to_string(),
-                        BridgePortState::Learning => "learning".to_string(),
-                        BridgePortState::Forwarding => "forwarding".to_string(),
-                        BridgePortState::Blocking => "blocking".to_string(),
-                        BridgePortState::Other(n) => format!("{}", n),
-                        _ => "unknown".to_string(),
-                    };
+                    state = v.to_string();
                 }
                 InfoBridgePort::Priority(v) => priority = *v as u32,
                 InfoBridgePort::Cost(v) => cost = *v,
@@ -702,6 +729,226 @@ impl std::fmt::Display for CliLinkInfoDataBridgePort {
 fn format_bridge_timer(v: u64) -> String {
     let seconds = v as f64 / 100.0;
     format!("{:>7.2}", seconds)
+}
+
+impl LinkBaseConf {
+    pub(crate) async fn apply_bridge(
+        &self,
+    ) -> Result<LinkMessageBuilder<LinkBridge>, CliError> {
+        let mut builder = LinkBridge::new(&self.name);
+
+        let mut iter = self.iface_specific.iter();
+        while let Some(key) = iter.next() {
+            let mut next_val = || {
+                iter.next().ok_or_else(|| {
+                    CliError::from(format!("bridge {key} requires a value"))
+                })
+            };
+            match key.as_str() {
+                "forward_delay" => {
+                    let v = next_val()?;
+                    builder =
+                        builder.forward_delay(parse_u32(v, "forward_delay")?);
+                }
+                "hello_time" => {
+                    let v = next_val()?;
+                    builder = builder.hello_time(parse_u32(v, "hello_time")?);
+                }
+                "max_age" => {
+                    let v = next_val()?;
+                    builder = builder.max_age(parse_u32(v, "max_age")?);
+                }
+                "ageing_time" => {
+                    let v = next_val()?;
+                    builder = builder.ageing_time(parse_u32(v, "ageing_time")?);
+                }
+                "stp_state" => {
+                    let v = next_val()?;
+                    builder =
+                        builder.stp_state(parse_from_str(v, "stp_state")?);
+                }
+                "priority" => {
+                    let v = next_val()?;
+                    builder = builder.priority(parse_u16(v, "priority")?);
+                }
+                "vlan_filtering" => {
+                    let v = next_val()?;
+                    builder = builder.vlan_filtering(parse_on_off_01(v)?);
+                }
+                "vlan_protocol" => {
+                    let v = next_val()?;
+                    builder = builder
+                        .vlan_protocol(parse_from_str(v, "vlan_protocol")?);
+                }
+                "vlan_default_pvid" => {
+                    let v = next_val()?;
+                    builder = builder
+                        .vlan_default_pvid(parse_u16(v, "vlan_default_pvid")?);
+                }
+                "vlan_stats_enabled" => {
+                    let v = next_val()?;
+                    builder = builder.vlan_stats_enabled(parse_on_off_01(v)?);
+                }
+                "vlan_stats_per_port" => {
+                    let v = next_val()?;
+                    builder = builder.vlan_stats_per_port(parse_on_off_01(v)?);
+                }
+                "group_fwd_mask" => {
+                    let v = next_val()?;
+                    builder =
+                        builder.group_fwd_mask(parse_u16(v, "group_fwd_mask")?);
+                }
+                "group_address" => {
+                    let v = next_val()?;
+                    let mac: [u8; 6] =
+                        parse_mac_str(v)?.try_into().map_err(|_| {
+                            CliError::from(format!(
+                                "Invalid group_address MAC: {v}"
+                            ))
+                        })?;
+                    builder = builder.group_address(mac);
+                }
+                "mcast_snooping" => {
+                    let v = next_val()?;
+                    builder = builder.mcast_snooping(parse_on_off_01(v)?);
+                }
+                "mcast_vlan_snooping" => {
+                    let v = next_val()?;
+                    builder = builder.mcast_vlan_snooping(parse_on_off_01(v)?);
+                }
+                "mcast_router" => {
+                    let v = next_val()?;
+                    builder = builder
+                        .mcast_router(parse_from_str(v, "mcast_router")?);
+                }
+                "mcast_query_use_ifaddr" => {
+                    let v = next_val()?;
+                    builder =
+                        builder.mcast_query_use_ifaddr(parse_on_off_01(v)?);
+                }
+                "mcast_querier" => {
+                    let v = next_val()?;
+                    builder = builder.mcast_querier(parse_on_off_01(v)?);
+                }
+                "mcast_hash_max" => {
+                    let v = next_val()?;
+                    builder =
+                        builder.mcast_hash_max(parse_u32(v, "mcast_hash_max")?);
+                }
+                "mcast_last_member_count" => {
+                    let v = next_val()?;
+                    builder = builder.mcast_last_member_count(parse_u32(
+                        v,
+                        "mcast_last_member_count",
+                    )?);
+                }
+                "mcast_startup_query_count" => {
+                    let v = next_val()?;
+                    builder = builder.mcast_startup_query_count(parse_u32(
+                        v,
+                        "mcast_startup_query_count",
+                    )?);
+                }
+                "mcast_last_member_interval" => {
+                    let v = next_val()?;
+                    builder = builder.mcast_last_member_interval(parse_u64(
+                        v,
+                        "mcast_last_member_interval",
+                    )?);
+                }
+                "mcast_membership_interval" => {
+                    let v = next_val()?;
+                    builder = builder.mcast_membership_interval(parse_u64(
+                        v,
+                        "mcast_membership_interval",
+                    )?);
+                }
+                "mcast_querier_interval" => {
+                    let v = next_val()?;
+                    builder = builder.mcast_querier_interval(parse_u64(
+                        v,
+                        "mcast_querier_interval",
+                    )?);
+                }
+                "mcast_query_interval" => {
+                    let v = next_val()?;
+                    builder = builder.mcast_query_interval(parse_u64(
+                        v,
+                        "mcast_query_interval",
+                    )?);
+                }
+                "mcast_query_response_interval" => {
+                    let v = next_val()?;
+                    builder = builder.mcast_query_response_interval(parse_u64(
+                        v,
+                        "mcast_query_response_interval",
+                    )?);
+                }
+                "mcast_startup_query_interval" => {
+                    let v = next_val()?;
+                    builder = builder.mcast_startup_query_interval(parse_u64(
+                        v,
+                        "mcast_startup_query_interval",
+                    )?);
+                }
+                "mcast_stats_enabled" => {
+                    let v = next_val()?;
+                    builder = builder.mcast_stats_enabled(parse_on_off_01(v)?);
+                }
+                "mcast_igmp_version" => {
+                    let v = next_val()?;
+                    builder = builder
+                        .mcast_igmp_version(parse_u8(v, "mcast_igmp_version")?);
+                }
+                "mcast_mld_version" => {
+                    let v = next_val()?;
+                    builder = builder
+                        .mcast_mld_version(parse_u8(v, "mcast_mld_version")?);
+                }
+                "nf_call_iptables" => {
+                    let v = next_val()?;
+                    builder = builder.nf_call_iptables(parse_on_off_01(v)?);
+                }
+                "nf_call_ip6tables" => {
+                    let v = next_val()?;
+                    builder = builder.nf_call_ip6tables(parse_on_off_01(v)?);
+                }
+                "nf_call_arptables" => {
+                    let v = next_val()?;
+                    builder = builder.nf_call_arptables(parse_on_off_01(v)?);
+                }
+                "no_linklocal_learn" => {
+                    let v = next_val()?;
+                    builder = builder.no_linklocal_learn(parse_on_off_01(v)?);
+                }
+                "mdb_offload_fail_notification" => {
+                    let v = next_val()?;
+                    builder = builder
+                        .mdb_offload_fail_notification(parse_on_off_01(v)?);
+                }
+                "mst_enabled" => {
+                    let v = next_val()?;
+                    builder = builder.mst_enabled(parse_on_off_01(v)?);
+                }
+                "fdb_local_vlan_0" => {
+                    let v = next_val()?;
+                    builder = builder.fdb_local_vlan_0(parse_on_off_01(v)?);
+                }
+                "fdb_max_learned" => {
+                    let v = next_val()?;
+                    builder = builder
+                        .fdb_max_learned(parse_u32(v, "fdb_max_learned")?);
+                }
+                _ => {
+                    return Err(CliError::from(format!(
+                        "Unknown bridge argument: {key}"
+                    )));
+                }
+            }
+        }
+
+        Ok(builder)
+    }
 }
 
 /// Format bridge ID to match iproute2's format:
