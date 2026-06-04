@@ -7,6 +7,7 @@ use serde::Serialize;
 
 use super::ifaces::{
     bridge::{CliLinkInfoDataBridge, CliLinkInfoDataBridgePort},
+    hsr::CliLinkInfoDataHsr,
     veth::CliLinkInfoDataVeth,
     vlan::CliLinkInfoDataVlan,
     vxlan::CliLinkInfoDataVxlan,
@@ -65,12 +66,9 @@ impl TryFrom<&[LinkInfo]> for CliLinkInfo {
 }
 
 impl CliLinkInfo {
-    pub(crate) fn resolve_vxlan_link(
-        &mut self,
-        index_2_name: &HashMap<u32, String>,
-    ) {
+    pub(crate) fn resolve_link(&mut self, index_2_name: &HashMap<u32, String>) {
         if let Some(ref mut data) = self.info_data {
-            data.resolve_vxlan_link(index_2_name);
+            data.resolve_link(index_2_name);
         }
     }
 }
@@ -101,6 +99,7 @@ pub(crate) enum CliLinkInfoData {
     Bridge(Box<CliLinkInfoDataBridge>),
     Bond(Box<CliLinkInfoDataBond>),
     Vxlan(Box<CliLinkInfoDataVxlan>),
+    Hsr(Box<CliLinkInfoDataHsr>),
 }
 
 impl TryFrom<&InfoData> for CliLinkInfoData {
@@ -117,18 +116,18 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
             InfoData::Vxlan(v) => {
                 Ok(Self::Vxlan(Box::new(v.as_slice().into())))
             }
+            InfoData::Hsr(v) => Ok(Self::Hsr(Box::new(v.as_slice().into()))),
             _ => Err(()),
         }
     }
 }
 
 impl CliLinkInfoData {
-    pub(crate) fn resolve_vxlan_link(
-        &mut self,
-        index_2_name: &HashMap<u32, String>,
-    ) {
-        if let Self::Vxlan(vxlan) = self {
-            vxlan.resolve_link(index_2_name);
+    pub(crate) fn resolve_link(&mut self, index_2_name: &HashMap<u32, String>) {
+        match self {
+            Self::Vxlan(vxlan) => vxlan.resolve_link(index_2_name),
+            Self::Hsr(hsr) => hsr.resolve_link(index_2_name),
+            _ => (),
         }
     }
 }
@@ -141,6 +140,7 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::Bridge(v) => write!(f, "{v}"),
             CliLinkInfoData::Bond(v) => write!(f, "{v}"),
             CliLinkInfoData::Vxlan(v) => write!(f, "{v}"),
+            CliLinkInfoData::Hsr(v) => write!(f, "{v}"),
         }
     }
 }

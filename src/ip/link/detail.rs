@@ -140,12 +140,9 @@ impl CliLinkInfoDetail {
         self.inet6_addr_gen_mode = String::new();
     }
 
-    pub(crate) fn resolve_vxlan_link(
-        &mut self,
-        index_2_name: &HashMap<u32, String>,
-    ) {
+    pub(crate) fn resolve_link(&mut self, index_2_name: &HashMap<u32, String>) {
         if let Some(ref mut linkinfo) = self.linkinfo {
-            linkinfo.resolve_vxlan_link(index_2_name);
+            linkinfo.resolve_link(index_2_name);
         }
     }
 }

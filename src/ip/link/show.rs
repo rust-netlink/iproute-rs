@@ -387,9 +387,9 @@ fn resolve_controller_and_link_names(links: &mut [CliLinkInfo]) {
             }
         }
 
-        // Resolve VxLAN link ifindex to interface name
+        // Resolve link ifindex (VxLAN, HSR, etc.) to interface name
         if let Some(ref mut details) = link.details {
-            details.resolve_vxlan_link(&index_2_name);
+            details.resolve_link(&index_2_name);
         }
     }
 }

@@ -32,8 +32,5 @@ tokio = { version = "1.30", features = ["rt", "net", "time", "macros"] }
 pretty_assertions = "1.4.1"
 rand = "0.10.0"
 
-[patch.crates-io.rtnetlink]
-git = "https://github.com/rust-netlink/rtnetlink"
-
 [patch.crates-io.netlink-packet-route]
 git = "https://github.com/rust-netlink/netlink-packet-route"

@@ -4,6 +4,7 @@ mod bond;
 mod bridge;
 mod color;
 mod dummy;
+mod hsr;
 mod loopback;
 mod nlmon;
 mod veth;
