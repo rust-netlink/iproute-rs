@@ -70,3 +70,9 @@ let (connection, handle, _) = rtnetlink::new_connection()?;
 tokio::spawn(connection);
 // use handle to send Netlink messages
 ```
+
+### Notes from developer
+
+ * Netlink attribute parsing and emitting code should be done by other
+   rust-netlink crates which are also locally maintained, change code in
+   local folder and use local folder temporally before upstream merge.
