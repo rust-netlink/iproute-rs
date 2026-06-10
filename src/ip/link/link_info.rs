@@ -8,6 +8,7 @@ use serde::Serialize;
 use super::ifaces::{
     bridge::{CliLinkInfoDataBridge, CliLinkInfoDataBridgePort},
     hsr::CliLinkInfoDataHsr,
+    iptun::CliLinkInfoDataIpIp,
     veth::CliLinkInfoDataVeth,
     vlan::CliLinkInfoDataVlan,
     vxlan::CliLinkInfoDataVxlan,
@@ -16,7 +17,7 @@ use crate::link::ifaces::bond::{CliLinkInfoDataBond, CliLinkInfoDataBondPort};
 
 #[derive(Serialize)]
 pub(super) struct CliLinkInfo {
-    info_kind: String,
+    pub(super) info_kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     info_data: Option<CliLinkInfoData>,
     #[serde(
@@ -100,6 +101,7 @@ pub(crate) enum CliLinkInfoData {
     Bond(Box<CliLinkInfoDataBond>),
     Vxlan(Box<CliLinkInfoDataVxlan>),
     Hsr(Box<CliLinkInfoDataHsr>),
+    IpIp(Box<CliLinkInfoDataIpIp>),
 }
 
 impl TryFrom<&InfoData> for CliLinkInfoData {
@@ -117,6 +119,9 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
                 Ok(Self::Vxlan(Box::new(v.as_slice().into())))
             }
             InfoData::Hsr(v) => Ok(Self::Hsr(Box::new(v.as_slice().into()))),
+            InfoData::IpTunnel(v) => {
+                Ok(Self::IpIp(Box::new(v.as_slice().into())))
+            }
             _ => Err(()),
         }
     }
@@ -127,6 +132,7 @@ impl CliLinkInfoData {
         match self {
             Self::Vxlan(vxlan) => vxlan.resolve_link(index_2_name),
             Self::Hsr(hsr) => hsr.resolve_link(index_2_name),
+            Self::IpIp(ipip) => ipip.resolve_link(index_2_name),
             _ => (),
         }
     }
@@ -141,6 +147,7 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::Bond(v) => write!(f, "{v}"),
             CliLinkInfoData::Vxlan(v) => write!(f, "{v}"),
             CliLinkInfoData::Hsr(v) => write!(f, "{v}"),
+            CliLinkInfoData::IpIp(v) => write!(f, "{v}"),
         }
     }
 }

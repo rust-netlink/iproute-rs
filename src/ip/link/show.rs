@@ -6,7 +6,9 @@ use futures_util::stream::{StreamExt, TryStreamExt};
 use iproute_rs::{
     CanDisplay, CanOutput, CliColor, CliError, mac_to_string, write_with_color,
 };
-use rtnetlink::packet_route::link::{LinkAttribute, LinkMessage, Prop};
+use rtnetlink::packet_route::link::{
+    LinkAttribute, LinkFlags, LinkLayerType, LinkMessage, Prop,
+};
 use serde::Serialize;
 
 use super::{super::address::CliAddressInfo, flags::link_flags_to_string};
@@ -34,6 +36,8 @@ pub(crate) struct CliLinkInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     txqlen: Option<u32>,
     link_type: String,
+    #[serde(skip)]
+    is_point_2_point: bool,
     #[serde(skip_serializing_if = "String::is_empty")]
     address: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -84,7 +88,11 @@ impl std::fmt::Display for CliLinkInfo {
             let display_name = if let Some(link_name) = &self.link {
                 link_name
             } else if let Some(link_index) = self.link_index {
-                &format!("if{link_index}")
+                if link_index == 0 {
+                    "NONE"
+                } else {
+                    &format!("if{link_index}")
+                }
             } else {
                 "NONE"
             };
@@ -125,7 +133,11 @@ impl std::fmt::Display for CliLinkInfo {
         write!(f, "link/{} ", self.link_type)?;
         if !self.address.is_empty() {
             write_with_color!(f, CliColor::Mac, "{}", self.address)?;
-            write!(f, " brd ")?;
+            if self.is_point_2_point {
+                write!(f, " peer ")?;
+            } else {
+                write!(f, " brd ")?;
+            }
             write_with_color!(f, CliColor::Mac, "{}", self.broadcast)?;
         }
         if !self.permaddr.is_empty() {
@@ -213,11 +225,28 @@ pub(crate) async fn parse_nl_msg_to_iface(
         ifindex: nl_msg.header.index,
         flags: link_flags_to_string(nl_msg.header.flags),
         link_type: nl_msg.header.link_layer_type.to_string().to_lowercase(),
+        is_point_2_point: nl_msg.header.flags.contains(LinkFlags::Pointopoint),
         ..Default::default()
     };
 
     ret.details =
         include_details.then(|| CliLinkInfoDetail::new(&nl_msg.attributes));
+
+    let link_layer_type = nl_msg.header.link_layer_type;
+    if let Some(ref details) = ret.details
+        && let Some(ref linkinfo) = details.linkinfo
+        && !linkinfo.info_kind.is_empty()
+        && matches!(
+            link_layer_type,
+            LinkLayerType::Tunnel
+                | LinkLayerType::Tunnel6
+                | LinkLayerType::Sit
+                | LinkLayerType::Ipgre
+                | LinkLayerType::Ip6gre
+        )
+    {
+        ret.link_type.clone_from(&linkinfo.info_kind);
+    }
 
     let mut temp_permaddr = String::new();
 
@@ -372,18 +401,18 @@ fn resolve_controller_and_link_names(links: &mut [CliLinkInfo]) {
             link.controller = Some(name.to_string());
         }
         if let Some(link_ifindex) = link.link_index {
-            if link_ifindex == 0 {
-                continue;
-            }
-
-            // Only set link name if the link is from the current netns
-            if let Some(name) = index_2_name.get(&link_ifindex)
-                && link.link_netnsid.is_none()
-            {
-                link.link = Some(name.to_string());
-                // Clear link_index if we have a name
-                // We want to serialize one or the other
-                link.link_index = None;
+            // Keep link_index = 0 (tunnel interfaces show @NONE), skip
+            // name resolution for zero index.
+            if link_ifindex > 0 {
+                // Only set link name if the link is from the current netns
+                if let Some(name) = index_2_name.get(&link_ifindex)
+                    && link.link_netnsid.is_none()
+                {
+                    link.link = Some(name.to_string());
+                    // Clear link_index if we have a name
+                    // We want to serialize one or the other
+                    link.link_index = None;
+                }
             }
         }
 

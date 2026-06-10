@@ -45,7 +45,7 @@ pub(crate) struct CliLinkInfoDetail {
     )]
     netns_immutable: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    linkinfo: Option<CliLinkInfo>,
+    pub(super) linkinfo: Option<CliLinkInfo>,
     #[serde(skip_serializing_if = "String::is_empty")]
     inet6_addr_gen_mode: String,
     num_tx_queues: u32,

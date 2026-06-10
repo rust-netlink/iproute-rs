@@ -59,6 +59,9 @@ impl LinkAddCommand {
             InfoKind::Hsr => {
                 base_conf.apply(base_conf.apply_hsr(&handle).await?)?
             }
+            InfoKind::IpIp => {
+                base_conf.apply(base_conf.apply_iptun(&handle).await?)?
+            }
             t => {
                 return Err(CliError::from(format!(
                     "Unsupported device type: {t}"
