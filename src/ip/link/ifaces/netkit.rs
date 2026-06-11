@@ -3,7 +3,7 @@
 use iproute_rs::CliError;
 use rtnetlink::{
     LinkMessageBuilder, LinkNetkit,
-    packet_route::link::{InfoNetkit, NetkitMode, NetkitPolicy, NetkitScrub},
+    packet_route::link::{InfoNetkit, NetkitMode},
 };
 use serde::Serialize;
 
@@ -35,11 +35,7 @@ impl From<&[InfoNetkit]> for CliLinkInfoDataNetkit {
         for nla in info {
             match nla {
                 InfoNetkit::Mode(m) => {
-                    mode = match m {
-                        NetkitMode::L2 => "l2".to_string(),
-                        NetkitMode::L3 => "l3".to_string(),
-                        _ => format!("{m:?}"),
-                    };
+                    mode = m.to_string();
                 }
                 InfoNetkit::Primary(v) => {
                     typ = if *v {
@@ -49,32 +45,16 @@ impl From<&[InfoNetkit]> for CliLinkInfoDataNetkit {
                     };
                 }
                 InfoNetkit::Policy(p) => {
-                    policy = Some(match p {
-                        NetkitPolicy::Pass => "forward".to_string(),
-                        NetkitPolicy::Drop => "blackhole".to_string(),
-                        _ => format!("{p:?}"),
-                    });
+                    policy = Some(p.to_string());
                 }
                 InfoNetkit::PeerPolicy(p) => {
-                    peer_policy = Some(match p {
-                        NetkitPolicy::Pass => "forward".to_string(),
-                        NetkitPolicy::Drop => "blackhole".to_string(),
-                        _ => format!("{p:?}"),
-                    });
+                    peer_policy = Some(p.to_string());
                 }
                 InfoNetkit::Scrub(s) => {
-                    scrub = match s {
-                        NetkitScrub::None => "none".to_string(),
-                        NetkitScrub::Default => "default".to_string(),
-                        _ => format!("{s:?}"),
-                    };
+                    scrub = s.to_string();
                 }
                 InfoNetkit::PeerScrub(s) => {
-                    peer_scrub = match s {
-                        NetkitScrub::None => "none".to_string(),
-                        NetkitScrub::Default => "default".to_string(),
-                        _ => format!("{s:?}"),
-                    };
+                    peer_scrub = s.to_string();
                 }
                 _ => (),
             }
@@ -112,21 +92,19 @@ impl LinkBaseConf {
                             "netkit mode requires a value",
                         ));
                     };
-                    mode = match v.as_str() {
-                        "l3" => NetkitMode::L3,
-                        "l2" => NetkitMode::L2,
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "netkit mode must be l3 or l2, got {v}"
-                            )));
-                        }
-                    };
+                    mode = v.parse().map_err(|_| {
+                        CliError::from(format!(
+                            "netkit mode must be l3 or l2, got {v}"
+                        ))
+                    })?;
                 }
                 "forward" | "blackhole" => {
-                    let p = match key.as_str() {
-                        "forward" => NetkitPolicy::Pass,
-                        _ => NetkitPolicy::Drop,
-                    };
+                    let p = key.parse().map_err(|_| {
+                        CliError::from(format!(
+                            "netkit policy must be forward or blackhole, got \
+                             {key}"
+                        ))
+                    })?;
                     if seen_peer {
                         peer_policy = Some(p);
                     } else {
@@ -150,15 +128,11 @@ impl LinkBaseConf {
                             "netkit scrub requires a value",
                         ));
                     };
-                    let s = match v.as_str() {
-                        "default" => NetkitScrub::Default,
-                        "none" => NetkitScrub::None,
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "netkit scrub must be default or none, got {v}"
-                            )));
-                        }
-                    };
+                    let s = v.parse().map_err(|_| {
+                        CliError::from(format!(
+                            "netkit scrub must be default or none, got {v}"
+                        ))
+                    })?;
                     if seen_peer {
                         peer_scrub = Some(s);
                     } else {
