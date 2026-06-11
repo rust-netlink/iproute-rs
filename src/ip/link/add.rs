@@ -59,6 +59,7 @@ impl LinkAddCommand {
             InfoKind::Hsr => {
                 base_conf.apply(base_conf.apply_hsr(&handle).await?)?
             }
+            InfoKind::Netkit => base_conf.apply(base_conf.apply_netkit()?)?,
             InfoKind::IpIp => {
                 base_conf.apply(base_conf.apply_iptun(&handle).await?)?
             }

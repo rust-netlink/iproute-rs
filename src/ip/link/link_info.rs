@@ -9,6 +9,7 @@ use super::ifaces::{
     bridge::{CliLinkInfoDataBridge, CliLinkInfoDataBridgePort},
     hsr::CliLinkInfoDataHsr,
     iptun::CliLinkInfoDataIpIp,
+    netkit::CliLinkInfoDataNetkit,
     veth::CliLinkInfoDataVeth,
     vlan::CliLinkInfoDataVlan,
     vxlan::CliLinkInfoDataVxlan,
@@ -95,6 +96,7 @@ impl std::fmt::Display for CliLinkInfo {
 #[derive(Serialize)]
 #[serde(untagged)]
 pub(crate) enum CliLinkInfoData {
+    Netkit(Box<CliLinkInfoDataNetkit>),
     Vlan(Box<CliLinkInfoDataVlan>),
     Veth(Box<CliLinkInfoDataVeth>),
     Bridge(Box<CliLinkInfoDataBridge>),
@@ -122,6 +124,9 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
             InfoData::IpTunnel(v) => {
                 Ok(Self::IpIp(Box::new(v.as_slice().into())))
             }
+            InfoData::Netkit(v) => {
+                Ok(Self::Netkit(Box::new(v.as_slice().into())))
+            }
             _ => Err(()),
         }
     }
@@ -141,6 +146,7 @@ impl CliLinkInfoData {
 impl std::fmt::Display for CliLinkInfoData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            CliLinkInfoData::Netkit(v) => write!(f, "{v}"),
             CliLinkInfoData::Vlan(v) => write!(f, "{v}"),
             CliLinkInfoData::Veth(v) => write!(f, "{v}"),
             CliLinkInfoData::Bridge(v) => write!(f, "{v}"),
