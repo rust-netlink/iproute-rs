@@ -12,6 +12,7 @@ use super::ifaces::{
     netkit::CliLinkInfoDataNetkit,
     veth::CliLinkInfoDataVeth,
     vlan::CliLinkInfoDataVlan,
+    vrf::{CliLinkInfoDataVrf, CliLinkInfoDataVrfPort},
     vxlan::CliLinkInfoDataVxlan,
 };
 use crate::link::ifaces::bond::{CliLinkInfoDataBond, CliLinkInfoDataBondPort};
@@ -104,6 +105,7 @@ pub(crate) enum CliLinkInfoData {
     Vxlan(Box<CliLinkInfoDataVxlan>),
     Hsr(Box<CliLinkInfoDataHsr>),
     IpIp(Box<CliLinkInfoDataIpIp>),
+    Vrf(Box<CliLinkInfoDataVrf>),
 }
 
 impl TryFrom<&InfoData> for CliLinkInfoData {
@@ -127,6 +129,7 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
             InfoData::Netkit(v) => {
                 Ok(Self::Netkit(Box::new(v.as_slice().into())))
             }
+            InfoData::Vrf(v) => Ok(Self::Vrf(Box::new(v.as_slice().into()))),
             _ => Err(()),
         }
     }
@@ -154,15 +157,18 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::Vxlan(v) => write!(f, "{v}"),
             CliLinkInfoData::Hsr(v) => write!(f, "{v}"),
             CliLinkInfoData::IpIp(v) => write!(f, "{v}"),
+            CliLinkInfoData::Vrf(v) => write!(f, "{v}"),
         }
     }
 }
 
 #[derive(Serialize)]
 #[serde(untagged)]
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum CliLinkInfoPortData {
     BridgePort(CliLinkInfoDataBridgePort),
     BondPort(CliLinkInfoDataBondPort),
+    VrfPort(CliLinkInfoDataVrfPort),
 }
 
 impl std::fmt::Display for CliLinkInfoPortData {
@@ -170,6 +176,7 @@ impl std::fmt::Display for CliLinkInfoPortData {
         match self {
             CliLinkInfoPortData::BridgePort(v) => write!(f, "{v}"),
             CliLinkInfoPortData::BondPort(v) => write!(f, "{v}"),
+            CliLinkInfoPortData::VrfPort(v) => write!(f, "{v}"),
         }
     }
 }
@@ -185,6 +192,7 @@ impl TryFrom<&InfoPortData> for CliLinkInfoPortData {
             InfoPortData::BondPort(v) => {
                 Ok(Self::BondPort(v.as_slice().into()))
             }
+            InfoPortData::VrfPort(v) => Ok(Self::VrfPort(v.as_slice().into())),
             _ => Err(()),
         }
     }
