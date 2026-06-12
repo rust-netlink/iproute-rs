@@ -12,4 +12,5 @@ mod netkit;
 mod nlmon;
 mod veth;
 mod vlan;
+mod vrf;
 mod vxlan;
