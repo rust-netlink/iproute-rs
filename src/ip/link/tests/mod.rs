@@ -5,6 +5,7 @@ mod bridge;
 mod color;
 mod dummy;
 mod hsr;
+mod ip6tnl;
 mod ipip;
 mod loopback;
 mod netkit;

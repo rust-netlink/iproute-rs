@@ -239,7 +239,6 @@ pub(crate) async fn parse_nl_msg_to_iface(
         && matches!(
             link_layer_type,
             LinkLayerType::Tunnel
-                | LinkLayerType::Tunnel6
                 | LinkLayerType::Sit
                 | LinkLayerType::Ipgre
                 | LinkLayerType::Ip6gre

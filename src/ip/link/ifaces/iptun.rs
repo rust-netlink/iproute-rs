@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, net::IpAddr, str::FromStr};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    str::FromStr,
+};
 
 use iproute_rs::CliError;
 use rtnetlink::{
-    LinkIpIp, LinkMessageBuilder,
+    LinkIp6Tnl, LinkIpIp, LinkMessageBuilder,
     packet_route::{
         IpProtocol,
-        link::{InfoIpTunnel, TunnelEncapFlags, TunnelEncapType},
+        link::{
+            InfoIpTunnel, Ip6TunnelFlags, TunnelEncapFlags, TunnelEncapType,
+        },
     },
 };
 use serde::Serialize;
@@ -38,6 +44,12 @@ pub(crate) struct CliLinkInfoDataIpIp {
     #[serde(skip)]
     encap_dport: Option<u16>,
     collect_metadata: bool,
+    #[serde(skip)]
+    encap_limit: Option<u8>,
+    #[serde(skip)]
+    flow_info: Option<u32>,
+    #[serde(skip)]
+    ipv6_flags: Option<Ip6TunnelFlags>,
 }
 
 impl CliLinkInfoDataIpIp {
@@ -65,6 +77,9 @@ impl From<&[InfoIpTunnel]> for CliLinkInfoDataIpIp {
         let mut encap_sport = None;
         let mut encap_dport = None;
         let mut collect_metadata = false;
+        let mut encap_limit = None;
+        let mut flow_info = None;
+        let mut ipv6_flags = None;
 
         for nla in info {
             match nla {
@@ -81,6 +96,9 @@ impl From<&[InfoIpTunnel]> for CliLinkInfoDataIpIp {
                 InfoIpTunnel::EncapSPort(v) => encap_sport = Some(*v),
                 InfoIpTunnel::EncapDPort(v) => encap_dport = Some(*v),
                 InfoIpTunnel::CollectMetadata => collect_metadata = true,
+                InfoIpTunnel::EncapLimit(v) => encap_limit = Some(*v),
+                InfoIpTunnel::FlowInfo(v) => flow_info = Some(*v),
+                InfoIpTunnel::Ipv6Flags(v) => ipv6_flags = Some(*v),
                 _ => (),
             }
         }
@@ -100,6 +118,9 @@ impl From<&[InfoIpTunnel]> for CliLinkInfoDataIpIp {
             encap_sport,
             encap_dport,
             collect_metadata,
+            encap_limit,
+            flow_info,
+            ipv6_flags,
         }
     }
 }
@@ -115,14 +136,29 @@ impl std::fmt::Display for CliLinkInfoDataIpIp {
             }};
         }
 
+        let is_ip6tnl = self.remote.as_ref().is_some_and(|a| a.is_ipv6())
+            || self.local.as_ref().is_some_and(|a| a.is_ipv6());
+
         if self.collect_metadata {
             emit!("external");
         }
 
         if let Some(proto) = self.proto {
             match proto {
-                IpProtocol::Ipip => emit!("ipip"),
-                IpProtocol::Ipv6 => emit!("ip6ip"),
+                IpProtocol::Ipip => {
+                    if is_ip6tnl {
+                        emit!("ipip6");
+                    } else {
+                        emit!("ipip");
+                    }
+                }
+                IpProtocol::Ipv6 => {
+                    if is_ip6tnl {
+                        emit!("ip6ip6");
+                    } else {
+                        emit!("ip6ip");
+                    }
+                }
                 _ => {
                     let v: u8 = proto.into();
                     if v == 137 {
@@ -136,6 +172,7 @@ impl std::fmt::Display for CliLinkInfoDataIpIp {
 
         let addr_display = |addr: &IpAddr| match addr {
             IpAddr::V4(a) if a.is_unspecified() => "any".to_string(),
+            IpAddr::V6(a) if a.is_unspecified() => "any".to_string(),
             _ => addr.to_string(),
         };
 
@@ -157,37 +194,85 @@ impl std::fmt::Display for CliLinkInfoDataIpIp {
             emit!("dev if{v}");
         }
 
-        if let Some(ttl) = self.ttl {
+        if is_ip6tnl {
+            let ttl = self.ttl.unwrap_or(0);
             if ttl == 0 {
-                emit!("ttl inherit");
+                emit!("hoplimit inherit");
             } else {
-                emit!("ttl {ttl}");
+                emit!("hoplimit {ttl}");
+            }
+
+            let flags = self.ipv6_flags.unwrap_or(Ip6TunnelFlags::empty());
+            if flags.contains(Ip6TunnelFlags::IgnEncapLimit) {
+                emit!("encaplimit none");
+            } else {
+                emit!("encaplimit {}", self.encap_limit.unwrap_or(0));
+            }
+
+            if flags.contains(Ip6TunnelFlags::UseOrigTclass) {
+                emit!("tclass inherit");
+            } else {
+                emit!(
+                    "tclass 0x{:02x}",
+                    (self.flow_info.unwrap_or(0) >> 20) as u8
+                );
+            }
+
+            if flags.contains(Ip6TunnelFlags::UseOrigFlowlabel) {
+                emit!("flowlabel inherit");
+            } else {
+                emit!(
+                    "flowlabel 0x{:05x}",
+                    self.flow_info.unwrap_or(0) & 0x000fffff
+                );
+            }
+
+            if flags.contains(Ip6TunnelFlags::RcvDscpCopy) {
+                emit!("dscp inherit");
+            }
+
+            if flags.contains(Ip6TunnelFlags::AllowLocalRemote) {
+                emit!("allow-localremote");
             }
         } else {
-            emit!("ttl inherit");
-        }
-
-        if let Some(tos) = self.tos {
-            if tos == 0 {
-                // not printed
-            } else if tos == 1 {
-                emit!("tos inherit");
+            if let Some(ttl) = self.ttl {
+                if ttl == 0 {
+                    emit!("ttl inherit");
+                } else {
+                    emit!("ttl {ttl}");
+                }
             } else {
-                emit!("tos 0x{tos:x}");
+                emit!("ttl inherit");
             }
-        }
 
-        if let Some(pmtudisc) = self.pmtudisc {
-            if pmtudisc {
-                emit!("pmtudisc");
+            if let Some(tos) = self.tos {
+                if tos == 0 {
+                    // not printed
+                } else if tos == 1 {
+                    emit!("tos inherit");
+                } else {
+                    emit!("tos 0x{tos:x}");
+                }
+            }
+
+            if let Some(pmtudisc) = self.pmtudisc {
+                if pmtudisc {
+                    emit!("pmtudisc");
+                } else {
+                    emit!("nopmtudisc");
+                }
             } else {
                 emit!("nopmtudisc");
             }
-        } else {
-            emit!("nopmtudisc");
         }
 
-        if let Some(fwmark) = self.fwmark
+        if is_ip6tnl
+            && self
+                .ipv6_flags
+                .is_some_and(|f| f.contains(Ip6TunnelFlags::UseOrigFwMark))
+        {
+            emit!("fwmark inherit");
+        } else if let Some(fwmark) = self.fwmark
             && fwmark != 0
         {
             emit!("fwmark 0x{fwmark:x}");
@@ -420,7 +505,245 @@ fn parse_dsfield(s: &str) -> Result<u8, CliError> {
     }
 }
 
-use std::net::Ipv4Addr;
+impl LinkBaseConf {
+    pub(crate) async fn apply_ip6tnl(
+        &self,
+        handle: &rtnetlink::Handle,
+    ) -> Result<LinkMessageBuilder<LinkIp6Tnl>, CliError> {
+        let mut builder = LinkIp6Tnl::new(&self.name);
+        let mut metadata = false;
+
+        let mut iter = self.iface_specific.iter();
+        while let Some(key) = iter.next() {
+            let mut next_val = || {
+                iter.next().ok_or_else(|| {
+                    CliError::from(format!("ip6tnl {key} requires a value"))
+                })
+            };
+            match key.as_str() {
+                "local" => {
+                    let v = next_val()?;
+                    let addr: Ipv6Addr = parse_ip(v, "local")?;
+                    builder = builder.local(addr);
+                }
+                "remote" => {
+                    let v = next_val()?;
+                    let addr: Ipv6Addr = parse_ip(v, "remote")?;
+                    builder = builder.remote(addr);
+                }
+                "dev" => {
+                    let v = next_val()?;
+                    let ifindex = self.get_ifindex_by_name(handle, v).await?;
+                    builder = builder.dev(ifindex);
+                }
+                "ttl" | "hoplimit" | "hlim" => {
+                    let v = next_val()?;
+                    match v.as_str() {
+                        "inherit" => {
+                            builder = builder.ttl(0);
+                        }
+                        _ => {
+                            let ttl: u8 = v.parse().map_err(|_| {
+                                CliError::from(format!("invalid TTL: {v}"))
+                            })?;
+                            builder = builder.ttl(ttl);
+                        }
+                    }
+                }
+                "encaplimit" => {
+                    let v = next_val()?;
+                    if v == "none" {
+                        builder = builder
+                            .set_flag(Ip6TunnelFlags::IgnEncapLimit, true);
+                    } else {
+                        let limit: u8 = v.parse().map_err(|_| {
+                            CliError::from(format!("invalid encaplimit: {v}"))
+                        })?;
+                        builder = builder.encap_limit(limit);
+                        builder = builder
+                            .set_flag(Ip6TunnelFlags::IgnEncapLimit, false);
+                    }
+                }
+                "tos" | "tclass" | "tc" | "dsfield" => {
+                    let v = next_val()?;
+                    if v == "inherit" {
+                        builder = builder.tclass(None);
+                    } else {
+                        let uval: u8 = if let Some(hex) = v.strip_prefix("0x") {
+                            u8::from_str_radix(hex, 16).map_err(|_| {
+                                CliError::from(format!("invalid TClass: {v}"))
+                            })?
+                        } else {
+                            v.parse::<u8>().map_err(|_| {
+                                CliError::from(format!("invalid TClass: {v}"))
+                            })?
+                        };
+                        builder = builder.tclass(Some(uval));
+                    }
+                }
+                "flowlabel" | "fl" => {
+                    let v = next_val()?;
+                    if v == "inherit" {
+                        builder = builder.flowlabel(None);
+                    } else {
+                        let uval = if let Some(hex) = v.strip_prefix("0x") {
+                            u32::from_str_radix(hex, 16)
+                        } else {
+                            v.parse()
+                        };
+                        let uval = uval.map_err(|_| {
+                            CliError::from(format!("invalid flowlabel: {v}"))
+                        })?;
+                        if uval > 0xfffff {
+                            return Err(CliError::from(format!(
+                                "invalid flowlabel: {v}"
+                            )));
+                        }
+                        builder = builder.flowlabel(Some(uval));
+                    }
+                }
+                "dscp" => {
+                    let v = next_val()?;
+                    if v != "inherit" {
+                        return Err(CliError::from(format!(
+                            "dscp only supports inherit, got {v}"
+                        )));
+                    }
+                    builder =
+                        builder.set_flag(Ip6TunnelFlags::RcvDscpCopy, true);
+                }
+                "allow-localremote" => {
+                    builder = builder
+                        .set_flag(Ip6TunnelFlags::AllowLocalRemote, true);
+                }
+                "noallow-localremote" => {
+                    builder = builder
+                        .set_flag(Ip6TunnelFlags::AllowLocalRemote, false);
+                }
+                "pmtudisc" => {
+                    builder = builder.pmtudisc(true);
+                }
+                "nopmtudisc" => {
+                    builder = builder.pmtudisc(false);
+                }
+                "mode" => {
+                    let v = next_val()?;
+                    match v.as_str() {
+                        "ip6ip6" | "ipv6/ipv6" => {
+                            builder = builder.protocol(IpProtocol::Ipv6);
+                        }
+                        "ipip6" | "ip4ip6" | "ip/ipv6" | "ipv4/ipv6" => {
+                            builder = builder.protocol(IpProtocol::Ipip);
+                        }
+                        "any" | "any/ipv6" => {
+                            let proto = IpProtocol::from(0u8);
+                            builder = builder.protocol(proto);
+                        }
+                        _ => {
+                            return Err(CliError::from(format!(
+                                "Cannot guess tunnel mode: {v}"
+                            )));
+                        }
+                    }
+                }
+                "external" => {
+                    metadata = true;
+                }
+                "noencap" => {
+                    builder = builder.encap_type(TunnelEncapType::None);
+                }
+                "encap" => {
+                    let v = next_val()?;
+                    match v.as_str() {
+                        "fou" => {
+                            builder = builder.encap_type(TunnelEncapType::Fou);
+                        }
+                        "gue" => {
+                            builder = builder.encap_type(TunnelEncapType::Gue);
+                        }
+                        "none" => {
+                            builder = builder.encap_type(TunnelEncapType::None);
+                        }
+                        _ => {
+                            return Err(CliError::from(format!(
+                                "Invalid encap type: {v}"
+                            )));
+                        }
+                    }
+                }
+                "encap-sport" => {
+                    let v = next_val()?;
+                    if v == "auto" {
+                        builder = builder.encap_sport(0);
+                    } else {
+                        let port = parse_u16(v, "encap-sport")?;
+                        builder = builder.encap_sport(port);
+                    }
+                }
+                "encap-dport" => {
+                    let v = next_val()?;
+                    let port = parse_u16(v, "encap-dport")?;
+                    builder = builder.encap_dport(port);
+                }
+                "encap-csum" => {
+                    let flags = TunnelEncapFlags::CSum;
+                    builder = builder.encap_flags(flags);
+                }
+                "noencap-csum" => {
+                    let flags = TunnelEncapFlags::empty();
+                    builder = builder.encap_flags(flags);
+                }
+                "encap-udp6-csum" => {
+                    let flags = TunnelEncapFlags::CSum6;
+                    builder = builder.encap_flags(flags);
+                }
+                "noencap-udp6-csum" => {
+                    let flags = TunnelEncapFlags::empty();
+                    builder = builder.encap_flags(flags);
+                }
+                "encap-remcsum" => {
+                    let flags = TunnelEncapFlags::RemCSum;
+                    builder = builder.encap_flags(flags);
+                }
+                "noencap-remcsum" => {
+                    let flags = TunnelEncapFlags::empty();
+                    builder = builder.encap_flags(flags);
+                }
+                "fwmark" => {
+                    let v = next_val()?;
+                    if v == "inherit" {
+                        builder = builder
+                            .set_flag(Ip6TunnelFlags::UseOrigFwMark, true);
+                        builder = builder.fwmark(0);
+                    } else {
+                        let mark = if let Some(hex) = v.strip_prefix("0x") {
+                            u32::from_str_radix(hex, 16)
+                        } else {
+                            v.parse()
+                        };
+                        let mark = mark.map_err(|_| {
+                            CliError::from(format!("invalid fwmark: {v}"))
+                        })?;
+                        builder = builder.fwmark(mark);
+                        builder = builder
+                            .set_flag(Ip6TunnelFlags::UseOrigFwMark, false);
+                    }
+                }
+                _ => {
+                    return Err(CliError::from(format!(
+                        "Unknown ip6tnl argument: {key}"
+                    )));
+                }
+            }
+        }
+
+        if metadata {
+            builder = builder.collect_metadata(true);
+        }
+
+        Ok(builder)
+    }
+}
 
 #[cfg(test)]
 mod tests {

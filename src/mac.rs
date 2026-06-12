@@ -5,18 +5,21 @@ use std::fmt::Write;
 use crate::CliError;
 
 pub fn mac_to_string(data: &[u8]) -> String {
-    let as_ip = data.len() == 4;
-    let sep = if as_ip { '.' } else { ':' };
+    if data.len() == 4 {
+        let mut arr = [0u8; 4];
+        arr.copy_from_slice(data);
+        return std::net::Ipv4Addr::from(arr).to_string();
+    }
+    if data.len() == 16 {
+        let mut arr = [0u8; 16];
+        arr.copy_from_slice(data);
+        return std::net::Ipv6Addr::from(arr).to_string();
+    }
     let mut rt = String::new();
-    for (i, m) in data.iter().enumerate().take(data.len()) {
-        if as_ip {
-            write!(rt, "{m}").ok();
-        } else {
-            write!(rt, "{m:02x}").ok();
-        }
-
+    for (i, m) in data.iter().enumerate() {
+        write!(rt, "{m:02x}").ok();
         if i != data.len() - 1 {
-            rt.push(sep);
+            rt.push(':');
         }
     }
     rt
