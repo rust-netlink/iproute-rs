@@ -61,6 +61,10 @@ pub(crate) struct CliLinkInfoDetail {
     parentbus: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     parentdev: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    phys_port_name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    phys_switch_id: String,
 }
 
 impl CliLinkInfoDetail {
@@ -82,6 +86,8 @@ impl CliLinkInfoDetail {
         let mut inet6_addr_gen_mode = String::new();
         let mut parentbus = String::new();
         let mut parentdev = String::new();
+        let mut phys_port_name = String::new();
+        let mut phys_switch_id = String::new();
         let mut netns_immutable = None;
 
         for nl_attr in nl_attrs {
@@ -105,6 +111,14 @@ impl CliLinkInfoDetail {
                 LinkAttribute::NetnsImmutable(v) => netns_immutable = Some(*v),
                 LinkAttribute::ParentDevName(n) => parentdev = n.clone(),
                 LinkAttribute::ParentDevBusName(n) => parentbus = n.clone(),
+                LinkAttribute::PhysPortName(n) => phys_port_name = n.clone(),
+                LinkAttribute::PhysSwitchId(id) => {
+                    phys_switch_id = id.id[..id.len]
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<Vec<_>>()
+                        .concat();
+                }
                 LinkAttribute::LinkInfo(info) => {
                     linkinfo = info.as_slice().try_into().ok();
                 }
@@ -133,6 +147,8 @@ impl CliLinkInfoDetail {
             netns_immutable,
             parentbus,
             parentdev,
+            phys_port_name,
+            phys_switch_id,
         }
     }
 
@@ -183,6 +199,12 @@ impl std::fmt::Display for CliLinkInfoDetail {
             self.gro_ipv4_max_size,
         )?;
 
+        if !self.phys_port_name.is_empty() {
+            write!(f, "portname {} ", self.phys_port_name)?;
+        }
+        if !self.phys_switch_id.is_empty() {
+            write!(f, "switchid {} ", self.phys_switch_id)?;
+        }
         if !self.parentbus.is_empty() {
             write!(f, "parentbus {} ", self.parentbus)?;
         }

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use futures_util::TryStreamExt;
 use iproute_rs::{CliError, parse_mac_str};
 use rtnetlink::{
-    LinkDummy, LinkMessageBuilder, LinkNlmon,
+    LinkDummy, LinkMessageBuilder, LinkNetdevsim, LinkNlmon,
     packet_route::link::{InfoKind, LinkMessage},
 };
 
@@ -58,6 +58,9 @@ impl LinkAddCommand {
             InfoKind::Bridge => base_conf.apply(base_conf.apply_bridge()?)?,
             InfoKind::Hsr => {
                 base_conf.apply(base_conf.apply_hsr(&handle).await?)?
+            }
+            InfoKind::Netdevsim => {
+                base_conf.apply(LinkNetdevsim::new(&base_conf.name))?
             }
             InfoKind::Netkit => base_conf.apply(base_conf.apply_netkit()?)?,
             InfoKind::Vrf => base_conf.apply(base_conf.apply_vrf()?)?,

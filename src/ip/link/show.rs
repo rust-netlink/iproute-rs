@@ -7,7 +7,7 @@ use iproute_rs::{
     CanDisplay, CanOutput, CliColor, CliError, mac_to_string, write_with_color,
 };
 use rtnetlink::packet_route::link::{
-    LinkAttribute, LinkFlags, LinkLayerType, LinkMessage, Prop,
+    LinkAttribute, LinkExtentMask, LinkFlags, LinkLayerType, LinkMessage, Prop,
 };
 use serde::Serialize;
 
@@ -55,6 +55,8 @@ pub(crate) struct CliLinkInfo {
     altnames: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     addr_info: Option<Vec<CliAddressInfo>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vfinfo_list: Option<Vec<()>>,
 }
 
 impl CliLinkInfo {
@@ -185,7 +187,13 @@ pub(crate) async fn handle_show(
 
     tokio::spawn(connection);
 
-    let link_get_handle = handle.link().get();
+    let link_get_handle = handle
+        .link()
+        .get()
+        .set_filter_mask(
+            rtnetlink::packet_route::AddressFamily::Unspec,
+            vec![LinkExtentMask::Vf],
+        );
 
     let mut links = link_get_handle.execute();
     let mut ifaces: Vec<CliLinkInfo> = Vec::new();
@@ -238,6 +246,7 @@ pub(crate) async fn parse_nl_msg_to_iface(
             &nl_msg.header.link_layer_type.to_string().to_lowercase(),
         ),
         is_point_2_point: nl_msg.header.flags.contains(LinkFlags::Pointopoint),
+        vfinfo_list: None,
         ..Default::default()
     };
 
@@ -289,9 +298,10 @@ pub(crate) async fn parse_nl_msg_to_iface(
                     }
                 }
             }
-            _ => {
-                // println!("Remains {:?}", nl_attr);
+            LinkAttribute::VfInfoList(_) => {
+                ret.vfinfo_list = Some(vec![]);
             }
+            _ => {}
         }
     }
 
