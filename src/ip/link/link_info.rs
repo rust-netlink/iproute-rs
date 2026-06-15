@@ -11,6 +11,7 @@ use super::ifaces::{
     iptun::CliLinkInfoDataIpIp,
     ipvlan::{CliLinkInfoDataIpVlan, CliLinkInfoDataIpVtap},
     mac_vlan::{CliLinkInfoDataMacVlan, CliLinkInfoDataMacVtap},
+    macsec::CliLinkInfoDataMacSec,
     netkit::CliLinkInfoDataNetkit,
     veth::CliLinkInfoDataVeth,
     vlan::CliLinkInfoDataVlan,
@@ -111,6 +112,7 @@ pub(crate) enum CliLinkInfoData {
     IpVtap(Box<CliLinkInfoDataIpVtap>),
     MacVlan(Box<CliLinkInfoDataMacVlan>),
     MacVtap(Box<CliLinkInfoDataMacVtap>),
+    MacSec(Box<CliLinkInfoDataMacSec>),
     Vrf(Box<CliLinkInfoDataVrf>),
 }
 
@@ -148,6 +150,9 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
                 Ok(Self::Netkit(Box::new(v.as_slice().into())))
             }
             InfoData::Vrf(v) => Ok(Self::Vrf(Box::new(v.as_slice().into()))),
+            InfoData::MacSec(v) => {
+                Ok(Self::MacSec(Box::new(v.as_slice().into())))
+            }
             _ => Err(()),
         }
     }
@@ -179,6 +184,7 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::IpVtap(v) => write!(f, "{v}"),
             CliLinkInfoData::MacVlan(v) => write!(f, "{v}"),
             CliLinkInfoData::MacVtap(v) => write!(f, "{v}"),
+            CliLinkInfoData::MacSec(v) => write!(f, "{v}"),
             CliLinkInfoData::Vrf(v) => write!(f, "{v}"),
         }
     }

@@ -6,6 +6,7 @@ pub(super) mod hsr;
 pub(super) mod iptun;
 pub(super) mod ipvlan;
 pub(super) mod mac_vlan;
+pub(super) mod macsec;
 pub(super) mod netkit;
 pub(super) mod parse;
 pub(super) mod veth;

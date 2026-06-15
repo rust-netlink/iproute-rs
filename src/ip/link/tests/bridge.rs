@@ -6,7 +6,7 @@ const BRIDGE_NAME: &str = "test-br";
 const BRIDGE_NAME2: &str = "test-br2";
 const DUMMY_NAME: &str = "test-dummy";
 
-/// Normalize timer values in output to avoid test flakiness
+/// Normalize timer values and whitespace in output to avoid test flakiness
 /// Timer values can vary slightly between consecutive calls due to kernel
 /// timing
 fn normalize_timers(output: String) -> String {
@@ -22,8 +22,6 @@ fn normalize_timers(output: String) -> String {
 
     let mut result = output;
     for timer_name in timer_names {
-        // Find and replace timer values like "gc_timer    0.05" with "gc_timer
-        // 0.00"
         let mut new_result = String::new();
         let mut remaining = result.as_str();
 
@@ -33,21 +31,17 @@ fn normalize_timers(output: String) -> String {
 
             remaining = &remaining[pos + timer_name.len()..];
 
-            // Skip whitespace
-            let whitespace_len =
-                remaining.chars().take_while(|c| c.is_whitespace()).count();
-            new_result.push_str(&remaining[..whitespace_len]);
-            remaining = &remaining[whitespace_len..];
-
-            // Skip the number (format: digits.digits)
-            let number_len = remaining
+            // Skip whitespace and number, replace with fixed " 0.00 "
+            let after_len: usize = remaining
                 .chars()
-                .take_while(|c| c.is_ascii_digit() || *c == '.')
-                .count();
+                .skip_while(|c| c.is_whitespace())
+                .skip_while(|c| c.is_ascii_digit() || *c == '.')
+                .map(|c| c.len_utf8())
+                .sum();
+            let total_len = remaining.len() - after_len;
+            remaining = &remaining[total_len..];
 
-            // Replace with 0.00
-            new_result.push_str("0.00");
-            remaining = &remaining[number_len..];
+            new_result.push_str(" 0.00 ");
         }
         new_result.push_str(remaining);
         result = new_result;
