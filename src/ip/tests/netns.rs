@@ -62,7 +62,7 @@ impl NetnsGuard {
         cur_exec_path.pop();
         cur_exec_path.pop();
 
-        let ip_rs_pathbuf = cur_exec_path.join("ip");
+        let ip_rs_pathbuf = cur_exec_path.join("ip-rs");
         let ip_rs_path = ip_rs_pathbuf.to_str().expect("Not UTF-8 string");
 
         let mut full_args = vec!["netns", "exec", &self.name];

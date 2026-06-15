@@ -14,7 +14,7 @@ keywords = ["network"]
 name = "iproute_rs"
 
 [[bin]]
-name = "ip"
+name = "ip-rs"
 path = "src/ip/main.rs"
 
 [dependencies]
