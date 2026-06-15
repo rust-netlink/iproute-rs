@@ -10,6 +10,7 @@ use super::ifaces::{
     hsr::CliLinkInfoDataHsr,
     iptun::CliLinkInfoDataIpIp,
     ipvlan::{CliLinkInfoDataIpVlan, CliLinkInfoDataIpVtap},
+    mac_vlan::{CliLinkInfoDataMacVlan, CliLinkInfoDataMacVtap},
     netkit::CliLinkInfoDataNetkit,
     veth::CliLinkInfoDataVeth,
     vlan::CliLinkInfoDataVlan,
@@ -108,6 +109,8 @@ pub(crate) enum CliLinkInfoData {
     IpIp(Box<CliLinkInfoDataIpIp>),
     IpVlan(Box<CliLinkInfoDataIpVlan>),
     IpVtap(Box<CliLinkInfoDataIpVtap>),
+    MacVlan(Box<CliLinkInfoDataMacVlan>),
+    MacVtap(Box<CliLinkInfoDataMacVtap>),
     Vrf(Box<CliLinkInfoDataVrf>),
 }
 
@@ -134,6 +137,12 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
             }
             InfoData::IpVtap(v) => {
                 Ok(Self::IpVtap(Box::new(v.as_slice().into())))
+            }
+            InfoData::MacVlan(v) => {
+                Ok(Self::MacVlan(Box::new(v.as_slice().into())))
+            }
+            InfoData::MacVtap(v) => {
+                Ok(Self::MacVtap(Box::new(v.as_slice().into())))
             }
             InfoData::Netkit(v) => {
                 Ok(Self::Netkit(Box::new(v.as_slice().into())))
@@ -168,6 +177,8 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::IpIp(v) => write!(f, "{v}"),
             CliLinkInfoData::IpVlan(v) => write!(f, "{v}"),
             CliLinkInfoData::IpVtap(v) => write!(f, "{v}"),
+            CliLinkInfoData::MacVlan(v) => write!(f, "{v}"),
+            CliLinkInfoData::MacVtap(v) => write!(f, "{v}"),
             CliLinkInfoData::Vrf(v) => write!(f, "{v}"),
         }
     }

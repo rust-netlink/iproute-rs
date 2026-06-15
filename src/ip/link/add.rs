@@ -73,6 +73,12 @@ impl LinkAddCommand {
             InfoKind::IpVtap => {
                 base_conf.apply(base_conf.apply_ipvtap(&handle).await?)?
             }
+            InfoKind::MacVlan => {
+                base_conf.apply(base_conf.apply_macvlan(&handle).await?)?
+            }
+            InfoKind::MacVtap => {
+                base_conf.apply(base_conf.apply_macvtap(&handle).await?)?
+            }
             t => {
                 return Err(CliError::from(format!(
                     "Unsupported device type: {t}"

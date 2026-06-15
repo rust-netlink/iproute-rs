@@ -9,6 +9,7 @@ mod ip6tnl;
 mod ipip;
 mod ipvlan;
 mod loopback;
+mod mac_vlan;
 mod netkit;
 mod nlmon;
 mod veth;
