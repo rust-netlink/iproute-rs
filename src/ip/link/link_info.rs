@@ -9,6 +9,7 @@ use super::ifaces::{
     bridge::{CliLinkInfoDataBridge, CliLinkInfoDataBridgePort},
     hsr::CliLinkInfoDataHsr,
     iptun::CliLinkInfoDataIpIp,
+    ipvlan::{CliLinkInfoDataIpVlan, CliLinkInfoDataIpVtap},
     netkit::CliLinkInfoDataNetkit,
     veth::CliLinkInfoDataVeth,
     vlan::CliLinkInfoDataVlan,
@@ -105,6 +106,8 @@ pub(crate) enum CliLinkInfoData {
     Vxlan(Box<CliLinkInfoDataVxlan>),
     Hsr(Box<CliLinkInfoDataHsr>),
     IpIp(Box<CliLinkInfoDataIpIp>),
+    IpVlan(Box<CliLinkInfoDataIpVlan>),
+    IpVtap(Box<CliLinkInfoDataIpVtap>),
     Vrf(Box<CliLinkInfoDataVrf>),
 }
 
@@ -125,6 +128,12 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
             InfoData::Hsr(v) => Ok(Self::Hsr(Box::new(v.as_slice().into()))),
             InfoData::IpTunnel(v) => {
                 Ok(Self::IpIp(Box::new(v.as_slice().into())))
+            }
+            InfoData::IpVlan(v) => {
+                Ok(Self::IpVlan(Box::new(v.as_slice().into())))
+            }
+            InfoData::IpVtap(v) => {
+                Ok(Self::IpVtap(Box::new(v.as_slice().into())))
             }
             InfoData::Netkit(v) => {
                 Ok(Self::Netkit(Box::new(v.as_slice().into())))
@@ -157,6 +166,8 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::Vxlan(v) => write!(f, "{v}"),
             CliLinkInfoData::Hsr(v) => write!(f, "{v}"),
             CliLinkInfoData::IpIp(v) => write!(f, "{v}"),
+            CliLinkInfoData::IpVlan(v) => write!(f, "{v}"),
+            CliLinkInfoData::IpVtap(v) => write!(f, "{v}"),
             CliLinkInfoData::Vrf(v) => write!(f, "{v}"),
         }
     }

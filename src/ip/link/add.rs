@@ -67,6 +67,12 @@ impl LinkAddCommand {
             InfoKind::Ip6Tnl => {
                 base_conf.apply(base_conf.apply_ip6tnl(&handle).await?)?
             }
+            InfoKind::IpVlan => {
+                base_conf.apply(base_conf.apply_ipvlan(&handle).await?)?
+            }
+            InfoKind::IpVtap => {
+                base_conf.apply(base_conf.apply_ipvtap(&handle).await?)?
+            }
             t => {
                 return Err(CliError::from(format!(
                     "Unsupported device type: {t}"

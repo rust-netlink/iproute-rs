@@ -7,6 +7,7 @@ mod dummy;
 mod hsr;
 mod ip6tnl;
 mod ipip;
+mod ipvlan;
 mod loopback;
 mod netkit;
 mod nlmon;
