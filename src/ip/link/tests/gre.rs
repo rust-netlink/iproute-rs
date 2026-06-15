@@ -3,6 +3,7 @@
 use crate::tests::{NetnsGuard, with_netns};
 
 const GRE_NAME: &str = "test-gre";
+const GRETAP_NAME: &str = "test-gretap";
 
 #[test]
 fn test_link_show_gre() {
@@ -51,6 +52,20 @@ fn test_gre_fwmark() {
     });
 }
 
+#[test]
+fn test_link_show_gretap() {
+    with_gretap_iface(&[], |ns| {
+        ns.assert_eq_output(&["link", "show", GRETAP_NAME]);
+    });
+}
+
+#[test]
+fn test_link_detailed_show_gretap() {
+    with_gretap_iface(&[], |ns| {
+        ns.assert_eq_output(&["-d", "link", "show", GRETAP_NAME]);
+    });
+}
+
 fn with_gre_iface<T>(opts: &[&str], test: T)
 where
     T: FnOnce(&NetnsGuard),
@@ -86,6 +101,46 @@ where
 
         ns.ip_rs_exec_cmd(&args);
         ns.exec_cmd(&["ip", "link", "set", GRE_NAME, "up"]);
+
+        test(ns);
+    });
+}
+
+fn with_gretap_iface<T>(opts: &[&str], test: T)
+where
+    T: FnOnce(&NetnsGuard),
+{
+    with_netns(|ns| {
+        let parent_name = format!("p{GRETAP_NAME}");
+
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "add",
+            &parent_name,
+            "address",
+            "0e:d1:49:08:27:84",
+            "type",
+            "dummy",
+        ]);
+        ns.exec_cmd(&["ip", "link", "set", &parent_name, "up"]);
+
+        let mut args = vec![
+            "link",
+            "add",
+            "link",
+            &parent_name,
+            "name",
+            GRETAP_NAME,
+            "type",
+            "gretap",
+            "remote",
+            "10.0.0.1",
+        ];
+
+        args.extend_from_slice(opts);
+
+        ns.ip_rs_exec_cmd(&args);
+        ns.exec_cmd(&["ip", "link", "set", GRETAP_NAME, "up"]);
 
         test(ns);
     });
