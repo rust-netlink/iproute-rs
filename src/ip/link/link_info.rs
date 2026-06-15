@@ -8,6 +8,7 @@ use serde::Serialize;
 use super::ifaces::{
     bridge::{CliLinkInfoDataBridge, CliLinkInfoDataBridgePort},
     geneve::CliLinkInfoDataGeneve,
+    gre::CliLinkInfoDataGre,
     hsr::CliLinkInfoDataHsr,
     iptun::CliLinkInfoDataIpIp,
     ipvlan::{CliLinkInfoDataIpVlan, CliLinkInfoDataIpVtap},
@@ -115,6 +116,10 @@ pub(crate) enum CliLinkInfoData {
     MacVtap(Box<CliLinkInfoDataMacVtap>),
     MacSec(Box<CliLinkInfoDataMacSec>),
     Geneve(Box<CliLinkInfoDataGeneve>),
+    GreTun(Box<CliLinkInfoDataGre>),
+    GreTap(Box<CliLinkInfoDataGre>),
+    GreTun6(Box<CliLinkInfoDataGre>),
+    GreTap6(Box<CliLinkInfoDataGre>),
     Vrf(Box<CliLinkInfoDataVrf>),
 }
 
@@ -158,6 +163,18 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
             InfoData::Geneve(v) => {
                 Ok(Self::Geneve(Box::new(v.as_slice().into())))
             }
+            InfoData::GreTun(v) => {
+                Ok(Self::GreTun(Box::new(v.as_slice().into())))
+            }
+            InfoData::GreTap(v) => {
+                Ok(Self::GreTap(Box::new(v.as_slice().into())))
+            }
+            InfoData::GreTun6(v) => {
+                Ok(Self::GreTun6(Box::new(v.as_slice().into())))
+            }
+            InfoData::GreTap6(v) => {
+                Ok(Self::GreTap6(Box::new(v.as_slice().into())))
+            }
             _ => Err(()),
         }
     }
@@ -169,6 +186,10 @@ impl CliLinkInfoData {
             Self::Vxlan(vxlan) => vxlan.resolve_link(index_2_name),
             Self::Hsr(hsr) => hsr.resolve_link(index_2_name),
             Self::IpIp(ipip) => ipip.resolve_link(index_2_name),
+            Self::GreTun(gre) => gre.resolve_link(index_2_name),
+            Self::GreTap(gre) => gre.resolve_link(index_2_name),
+            Self::GreTun6(gre) => gre.resolve_link(index_2_name),
+            Self::GreTap6(gre) => gre.resolve_link(index_2_name),
             _ => (),
         }
     }
@@ -191,6 +212,10 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::MacVtap(v) => write!(f, "{v}"),
             CliLinkInfoData::MacSec(v) => write!(f, "{v}"),
             CliLinkInfoData::Geneve(v) => write!(f, "{v}"),
+            CliLinkInfoData::GreTun(v) => write!(f, "{v}"),
+            CliLinkInfoData::GreTap(v) => write!(f, "{v}"),
+            CliLinkInfoData::GreTun6(v) => write!(f, "{v}"),
+            CliLinkInfoData::GreTap6(v) => write!(f, "{v}"),
             CliLinkInfoData::Vrf(v) => write!(f, "{v}"),
         }
     }

@@ -85,6 +85,12 @@ impl LinkAddCommand {
             InfoKind::Geneve => {
                 base_conf.apply(base_conf.apply_geneve(&handle).await?)?
             }
+            InfoKind::GreTun => {
+                base_conf.apply(base_conf.apply_gre(&handle).await?)?
+            }
+            InfoKind::GreTap => {
+                base_conf.apply(base_conf.apply_gretap(&handle).await?)?
+            }
             t => {
                 return Err(CliError::from(format!(
                     "Unsupported device type: {t}"

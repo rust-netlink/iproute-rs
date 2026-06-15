@@ -5,6 +5,7 @@ mod bridge;
 mod color;
 mod dummy;
 mod geneve;
+mod gre;
 mod hsr;
 mod ip6tnl;
 mod ipip;

@@ -217,6 +217,16 @@ impl CliLinkInfo {
     }
 }
 
+/// HACK: Adjust ARPHRD type names from crate to match iproute2.
+/// The crate uses different names than iproute2 for some link types.
+fn normalize_link_type(link_type: &str) -> String {
+    match link_type {
+        "ipgre" => "gre".to_string(),
+        "ip6gre" => "ip6gre".to_string(),
+        _ => link_type.to_string(),
+    }
+}
+
 pub(crate) async fn parse_nl_msg_to_iface(
     nl_msg: LinkMessage,
     include_details: bool,
@@ -224,7 +234,9 @@ pub(crate) async fn parse_nl_msg_to_iface(
     let mut ret = CliLinkInfo {
         ifindex: nl_msg.header.index,
         flags: link_flags_to_string(nl_msg.header.flags),
-        link_type: nl_msg.header.link_layer_type.to_string().to_lowercase(),
+        link_type: normalize_link_type(
+            &nl_msg.header.link_layer_type.to_string().to_lowercase(),
+        ),
         is_point_2_point: nl_msg.header.flags.contains(LinkFlags::Pointopoint),
         ..Default::default()
     };
@@ -238,10 +250,7 @@ pub(crate) async fn parse_nl_msg_to_iface(
         && !linkinfo.info_kind.is_empty()
         && matches!(
             link_layer_type,
-            LinkLayerType::Tunnel
-                | LinkLayerType::Sit
-                | LinkLayerType::Ipgre
-                | LinkLayerType::Ip6gre
+            LinkLayerType::Tunnel | LinkLayerType::Sit | LinkLayerType::Ip6gre
         )
     {
         ret.link_type.clone_from(&linkinfo.info_kind);
