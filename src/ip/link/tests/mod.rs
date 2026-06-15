@@ -15,6 +15,7 @@ mod mac_vlan;
 mod macsec;
 mod netkit;
 mod nlmon;
+mod vcan;
 mod veth;
 mod vlan;
 mod vrf;
