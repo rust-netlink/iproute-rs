@@ -70,6 +70,9 @@ impl LinkAddCommand {
             InfoKind::Vxcan => {
                 base_conf.apply(base_conf.apply_vxcan()?)?
             }
+            InfoKind::Xfrm => {
+                base_conf.apply(base_conf.apply_xfrm(&handle).await?)?
+            }
             InfoKind::IpIp => {
                 base_conf.apply(base_conf.apply_iptun(&handle).await?)?
             }

@@ -17,6 +17,8 @@ use crate::link::detail::CliLinkInfoDetail;
 #[derive(Serialize, Default)]
 pub(crate) struct CliLinkInfo {
     ifindex: u32,
+    #[serde(skip)]
+    raw_flags: LinkFlags,
     #[serde(skip_serializing_if = "Option::is_none")]
     link: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -239,13 +241,15 @@ pub(crate) async fn parse_nl_msg_to_iface(
     nl_msg: LinkMessage,
     include_details: bool,
 ) -> Result<CliLinkInfo, CliError> {
+    let raw_flags = nl_msg.header.flags;
     let mut ret = CliLinkInfo {
         ifindex: nl_msg.header.index,
-        flags: link_flags_to_string(nl_msg.header.flags),
+        raw_flags,
+        flags: link_flags_to_string(raw_flags),
         link_type: normalize_link_type(
             &nl_msg.header.link_layer_type.to_string().to_lowercase(),
         ),
-        is_point_2_point: nl_msg.header.flags.contains(LinkFlags::Pointopoint),
+        is_point_2_point: raw_flags.contains(LinkFlags::Pointopoint),
         vfinfo_list: None,
         ..Default::default()
     };
@@ -411,6 +415,10 @@ fn resolve_controller_and_link_names(links: &mut [CliLinkInfo]) {
         .iter()
         .map(|l| (l.ifindex, l.ifname.to_string()))
         .collect();
+    let index_2_flags: HashMap<u32, LinkFlags> = links
+        .iter()
+        .map(|l| (l.ifindex, l.raw_flags))
+        .collect();
 
     for link in links.iter_mut() {
         if let Some(ctrl_ifindex) = link.controller_ifindex
@@ -422,6 +430,15 @@ fn resolve_controller_and_link_names(links: &mut [CliLinkInfo]) {
             // Keep link_index = 0 (tunnel interfaces show @NONE), skip
             // name resolution for zero index.
             if link_ifindex > 0 {
+                // iproute2 adds "M-DOWN" to flags when linked device is not UP
+                let link_up = index_2_flags
+                    .get(&link_ifindex)
+                    .map(|f| f.contains(LinkFlags::Up))
+                    .unwrap_or(false);
+                if !link_up && !link.flags.contains(&"M-DOWN".to_string()) {
+                    link.flags.push("M-DOWN".into());
+                }
+
                 // Only set link name if the link is from the current netns
                 if let Some(name) = index_2_name.get(&link_ifindex)
                     && link.link_netnsid.is_none()
