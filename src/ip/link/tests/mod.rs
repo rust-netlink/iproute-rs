@@ -19,4 +19,5 @@ mod vcan;
 mod veth;
 mod vlan;
 mod vrf;
+mod vxcan;
 mod vxlan;

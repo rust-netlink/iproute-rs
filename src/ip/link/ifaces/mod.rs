@@ -13,5 +13,6 @@ pub(super) mod netkit;
 pub(super) mod parse;
 pub(super) mod veth;
 pub(super) mod vlan;
+pub(super) mod vxcan;
 pub(super) mod vrf;
 pub(super) mod vxlan;
