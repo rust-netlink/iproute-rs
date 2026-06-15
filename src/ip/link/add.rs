@@ -82,6 +82,9 @@ impl LinkAddCommand {
             InfoKind::MacSec => {
                 base_conf.apply(base_conf.apply_macsec(&handle).await?)?
             }
+            InfoKind::Geneve => {
+                base_conf.apply(base_conf.apply_geneve(&handle).await?)?
+            }
             t => {
                 return Err(CliError::from(format!(
                     "Unsupported device type: {t}"

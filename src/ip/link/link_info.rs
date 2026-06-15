@@ -7,6 +7,7 @@ use serde::Serialize;
 
 use super::ifaces::{
     bridge::{CliLinkInfoDataBridge, CliLinkInfoDataBridgePort},
+    geneve::CliLinkInfoDataGeneve,
     hsr::CliLinkInfoDataHsr,
     iptun::CliLinkInfoDataIpIp,
     ipvlan::{CliLinkInfoDataIpVlan, CliLinkInfoDataIpVtap},
@@ -113,6 +114,7 @@ pub(crate) enum CliLinkInfoData {
     MacVlan(Box<CliLinkInfoDataMacVlan>),
     MacVtap(Box<CliLinkInfoDataMacVtap>),
     MacSec(Box<CliLinkInfoDataMacSec>),
+    Geneve(Box<CliLinkInfoDataGeneve>),
     Vrf(Box<CliLinkInfoDataVrf>),
 }
 
@@ -153,6 +155,9 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
             InfoData::MacSec(v) => {
                 Ok(Self::MacSec(Box::new(v.as_slice().into())))
             }
+            InfoData::Geneve(v) => {
+                Ok(Self::Geneve(Box::new(v.as_slice().into())))
+            }
             _ => Err(()),
         }
     }
@@ -185,6 +190,7 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::MacVlan(v) => write!(f, "{v}"),
             CliLinkInfoData::MacVtap(v) => write!(f, "{v}"),
             CliLinkInfoData::MacSec(v) => write!(f, "{v}"),
+            CliLinkInfoData::Geneve(v) => write!(f, "{v}"),
             CliLinkInfoData::Vrf(v) => write!(f, "{v}"),
         }
     }

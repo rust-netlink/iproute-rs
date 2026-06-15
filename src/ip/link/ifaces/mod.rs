@@ -2,6 +2,7 @@
 
 pub(super) mod bond;
 pub(super) mod bridge;
+pub(super) mod geneve;
 pub(super) mod hsr;
 pub(super) mod iptun;
 pub(super) mod ipvlan;

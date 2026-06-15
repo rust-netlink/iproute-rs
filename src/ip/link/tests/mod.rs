@@ -4,6 +4,7 @@ mod bond;
 mod bridge;
 mod color;
 mod dummy;
+mod geneve;
 mod hsr;
 mod ip6tnl;
 mod ipip;
