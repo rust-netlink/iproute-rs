@@ -7,9 +7,9 @@ use iproute_rs::{
     CanDisplay, CanOutput, CliColor, CliError, mac_to_string, write_with_color,
 };
 use rtnetlink::packet_route::link::{
-    LinkAttribute, LinkExtentMask, LinkFlags, LinkLayerType, LinkMessage,
-    LinkVfInfo, Prop, VfInfo, VfInfoBroadcast, VfInfoMac, VfLinkState,
-    VfStats as NlVfStats, VfVlan, VlanProtocol,
+    LinkAttribute, LinkExtentMask, LinkFlags, LinkInfo, LinkLayerType,
+    LinkMessage, LinkVfInfo, Prop, VfInfo, VfInfoBroadcast, VfInfoMac,
+    VfLinkState, VfStats as NlVfStats, VfVlan, VlanProtocol,
 };
 use serde::Serialize;
 
@@ -63,6 +63,8 @@ pub(crate) struct CliLinkInfo {
     vfinfo_list: Option<Vec<CliVfInfo>>,
     #[serde(skip)]
     num_vf: Option<u32>,
+    #[serde(skip)]
+    kind: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -267,18 +269,154 @@ impl CanDisplay for CliLinkInfo {
 
 impl CanOutput for CliLinkInfo {}
 
+struct LinkShowFilter {
+    dev_name: Option<String>,
+    group: Option<String>,
+    up_or_down: Option<bool>,
+    master: Option<String>,
+    vrf: Option<String>,
+    link_type: Option<String>,
+    nomaster: bool,
+    novf: bool,
+}
+
+impl LinkShowFilter {
+    fn parse(opts: &[&str]) -> Result<Self, CliError> {
+        let mut dev_name = None;
+        let mut group = None;
+        let mut up_or_down = None;
+        let mut master = None;
+        let mut vrf = None;
+        let mut link_type = None;
+        let mut nomaster = false;
+        let mut novf = false;
+
+        let mut iter = opts.iter();
+        while let Some(arg) = iter.next() {
+            match *arg {
+                "dev" | "name" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from("\"dev\" requires a value"));
+                    };
+                    dev_name = Some(v.to_string());
+                }
+                "group" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"group\" requires a value",
+                        ));
+                    };
+                    group = Some(v.to_string());
+                }
+                "up" => up_or_down = Some(true),
+                "down" => up_or_down = Some(false),
+                "master" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"master\" requires a value",
+                        ));
+                    };
+                    master = Some(v.to_string());
+                }
+                "vrf" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from("\"vrf\" requires a value"));
+                    };
+                    vrf = Some(v.to_string());
+                }
+                "type" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"type\" requires a value",
+                        ));
+                    };
+                    link_type = Some(v.to_string());
+                }
+                "nomaster" => nomaster = true,
+                "novf" => novf = true,
+                _ => {
+                    if dev_name.is_none() {
+                        dev_name = Some(arg.to_string());
+                    }
+                }
+            }
+        }
+
+        Ok(Self {
+            dev_name,
+            group,
+            up_or_down,
+            master,
+            vrf,
+            link_type,
+            nomaster,
+            novf,
+        })
+    }
+
+    fn apply(&self, ifaces: &mut Vec<CliLinkInfo>) {
+        if let Some(ref name) = self.dev_name {
+            ifaces.retain(|i| i.ifname == *name);
+        }
+
+        if let Some(ref g) = self.group {
+            ifaces.retain(|i| {
+                if i.group == *g {
+                    return true;
+                }
+                if let Ok(id) = g.parse::<u32>() {
+                    return resolve_ip_link_group_name(id) == i.group;
+                }
+                false
+            });
+        }
+
+        if let Some(up) = self.up_or_down {
+            let iff_up = LinkFlags::Up.bits();
+            if up {
+                ifaces.retain(|i| (i.raw_flags.bits() & iff_up) != 0);
+            } else {
+                ifaces.retain(|i| (i.raw_flags.bits() & iff_up) == 0);
+            }
+        }
+
+        if let Some(ref m) = self.master {
+            ifaces.retain(|i| i.controller.as_deref() == Some(m));
+        }
+
+        if let Some(ref v) = self.vrf {
+            ifaces.retain(|i| i.controller.as_deref() == Some(v));
+        }
+
+        if let Some(ref t) = self.link_type {
+            ifaces.retain(|i| {
+                // iproute2 filters by IFLA_INFO_KIND (not ARPHRD link layer
+                // type)
+                if !i.kind.is_empty() {
+                    return i.kind == *t;
+                }
+                i.link_type == *t
+            });
+        }
+
+        if self.nomaster {
+            ifaces.retain(|i| i.controller.is_none());
+        }
+    }
+}
+
 pub(crate) async fn handle_show(
     opts: &[&str],
     include_details: bool,
 ) -> Result<Vec<CliLinkInfo>, CliError> {
+    let filter = LinkShowFilter::parse(opts)?;
+
     let (connection, handle, _) = rtnetlink::new_connection()?;
 
     tokio::spawn(connection);
 
-    let show_vf = !opts.contains(&"novf");
-
     let mut link_get = handle.link().get();
-    if show_vf {
+    if !filter.novf {
         link_get = link_get.set_filter_mask(
             rtnetlink::packet_route::AddressFamily::Unspec,
             vec![LinkExtentMask::Vf],
@@ -296,13 +434,10 @@ pub(crate) async fn handle_show(
     resolve_controller_and_link_names(&mut ifaces);
     resolve_netns_names(&mut ifaces).await?;
 
-    // In order to resolved interface index to interface name and netns name,
+    // In order to resolve interface index to interface name and netns name,
     // we cannot use kernel side interface filter, but need to dump everything,
     // then filter here
-    let dev_filter = opts.iter().find(|o| **o != "novf");
-    if let Some(iface_name) = dev_filter {
-        ifaces.retain(|i| i.ifname.as_str() == *iface_name);
-    }
+    filter.apply(&mut ifaces);
 
     Ok(ifaces)
 }
@@ -400,6 +535,13 @@ pub(crate) async fn parse_nl_msg_to_iface(
                 ret.vfinfo_list = Some(vfs);
             }
             LinkAttribute::NumVf(n) => ret.num_vf = Some(n),
+            LinkAttribute::LinkInfo(infos) => {
+                for info in &infos {
+                    if let LinkInfo::Kind(k) = info {
+                        ret.kind = k.to_string();
+                    }
+                }
+            }
             _ => {}
         }
     }
