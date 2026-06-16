@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, io::ErrorKind, os::fd::AsRawFd};
+use std::{collections::HashMap, fmt::Write, io::ErrorKind, os::fd::AsRawFd};
 
 use futures_util::stream::{StreamExt, TryStreamExt};
 use iproute_rs::{
     CanDisplay, CanOutput, CliColor, CliError, mac_to_string, write_with_color,
 };
 use rtnetlink::packet_route::link::{
-    LinkAttribute, LinkExtentMask, LinkFlags, LinkLayerType, LinkMessage, Prop,
+    LinkAttribute, LinkExtentMask, LinkFlags, LinkLayerType, LinkMessage,
+    LinkVfInfo, Prop, VfInfo, VfInfoBroadcast, VfInfoMac, VfLinkState,
+    VfStats as NlVfStats, VfVlan, VlanProtocol,
 };
 use serde::Serialize;
 
@@ -58,7 +60,85 @@ pub(crate) struct CliLinkInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     addr_info: Option<Vec<CliAddressInfo>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    vfinfo_list: Option<Vec<()>>,
+    vfinfo_list: Option<Vec<CliVfInfo>>,
+    #[serde(skip)]
+    num_vf: Option<u32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+struct CliVfInfo {
+    #[serde(rename = "vf")]
+    vf_id: u32,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    mac: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    broadcast: Option<String>,
+    #[serde(skip)]
+    is_point_2_point: bool,
+    // Legacy single VLAN
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vlan: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    qos: Option<u32>,
+    // VLAN list (QinQ)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    vlan_list: Vec<CliVfVlanEntry>,
+    // Rate
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tx_rate: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tx_rate: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    min_tx_rate: Option<u32>,
+    // Features
+    #[serde(skip_serializing_if = "Option::is_none")]
+    spoofchk: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    link_state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trust: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    query_rss_en: Option<bool>,
+    // InfiniBand GUIDs
+    #[serde(skip_serializing_if = "Option::is_none")]
+    node_guid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    port_guid: Option<String>,
+    // Stats (only shown with -s)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stats: Option<CliVfStats>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+struct CliVfVlanEntry {
+    vlan: u32,
+    qos: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    protocol: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+struct CliVfStats {
+    rx: CliVfRxStats,
+    tx: CliVfTxStats,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+struct CliVfRxStats {
+    bytes: u64,
+    packets: u64,
+    multicast: u64,
+    broadcast: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dropped: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+struct CliVfTxStats {
+    bytes: u64,
+    packets: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dropped: Option<u64>,
 }
 
 impl CliLinkInfo {
@@ -169,6 +249,12 @@ impl std::fmt::Display for CliLinkInfo {
             }
         }
 
+        if let Some(vfinfo_list) = &self.vfinfo_list {
+            for vf in vfinfo_list {
+                write!(f, "{vf}")?;
+            }
+        }
+
         Ok(())
     }
 }
@@ -189,10 +275,16 @@ pub(crate) async fn handle_show(
 
     tokio::spawn(connection);
 
-    let link_get_handle = handle.link().get().set_filter_mask(
-        rtnetlink::packet_route::AddressFamily::Unspec,
-        vec![LinkExtentMask::Vf],
-    );
+    let show_vf = !opts.contains(&"novf");
+
+    let mut link_get = handle.link().get();
+    if show_vf {
+        link_get = link_get.set_filter_mask(
+            rtnetlink::packet_route::AddressFamily::Unspec,
+            vec![LinkExtentMask::Vf],
+        );
+    }
+    let link_get_handle = link_get;
 
     let mut links = link_get_handle.execute();
     let mut ifaces: Vec<CliLinkInfo> = Vec::new();
@@ -207,7 +299,8 @@ pub(crate) async fn handle_show(
     // In order to resolved interface index to interface name and netns name,
     // we cannot use kernel side interface filter, but need to dump everything,
     // then filter here
-    if let Some(iface_name) = opts.first() {
+    let dev_filter = opts.iter().find(|o| **o != "novf");
+    if let Some(iface_name) = dev_filter {
         ifaces.retain(|i| i.ifname.as_str() == *iface_name);
     }
 
@@ -298,9 +391,15 @@ pub(crate) async fn parse_nl_msg_to_iface(
                     }
                 }
             }
-            LinkAttribute::VfInfoList(_) => {
-                ret.vfinfo_list = Some(vec![]);
+            LinkAttribute::VfInfoList(list) => {
+                let mut vfs: Vec<CliVfInfo> =
+                    list.into_iter().map(parse_vf_info).collect();
+                for vf in vfs.iter_mut() {
+                    vf.is_point_2_point = ret.is_point_2_point;
+                }
+                ret.vfinfo_list = Some(vfs);
             }
+            LinkAttribute::NumVf(n) => ret.num_vf = Some(n),
             _ => {}
         }
     }
@@ -311,6 +410,299 @@ pub(crate) async fn parse_nl_msg_to_iface(
     }
 
     Ok(ret)
+}
+
+fn parse_vf_info(vf: LinkVfInfo) -> CliVfInfo {
+    let mut info = CliVfInfo::default();
+    let mut vlan_vlan_id = None;
+    let mut vlan_qos = None;
+    let mut vlan_list = Vec::new();
+    let mut tx_rate_val = None;
+    let mut max_tx_rate_val = None;
+    let mut min_tx_rate_val = None;
+    let mut stats_rx = CliVfRxStats::default();
+    let mut stats_tx = CliVfTxStats::default();
+
+    for attr in vf.0 {
+        match attr {
+            VfInfo::Mac(m) => {
+                info.vf_id = m.vf_id;
+                info.mac = format_vf_mac(&m);
+            }
+            VfInfo::Broadcast(b) => {
+                info.broadcast = Some(format_vf_broadcast(&b));
+            }
+            VfInfo::Vlan(v) => {
+                vlan_vlan_id = if v.vlan_id != 0 {
+                    Some(v.vlan_id)
+                } else {
+                    None
+                };
+                vlan_qos = if v.qos != 0 { Some(v.qos) } else { None };
+            }
+            VfInfo::Rate(r) => {
+                info.vf_id = r.vf_id;
+                if r.max_tx_rate != 0 {
+                    max_tx_rate_val = Some(r.max_tx_rate);
+                }
+                if r.min_tx_rate != 0 {
+                    min_tx_rate_val = Some(r.min_tx_rate);
+                }
+            }
+            VfInfo::TxRate(t) => {
+                info.vf_id = t.vf_id;
+                if t.rate != 0 {
+                    tx_rate_val = Some(t.rate);
+                }
+            }
+            VfInfo::SpoofCheck(s) => {
+                info.vf_id = s.vf_id;
+                if s.enabled {
+                    info.spoofchk = Some(true);
+                } else {
+                    info.spoofchk = Some(false);
+                }
+            }
+            VfInfo::LinkState(ls) => {
+                info.vf_id = ls.vf_id;
+                info.link_state = Some(match ls.state {
+                    VfLinkState::Auto => "auto".into(),
+                    VfLinkState::Enable => "enable".into(),
+                    VfLinkState::Disable => "disable".into(),
+                    VfLinkState::Other(v) => v.to_string(),
+                    _ => "unknown".into(),
+                });
+            }
+            VfInfo::RssQueryEn(q) => {
+                info.vf_id = q.vf_id;
+                info.query_rss_en = Some(q.enabled);
+            }
+            VfInfo::Trust(t) => {
+                info.vf_id = t.vf_id;
+                info.trust = Some(t.enabled);
+            }
+            VfInfo::IbNodeGuid(g) => {
+                info.vf_id = g.vf_id;
+                info.node_guid = Some(format_guid(g.guid));
+            }
+            VfInfo::IbPortGuid(g) => {
+                info.vf_id = g.vf_id;
+                info.port_guid = Some(format_guid(g.guid));
+            }
+            VfInfo::VlanList(list) => {
+                for entry in list {
+                    if let VfVlan::Info(v) = entry {
+                        if v.vlan_id == 0 {
+                            continue;
+                        }
+                        let protocol = if v.protocol == VlanProtocol::Ieee8021Q
+                        {
+                            None
+                        } else {
+                            Some(v.protocol.to_string())
+                        };
+                        vlan_list.push(CliVfVlanEntry {
+                            vlan: v.vlan_id,
+                            qos: v.qos,
+                            protocol,
+                        });
+                    }
+                }
+            }
+            VfInfo::Stats(stats) => {
+                for stat in stats {
+                    match stat {
+                        NlVfStats::RxPackets(v) => stats_rx.packets = v,
+                        NlVfStats::TxPackets(v) => stats_tx.packets = v,
+                        NlVfStats::RxBytes(v) => stats_rx.bytes = v,
+                        NlVfStats::TxBytes(v) => stats_tx.bytes = v,
+                        NlVfStats::Broadcast(v) => stats_rx.broadcast = v,
+                        NlVfStats::Multicast(v) => stats_rx.multicast = v,
+                        NlVfStats::RxDropped(v) => stats_rx.dropped = Some(v),
+                        NlVfStats::TxDropped(v) => stats_tx.dropped = Some(v),
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Use VLAN list if present, otherwise legacy single VLAN
+    if !vlan_list.is_empty() {
+        info.vlan_list = vlan_list;
+    } else {
+        info.vlan = vlan_vlan_id;
+        info.qos = vlan_qos;
+    }
+
+    info.tx_rate = tx_rate_val;
+    info.max_tx_rate = max_tx_rate_val;
+    info.min_tx_rate = min_tx_rate_val;
+
+    // Only emit stats if any values are non-zero
+    if stats_rx.bytes != 0
+        || stats_rx.packets != 0
+        || stats_tx.bytes != 0
+        || stats_tx.packets != 0
+    {
+        info.stats = Some(CliVfStats {
+            rx: stats_rx,
+            tx: stats_tx,
+        });
+    }
+
+    info
+}
+
+fn format_vf_mac(m: &VfInfoMac) -> String {
+    let len = if m.mac[6..].iter().all(|&b| b == 0) && m.mac[5] != 0 {
+        // Ethernet: 6 bytes if byte 6+ are zero
+        6
+    } else {
+        // InfiniBand: use all non-zero bytes, but at most 20
+        let nonzero = m
+            .mac
+            .iter()
+            .rposition(|&b| b != 0)
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        nonzero.clamp(6, 20)
+    };
+    mac_to_string(&m.mac[..len])
+}
+
+fn format_vf_broadcast(b: &VfInfoBroadcast) -> String {
+    let len = if b.addr[6..].iter().all(|&b| b == 0) && b.addr[5] != 0 {
+        6
+    } else {
+        let nonzero = b
+            .addr
+            .iter()
+            .rposition(|&b| b != 0)
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        nonzero.clamp(6, 20)
+    };
+    mac_to_string(&b.addr[..len])
+}
+
+fn format_guid(guid: u64) -> String {
+    let guid_be = guid.to_be_bytes();
+    let mut s = String::with_capacity(23);
+    for (i, &b) in guid_be.iter().enumerate() {
+        if i > 0 {
+            s.push(':');
+        }
+        write!(s, "{b:02x}").unwrap();
+    }
+    s
+}
+
+impl std::fmt::Display for CliVfInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "\n    vf {}     link/ether {}", self.vf_id, self.mac)?;
+
+        if let Some(ref bc) = self.broadcast {
+            if self.is_point_2_point {
+                write!(f, " peer {bc}")?;
+            } else {
+                write!(f, " brd {bc}")?;
+            }
+        }
+
+        if !self.vlan_list.is_empty() {
+            for entry in &self.vlan_list {
+                write!(f, ", vlan {}", entry.vlan)?;
+                if entry.qos != 0 {
+                    write!(f, ", qos {}", entry.qos)?;
+                }
+                if let Some(ref proto) = entry.protocol {
+                    write!(f, ", vlan protocol {proto}")?;
+                }
+            }
+        } else {
+            if let Some(vlan) = self.vlan {
+                write!(f, ", vlan {vlan}")?;
+            }
+            if let Some(qos) = self.qos {
+                write!(f, ", qos {qos}")?;
+            }
+        }
+
+        if let Some(rate) = self.tx_rate {
+            write!(f, ", tx rate {rate} (Mbps)")?;
+        }
+        if let Some(max) = self.max_tx_rate {
+            write!(f, ", max_tx_rate {max}Mbps")?;
+        }
+        if let Some(min) = self.min_tx_rate {
+            write!(f, ", min_tx_rate {min}Mbps")?;
+        }
+
+        if let Some(ref sc) = self.spoofchk {
+            if *sc {
+                write!(f, ", spoof checking on")?;
+            } else {
+                write!(f, ", spoof checking off")?;
+            }
+        }
+
+        if let Some(ref ng) = self.node_guid {
+            write!(f, ", NODE_GUID {ng}")?;
+        }
+        if let Some(ref pg) = self.port_guid {
+            write!(f, ", PORT_GUID {pg}")?;
+        }
+
+        if let Some(ref ls) = self.link_state {
+            write!(f, ", link-state {ls}")?;
+        }
+
+        if let Some(ref tr) = self.trust {
+            if *tr {
+                write!(f, ", trust on")?;
+            } else {
+                write!(f, ", trust off")?;
+            }
+        }
+
+        if let Some(ref rss) = self.query_rss_en {
+            if *rss {
+                write!(f, ", query_rss on")?;
+            } else {
+                write!(f, ", query_rss off")?;
+            }
+        }
+
+        if let Some(ref stats) = self.stats {
+            write!(f, "\n    RX: bytes  packets  mcast   bcast")?;
+            if stats.rx.dropped.is_some() {
+                write!(f, "  dropped")?;
+            }
+            write!(
+                f,
+                "\n    {:>10} {:>8} {:>7} {:>7}",
+                stats.rx.bytes,
+                stats.rx.packets,
+                stats.rx.multicast,
+                stats.rx.broadcast,
+            )?;
+            if let Some(dropped) = stats.rx.dropped {
+                write!(f, " {:>8}", dropped)?;
+            }
+            write!(f, "\n    TX: bytes  packets")?;
+            if stats.tx.dropped.is_some() {
+                write!(f, "  dropped")?;
+            }
+            write!(f, "\n    {:>10} {:>8}", stats.tx.bytes, stats.tx.packets,)?;
+            if let Some(dropped) = stats.tx.dropped {
+                write!(f, " {:>8}", dropped)?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// Try to resolve a netns id to its name using rtnetlink.

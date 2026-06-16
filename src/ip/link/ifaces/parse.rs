@@ -68,6 +68,24 @@ pub(crate) fn parse_u8(s: &str, name: &str) -> Result<u8, CliError> {
         .map_err(|_| CliError::from(format!("Invalid {name} value: {s}")))
 }
 
+pub(crate) fn parse_eui64(s: &str) -> Result<u64, CliError> {
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() != 8 {
+        return Err(CliError::from(format!(
+            "Invalid EUI-64 value: {s}, expected format \
+             xx:xx:xx:xx:xx:xx:xx:xx"
+        )));
+    }
+    let mut guid = 0u64;
+    for (i, part) in parts.iter().enumerate() {
+        let byte = u8::from_str_radix(part, 16).map_err(|_| {
+            CliError::from(format!("Invalid EUI-64 byte {part} in {s}"))
+        })?;
+        guid |= (byte as u64) << (56 - 8 * i);
+    }
+    Ok(guid)
+}
+
 pub(crate) fn parse_from_str<T: FromStr>(
     s: &str,
     name: &str,

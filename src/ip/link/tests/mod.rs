@@ -15,6 +15,7 @@ mod ipvlan;
 mod loopback;
 mod mac_vlan;
 mod macsec;
+mod netdevsim;
 mod netkit;
 mod nlmon;
 mod property;

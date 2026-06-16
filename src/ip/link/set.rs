@@ -7,14 +7,16 @@ use iproute_rs::{CliError, parse_mac_str};
 use rtnetlink::packet_route::link::{
     AfSpecInet6, AfSpecUnspec, In6AddrGenMode, InfoKind, LinkAttribute,
     LinkFlags, LinkHeader, LinkInfo, LinkMessage, LinkProtocolDownReason,
-    State,
+    LinkVfInfo, State, VfInfo, VfInfoGuid, VfInfoLinkState, VfInfoMac,
+    VfInfoRate, VfInfoRssQueryEn, VfInfoSpoofCheck, VfInfoTrust, VfInfoTxRate,
+    VfInfoVlan, VfLinkState, VfVlan, VfVlanInfo, VlanProtocol,
 };
 
 use super::ifaces::{
     bond::IfaceBond,
     bridge::IfaceBridge,
     hsr::IfaceHsr,
-    parse::{parse_i32, parse_on_off, parse_u32},
+    parse::{parse_eui64, parse_i32, parse_on_off, parse_u32},
     vlan::IfaceVlan,
     vrf::IfaceVrf,
 };
@@ -182,6 +184,66 @@ impl LinkSetCommand {
             )]));
         }
 
+        if !conf.vf_configs.is_empty() {
+            let mut vf_info_list: Vec<LinkVfInfo> = Vec::new();
+            for vf in &conf.vf_configs {
+                let mut infos: Vec<VfInfo> = Vec::new();
+                if let Some(mac) = vf.mac {
+                    infos
+                        .push(VfInfo::Mac(VfInfoMac::new(vf.vf_num, &mac[..])));
+                }
+                if let Some(vlan) = vf.vlan {
+                    infos.push(VfInfo::Vlan(vlan));
+                }
+                if !vf.vlan_list.is_empty() {
+                    let vlan_nlas: Vec<VfVlan> = vf
+                        .vlan_list
+                        .iter()
+                        .map(|vi| VfVlan::Info(*vi))
+                        .collect();
+                    infos.push(VfInfo::VlanList(vlan_nlas));
+                }
+                if let Some(tx) = vf.tx_rate {
+                    infos.push(VfInfo::TxRate(tx));
+                }
+                if let Some(rate) = vf.rate {
+                    infos.push(VfInfo::Rate(rate));
+                }
+                if let Some(enabled) = vf.spoofchk {
+                    infos.push(VfInfo::SpoofCheck(VfInfoSpoofCheck::new(
+                        vf.vf_num, enabled,
+                    )));
+                }
+                if let Some(enabled) = vf.query_rss {
+                    infos.push(VfInfo::RssQueryEn(VfInfoRssQueryEn::new(
+                        vf.vf_num, enabled,
+                    )));
+                }
+                if let Some(enabled) = vf.trust {
+                    infos.push(VfInfo::Trust(VfInfoTrust::new(
+                        vf.vf_num, enabled,
+                    )));
+                }
+                if let Some(state) = vf.link_state {
+                    infos.push(VfInfo::LinkState(VfInfoLinkState::new(
+                        vf.vf_num, state,
+                    )));
+                }
+                if let Some(guid) = vf.node_guid {
+                    infos.push(VfInfo::IbNodeGuid(VfInfoGuid::new(
+                        vf.vf_num, guid,
+                    )));
+                }
+                if let Some(guid) = vf.port_guid {
+                    infos.push(VfInfo::IbPortGuid(VfInfoGuid::new(
+                        vf.vf_num, guid,
+                    )));
+                }
+                vf_info_list.push(LinkVfInfo(infos));
+            }
+            attrs.push(LinkAttribute::VfInfoList(vf_info_list));
+        }
+
         if let Some(iface_type) = conf.iface_type {
             let link_infos =
                 build_type_link_info(&handle, iface_type, &conf.iface_specific)
@@ -209,6 +271,22 @@ async fn get_ifindex_by_name(
         CliError::from(format!("Device \"{name}\" does not exist"))
     })?;
     Ok(link.header.index)
+}
+
+#[derive(Debug, Default)]
+struct VfConfig {
+    vf_num: u32,
+    mac: Option<[u8; 32]>,
+    vlan: Option<VfInfoVlan>,
+    vlan_list: Vec<VfVlanInfo>,
+    tx_rate: Option<VfInfoTxRate>,
+    rate: Option<VfInfoRate>,
+    spoofchk: Option<bool>,
+    query_rss: Option<bool>,
+    trust: Option<bool>,
+    link_state: Option<VfLinkState>,
+    node_guid: Option<u64>,
+    port_guid: Option<u64>,
 }
 
 #[derive(Debug)]
@@ -243,6 +321,7 @@ struct LinkSetConf {
     gro_ipv4_max_size: Option<u32>,
     link_netnsid: Option<i32>,
     addrgenmode: Option<In6AddrGenMode>,
+    vf_configs: Vec<VfConfig>,
     iface_type: Option<InfoKind>,
     iface_specific: Vec<String>,
 }
@@ -279,6 +358,7 @@ impl LinkSetConf {
         let mut gro_ipv4_max_size = None;
         let mut link_netnsid = None;
         let mut addrgenmode = None;
+        let mut vf_configs: Vec<VfConfig> = Vec::new();
         let mut iface_type = None;
         let mut iface_specific = Vec::new();
 
@@ -535,6 +615,205 @@ impl LinkSetConf {
                         }
                     });
                 }
+                "vf" => {
+                    let Some(vf_num_str) = iter.next() else {
+                        return Err(CliError::from("\"vf\" requires a value"));
+                    };
+                    let vf_num = parse_u32(vf_num_str, "vf")?;
+                    let mut cfg = VfConfig {
+                        vf_num,
+                        ..Default::default()
+                    };
+                    loop {
+                        match iter.peek() {
+                            None => break,
+                            Some(keyword) => match keyword.as_str() {
+                                "mac" => {
+                                    iter.next();
+                                    let Some(v) = iter.next() else {
+                                        return Err(CliError::from(
+                                            "\"mac\" requires a value",
+                                        ));
+                                    };
+                                    let addr = parse_mac_str(v)?;
+                                    let mut mac = [0u8; 32];
+                                    mac[..addr.len()].copy_from_slice(&addr);
+                                    cfg.mac = Some(mac);
+                                }
+                                "vlan" => {
+                                    iter.next();
+                                    let Some(vid_str) = iter.next() else {
+                                        return Err(CliError::from(
+                                            "\"vlan\" requires a value",
+                                        ));
+                                    };
+                                    let vlan_id = parse_u32(vid_str, "vlan")?;
+                                    let mut qos = 0u32;
+                                    let mut proto = VlanProtocol::Ieee8021Q;
+                                    if let Some(next) = iter.peek()
+                                        && next.as_str() == "qos"
+                                    {
+                                        iter.next();
+                                        let Some(qos_str) = iter.next() else {
+                                            return Err(CliError::from(
+                                                "\"qos\" requires a value",
+                                            ));
+                                        };
+                                        qos = parse_u32(qos_str, "qos")?;
+                                    }
+                                    if let Some(next) = iter.peek()
+                                        && next.as_str() == "proto"
+                                    {
+                                        iter.next();
+                                        let Some(proto_str) = iter.next()
+                                        else {
+                                            return Err(CliError::from(
+                                                "\"proto\" requires a value",
+                                            ));
+                                        };
+                                        proto = proto_str
+                                            .parse::<VlanProtocol>()
+                                            .map_err(|e| {
+                                                CliError::from(format!("{e}"))
+                                            })?;
+                                    }
+                                    if proto == VlanProtocol::Ieee8021Q
+                                        && cfg.vlan.is_none()
+                                        && cfg.vlan_list.is_empty()
+                                    {
+                                        cfg.vlan = Some(VfInfoVlan::new(
+                                            vf_num, vlan_id, qos,
+                                        ));
+                                    } else {
+                                        if let Some(v) = cfg.vlan.take() {
+                                            cfg.vlan_list.push(
+                                                VfVlanInfo::new(
+                                                    vf_num,
+                                                    v.vlan_id,
+                                                    v.qos,
+                                                    VlanProtocol::Ieee8021Q,
+                                                ),
+                                            );
+                                        }
+                                        cfg.vlan_list.push(VfVlanInfo::new(
+                                            vf_num, vlan_id, qos, proto,
+                                        ));
+                                    }
+                                }
+                                "rate" => {
+                                    iter.next();
+                                    let Some(v) = iter.next() else {
+                                        return Err(CliError::from(
+                                            "\"rate\" requires a value",
+                                        ));
+                                    };
+                                    let rate = parse_u32(v, "rate")?;
+                                    cfg.tx_rate =
+                                        Some(VfInfoTxRate::new(vf_num, rate));
+                                }
+                                "max_tx_rate" => {
+                                    iter.next();
+                                    let Some(v) = iter.next() else {
+                                        return Err(CliError::from(
+                                            "\"max_tx_rate\" requires a value",
+                                        ));
+                                    };
+                                    let max_rate = parse_u32(v, "max_tx_rate")?;
+                                    let min = cfg
+                                        .rate
+                                        .map(|r| r.min_tx_rate)
+                                        .unwrap_or(0);
+                                    cfg.rate = Some(VfInfoRate::new(
+                                        vf_num, min, max_rate,
+                                    ));
+                                }
+                                "min_tx_rate" => {
+                                    iter.next();
+                                    let Some(v) = iter.next() else {
+                                        return Err(CliError::from(
+                                            "\"min_tx_rate\" requires a value",
+                                        ));
+                                    };
+                                    let min_rate = parse_u32(v, "min_tx_rate")?;
+                                    let max = cfg
+                                        .rate
+                                        .map(|r| r.max_tx_rate)
+                                        .unwrap_or(0);
+                                    cfg.rate = Some(VfInfoRate::new(
+                                        vf_num, min_rate, max,
+                                    ));
+                                }
+                                "spoofchk" => {
+                                    iter.next();
+                                    let Some(v) = iter.next() else {
+                                        return Err(CliError::from(
+                                            "\"spoofchk\" requires a value",
+                                        ));
+                                    };
+                                    cfg.spoofchk = Some(parse_on_off(v)?);
+                                }
+                                "query_rss" => {
+                                    iter.next();
+                                    let Some(v) = iter.next() else {
+                                        return Err(CliError::from(
+                                            "\"query_rss\" requires a value",
+                                        ));
+                                    };
+                                    cfg.query_rss = Some(parse_on_off(v)?);
+                                }
+                                "trust" => {
+                                    iter.next();
+                                    let Some(v) = iter.next() else {
+                                        return Err(CliError::from(
+                                            "\"trust\" requires a value",
+                                        ));
+                                    };
+                                    cfg.trust = Some(parse_on_off(v)?);
+                                }
+                                "state" => {
+                                    iter.next();
+                                    let Some(v) = iter.next() else {
+                                        return Err(CliError::from(
+                                            "\"state\" requires a value",
+                                        ));
+                                    };
+                                    cfg.link_state = Some(match v.as_str() {
+                                        "auto" => VfLinkState::Auto,
+                                        "enable" => VfLinkState::Enable,
+                                        "disable" => VfLinkState::Disable,
+                                        _ => {
+                                            return Err(CliError::from(
+                                                format!(
+                                                    "Invalid VF state: {v}"
+                                                ),
+                                            ));
+                                        }
+                                    });
+                                }
+                                "node_guid" => {
+                                    iter.next();
+                                    let Some(v) = iter.next() else {
+                                        return Err(CliError::from(
+                                            "\"node_guid\" requires a value",
+                                        ));
+                                    };
+                                    cfg.node_guid = Some(parse_eui64(v)?);
+                                }
+                                "port_guid" => {
+                                    iter.next();
+                                    let Some(v) = iter.next() else {
+                                        return Err(CliError::from(
+                                            "\"port_guid\" requires a value",
+                                        ));
+                                    };
+                                    cfg.port_guid = Some(parse_eui64(v)?);
+                                }
+                                _ => break,
+                            },
+                        }
+                    }
+                    vf_configs.push(cfg);
+                }
                 "type" => {
                     let Some(kind_str) = iter.next() else {
                         return Err(CliError::from(
@@ -591,6 +870,7 @@ impl LinkSetConf {
             gro_ipv4_max_size,
             link_netnsid,
             addrgenmode,
+            vf_configs,
             iface_type,
             iface_specific,
         })
