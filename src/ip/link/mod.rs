@@ -7,6 +7,7 @@ mod detail;
 mod flags;
 mod ifaces;
 mod link_info;
+mod property;
 mod set;
 mod show;
 
