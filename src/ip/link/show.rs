@@ -189,13 +189,10 @@ pub(crate) async fn handle_show(
 
     tokio::spawn(connection);
 
-    let link_get_handle = handle
-        .link()
-        .get()
-        .set_filter_mask(
-            rtnetlink::packet_route::AddressFamily::Unspec,
-            vec![LinkExtentMask::Vf],
-        );
+    let link_get_handle = handle.link().get().set_filter_mask(
+        rtnetlink::packet_route::AddressFamily::Unspec,
+        vec![LinkExtentMask::Vf],
+    );
 
     let mut links = link_get_handle.execute();
     let mut ifaces: Vec<CliLinkInfo> = Vec::new();
@@ -284,8 +281,7 @@ pub(crate) async fn parse_nl_msg_to_iface(
             }
             LinkAttribute::Qdisc(qdisc) => ret.qdisc = qdisc,
             LinkAttribute::OperState(state) => {
-                // TODO: impl Display for State in rust-netlink
-                ret.operstate = format!("{state:?}").to_uppercase()
+                ret.operstate = state.to_string()
             }
             LinkAttribute::TxQueueLen(v) if v > 0 => ret.txqlen = Some(v),
             LinkAttribute::Group(v) => {
@@ -415,10 +411,8 @@ fn resolve_controller_and_link_names(links: &mut [CliLinkInfo]) {
         .iter()
         .map(|l| (l.ifindex, l.ifname.to_string()))
         .collect();
-    let index_2_flags: HashMap<u32, LinkFlags> = links
-        .iter()
-        .map(|l| (l.ifindex, l.raw_flags))
-        .collect();
+    let index_2_flags: HashMap<u32, LinkFlags> =
+        links.iter().map(|l| (l.ifindex, l.raw_flags)).collect();
 
     for link in links.iter_mut() {
         if let Some(ctrl_ifindex) = link.controller_ifindex

@@ -3,6 +3,7 @@
 use std::str::FromStr;
 
 use iproute_rs::CliError;
+use rtnetlink::packet_route::link::{LinkAttribute, LinkInfo, LinkMessage};
 
 pub(crate) fn parse_on_off_01(s: &str) -> Result<bool, CliError> {
     match s {
@@ -12,9 +13,34 @@ pub(crate) fn parse_on_off_01(s: &str) -> Result<bool, CliError> {
     }
 }
 
+pub(crate) fn parse_on_off(s: &str) -> Result<bool, CliError> {
+    match s {
+        "on" => Ok(true),
+        "off" => Ok(false),
+        _ => Err(CliError::from(format!(
+            "Invalid value, must be \"on\" or \"off\", got \"{s}\""
+        ))),
+    }
+}
+
 pub(crate) fn parse_u32(s: &str, name: &str) -> Result<u32, CliError> {
-    s.parse::<u32>()
-        .map_err(|_| CliError::from(format!("Invalid {name} value: {s}")))
+    if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        u32::from_str_radix(hex, 16)
+            .map_err(|_| CliError::from(format!("Invalid {name} value: {s}")))
+    } else {
+        s.parse::<u32>()
+            .map_err(|_| CliError::from(format!("Invalid {name} value: {s}")))
+    }
+}
+
+pub(crate) fn extract_link_info(msg: LinkMessage) -> Vec<LinkInfo> {
+    msg.attributes
+        .into_iter()
+        .find_map(|attr| match attr {
+            LinkAttribute::LinkInfo(infos) => Some(infos),
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 pub(crate) fn parse_u64(s: &str, name: &str) -> Result<u64, CliError> {

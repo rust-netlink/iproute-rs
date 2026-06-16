@@ -206,6 +206,7 @@ impl From<&[InfoGre6]> for CliLinkInfoDataGre {
 }
 
 impl std::fmt::Display for CliLinkInfoDataGre {
+    #[allow(unused_assignments)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut sep = "";
         macro_rules! emit {
@@ -273,10 +274,10 @@ impl std::fmt::Display for CliLinkInfoDataGre {
                 }
             }
 
-            if let Some(pmtudisc) = self.pmtudisc {
-                if !pmtudisc {
-                    emit!("nopmtudisc");
-                }
+            if let Some(pmtudisc) = self.pmtudisc
+                && !pmtudisc
+            {
+                emit!("nopmtudisc");
             }
         }
 
@@ -291,15 +292,15 @@ impl std::fmt::Display for CliLinkInfoDataGre {
 
         let ikey_str = self.ikey.map(key_to_str);
         let okey_str = self.okey.map(key_to_str);
-        if self.iflags.contains(GreIOFlags::Key) {
-            if let Some(v) = &ikey_str {
-                emit!("ikey {v}");
-            }
+        if self.iflags.contains(GreIOFlags::Key)
+            && let Some(v) = &ikey_str
+        {
+            emit!("ikey {v}");
         }
-        if self.oflags.contains(GreIOFlags::Key) {
-            if let Some(v) = &okey_str {
-                emit!("okey {v}");
-            }
+        if self.oflags.contains(GreIOFlags::Key)
+            && let Some(v) = &okey_str
+        {
+            emit!("okey {v}");
         }
         if self.iflags.contains(GreIOFlags::Seq) {
             emit!("iseq");
@@ -395,6 +396,7 @@ impl LinkBaseConf {
         Ok(builder)
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn apply_gre6(
         &self,
         handle: &rtnetlink::Handle,
@@ -404,6 +406,7 @@ impl LinkBaseConf {
         Ok(builder)
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn apply_gretap6(
         &self,
         handle: &rtnetlink::Handle,
@@ -622,6 +625,7 @@ async fn build_gre_opts(
     Ok(builder)
 }
 
+#[allow(dead_code)]
 async fn build_gre6_opts(
     mut builder: LinkMessageBuilder<LinkGre6>,
     conf: &LinkBaseConf,

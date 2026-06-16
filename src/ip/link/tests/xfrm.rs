@@ -38,17 +38,10 @@ where
 {
     with_netns(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "link",
-            "add",
-            XFRM_NAME,
-            "type",
-            "xfrm",
-            "dev",
-            "lo",
-            "if_id",
+            "link", "add", XFRM_NAME, "type", "xfrm", "dev", "lo", "if_id",
             "0x2a",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", XFRM_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", XFRM_NAME, "up"]);
 
         test(ns);
     });

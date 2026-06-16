@@ -9,14 +9,15 @@ use iproute_rs::{CliError, mac_to_string, parse_mac_str};
 use rtnetlink::{
     LinkBond, LinkMessageBuilder,
     packet_route::link::{
-        BondAllPortActive, BondArpValidate, BondPortState, InfoBond,
-        InfoBondPort, MiiStatus,
+        BondAdSelect, BondAllPortActive, BondArpAllTargets, BondArpValidate,
+        BondFailOverMac, BondLacpRate, BondMode, BondPrimaryReselect,
+        BondXmitHashPolicy, InfoBond, InfoBondPort, InfoKind, LinkInfo,
     },
 };
 use serde::Serialize;
 
 use super::parse::{
-    parse_from_str, parse_on_off_01, parse_u8, parse_u16, parse_u32,
+    extract_link_info, parse_on_off_01, parse_u8, parse_u16, parse_u32,
 };
 use crate::link::LinkBaseConf;
 
@@ -270,21 +271,11 @@ impl From<&[InfoBondPort]> for CliLinkInfoDataBondPort {
         for nla in info {
             match nla {
                 InfoBondPort::BondPortState(v) => {
-                    state = match v {
-                        BondPortState::Active => "ACTIVE".to_string(),
-                        BondPortState::Backup => "BACKUP".to_string(),
-                        BondPortState::Other(n) => format!("{}", n),
-                        _ => "unknown".to_string(),
-                    };
+                    state = v.to_string().to_uppercase();
                 }
                 InfoBondPort::LinkFailureCount(l) => link_failure_count = *l,
                 InfoBondPort::MiiStatus(s) => {
-                    mii_status = match s {
-                        MiiStatus::Up => "UP".to_string(),
-                        MiiStatus::Down => "DOWN".to_string(),
-                        MiiStatus::Other(n) => format!("{}", n),
-                        _ => "unknown".to_string(),
-                    };
+                    mii_status = s.to_string().to_uppercase();
                 }
                 InfoBondPort::PermHwaddr(hwa) => {
                     perm_hwaddr = mac_to_string(hwa)
@@ -319,6 +310,188 @@ impl std::fmt::Display for CliLinkInfoDataBondPort {
     }
 }
 
+fn apply_bond_args<'a>(
+    mut builder: LinkMessageBuilder<LinkBond>,
+    iter: &mut impl Iterator<Item = &'a str>,
+) -> Result<LinkMessageBuilder<LinkBond>, CliError> {
+    while let Some(key) = iter.next() {
+        let Some(v) = iter.next() else {
+            return Err(CliError::from(format!("bond {key} requires a value")));
+        };
+        match key {
+            "mode" => {
+                let mode = v.parse::<BondMode>().map_err(|e| {
+                    CliError::from(format!("Unknown bond mode: {v}: {e}"))
+                })?;
+                builder = builder.mode(mode);
+            }
+            "miimon" => {
+                builder = builder.miimon(parse_u32(v, "miimon")?);
+            }
+            "updelay" => {
+                builder = builder.updelay(parse_u32(v, "updelay")?);
+            }
+            "downdelay" => {
+                builder = builder.downdelay(parse_u32(v, "downdelay")?);
+            }
+            "peer_notify_delay" => {
+                builder = builder
+                    .peer_notif_delay(parse_u32(v, "peer_notify_delay")?);
+            }
+            "use_carrier" => {
+                builder = builder.use_carrier(parse_on_off_01(v)?);
+            }
+            "arp_interval" => {
+                builder = builder.arp_interval(parse_u32(v, "arp_interval")?);
+            }
+            "arp_validate" => {
+                let val = v.parse::<BondArpValidate>().map_err(|e| {
+                    CliError::from(format!("Invalid arp_validate: {v}: {e}"))
+                })?;
+                builder = builder.arp_validate(val);
+            }
+            "arp_all_targets" => {
+                let val = v.parse::<BondArpAllTargets>().map_err(|e| {
+                    CliError::from(format!("Invalid arp_all_targets: {v}: {e}"))
+                })?;
+                builder = builder.arp_all_targets(val);
+            }
+            "arp_ip_target" => {
+                let addrs: Vec<Ipv4Addr> = v
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| {
+                        Ipv4Addr::from_str(s).map_err(|_| {
+                            CliError::from(format!(
+                                "Invalid arp_ip_target address: {s}"
+                            ))
+                        })
+                    })
+                    .collect::<Result<_, _>>()?;
+                builder = builder.arp_ip_target(addrs);
+            }
+            "ns_ip6_target" => {
+                let addrs: Vec<Ipv6Addr> = v
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| {
+                        Ipv6Addr::from_str(s).map_err(|_| {
+                            CliError::from(format!(
+                                "Invalid ns_ip6_target address: {s}"
+                            ))
+                        })
+                    })
+                    .collect::<Result<_, _>>()?;
+                builder = builder.ns_ip6_target(addrs);
+            }
+            "primary_reselect" => {
+                let val = v.parse::<BondPrimaryReselect>().map_err(|e| {
+                    CliError::from(format!(
+                        "Invalid primary_reselect: {v}: {e}"
+                    ))
+                })?;
+                builder = builder.primary_reselect(val);
+            }
+            "fail_over_mac" => {
+                let val = v.parse::<BondFailOverMac>().map_err(|e| {
+                    CliError::from(format!("Invalid fail_over_mac: {v}: {e}"))
+                })?;
+                builder = builder.fail_over_mac(val);
+            }
+            "xmit_hash_policy" => {
+                let val = v.parse::<BondXmitHashPolicy>().map_err(|e| {
+                    CliError::from(format!(
+                        "Invalid xmit_hash_policy: {v}: {e}"
+                    ))
+                })?;
+                builder = builder.xmit_hash_policy(val);
+            }
+            "resend_igmp" => {
+                builder = builder.resend_igmp(parse_u32(v, "resend_igmp")?);
+            }
+            "num_grat_arp" | "num_unsol_na" => {
+                builder = builder.num_peer_notif(parse_u8(v, key)?);
+            }
+            "all_slaves_active" | "all_ports_active" => {
+                let val = v.parse::<BondAllPortActive>().map_err(|e| {
+                    CliError::from(format!(
+                        "Invalid all_slaves_active: {v}: {e}"
+                    ))
+                })?;
+                builder = builder.all_ports_active(val);
+            }
+            "min_links" => {
+                builder = builder.min_links(parse_u32(v, "min_links")?);
+            }
+            "lp_interval" => {
+                builder = builder.lp_interval(parse_u32(v, "lp_interval")?);
+            }
+            "packets_per_slave" | "packets_per_port" => {
+                builder = builder
+                    .packets_per_port(parse_u32(v, "packets_per_slave")?);
+            }
+            "tlb_dynamic_lb" => {
+                builder = builder.tlb_dynamic_lb(parse_on_off_01(v)?);
+            }
+            "lacp_rate" | "ad_lacp_rate" => {
+                let val = v.parse::<BondLacpRate>().map_err(|e| {
+                    CliError::from(format!("Invalid lacp_rate: {v}: {e}"))
+                })?;
+                builder = builder.ad_lacp_rate(val);
+            }
+            "lacp_active" | "ad_lacp_active" => {
+                builder = builder.ad_lacp_active(parse_on_off_01(v)?);
+            }
+            "coupled_control" => {
+                builder = builder.append_info_data(InfoBond::CoupledControl(
+                    parse_on_off_01(v)?,
+                ));
+            }
+            "broadcast_neighbor" => {
+                builder = builder.append_info_data(InfoBond::BroadcastNeigh(
+                    parse_on_off_01(v)?,
+                ));
+            }
+            "ad_select" => {
+                let val = v.parse::<BondAdSelect>().map_err(|e| {
+                    CliError::from(format!("Invalid ad_select: {v}: {e}"))
+                })?;
+                builder = builder.ad_select(val);
+            }
+            "ad_user_port_key" => {
+                builder =
+                    builder.ad_user_port_key(parse_u16(v, "ad_user_port_key")?);
+            }
+            "ad_actor_sys_prio" => {
+                builder = builder
+                    .ad_actor_sys_prio(parse_u16(v, "ad_actor_sys_prio")?);
+            }
+            "ad_actor_system" => {
+                let mac = parse_mac_str(v)?;
+                if mac.len() != 6 {
+                    return Err(CliError::from(
+                        "ad_actor_system requires a 6-byte MAC address",
+                    ));
+                }
+                let mut addr = [0u8; 6];
+                addr.copy_from_slice(&mac);
+                builder = builder.ad_actor_system(addr);
+            }
+            "arp_missed_max" => {
+                builder = builder.missed_max(parse_u8(v, "arp_missed_max")?);
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown bond argument: {key}"
+                )));
+            }
+        }
+    }
+    Ok(builder)
+}
+
 impl LinkBaseConf {
     pub(crate) async fn apply_bond(
         &self,
@@ -326,205 +499,49 @@ impl LinkBaseConf {
     ) -> Result<LinkMessageBuilder<LinkBond>, CliError> {
         let mut builder = LinkBond::new(&self.name);
 
+        let mut remaining: Vec<&str> = Vec::new();
         let mut iter = self.iface_specific.iter();
         while let Some(key) = iter.next() {
-            let mut next_val = || {
-                iter.next().ok_or_else(|| {
-                    CliError::from(format!("bond {key} requires a value"))
-                })
-            };
             match key.as_str() {
-                "mode" => {
-                    let v = next_val()?;
-                    builder = builder.mode(parse_from_str(v, "mode")?);
-                }
                 "active_slave" => {
-                    let v = next_val()?;
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "bond active_slave requires a value",
+                        ));
+                    };
                     let ifindex = self.get_ifindex_by_name(handle, v).await?;
                     builder = builder.active_port(ifindex);
                 }
-                "miimon" => {
-                    let v = next_val()?;
-                    builder = builder.miimon(parse_u32(v, "miimon")?);
-                }
-                "updelay" => {
-                    let v = next_val()?;
-                    builder = builder.updelay(parse_u32(v, "updelay")?);
-                }
-                "downdelay" => {
-                    let v = next_val()?;
-                    builder = builder.downdelay(parse_u32(v, "downdelay")?);
-                }
-                "peer_notify_delay" => {
-                    let v = next_val()?;
-                    builder = builder
-                        .peer_notif_delay(parse_u32(v, "peer_notify_delay")?);
-                }
-                "use_carrier" => {
-                    let v = next_val()?;
-                    builder = builder.use_carrier(parse_on_off_01(v)?);
-                }
-                "arp_interval" => {
-                    let v = next_val()?;
-                    builder =
-                        builder.arp_interval(parse_u32(v, "arp_interval")?);
-                }
-                "arp_validate" => {
-                    let v = next_val()?;
-                    builder = builder
-                        .arp_validate(parse_from_str(v, "arp_validate")?);
-                }
-                "arp_all_targets" => {
-                    let v = next_val()?;
-                    builder = builder
-                        .arp_all_targets(parse_from_str(v, "arp_all_targets")?);
-                }
-                "arp_ip_target" => {
-                    let v = next_val()?;
-                    let addrs: Vec<Ipv4Addr> = v
-                        .split(',')
-                        .map(str::trim)
-                        .filter(|s| !s.is_empty())
-                        .map(|s| {
-                            Ipv4Addr::from_str(s).map_err(|_| {
-                                CliError::from(format!(
-                                    "Invalid arp_ip_target address: {s}"
-                                ))
-                            })
-                        })
-                        .collect::<Result<_, _>>()?;
-                    builder = builder.arp_ip_target(addrs);
-                }
-                "ns_ip6_target" => {
-                    let v = next_val()?;
-                    let addrs: Vec<Ipv6Addr> = v
-                        .split(',')
-                        .map(str::trim)
-                        .filter(|s| !s.is_empty())
-                        .map(|s| {
-                            Ipv6Addr::from_str(s).map_err(|_| {
-                                CliError::from(format!(
-                                    "Invalid ns_ip6_target address: {s}"
-                                ))
-                            })
-                        })
-                        .collect::<Result<_, _>>()?;
-                    builder = builder.ns_ip6_target(addrs);
-                }
                 "primary" => {
-                    let v = next_val()?;
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "bond primary requires a value",
+                        ));
+                    };
                     let ifindex = self.get_ifindex_by_name(handle, v).await?;
                     builder = builder.primary(ifindex);
                 }
-                "primary_reselect" => {
-                    let v = next_val()?;
-                    builder = builder.primary_reselect(parse_from_str(
-                        v,
-                        "primary_reselect",
-                    )?);
-                }
-                "fail_over_mac" => {
-                    let v = next_val()?;
-                    builder = builder
-                        .fail_over_mac(parse_from_str(v, "fail_over_mac")?);
-                }
-                "xmit_hash_policy" => {
-                    let v = next_val()?;
-                    builder = builder.xmit_hash_policy(parse_from_str(
-                        v,
-                        "xmit_hash_policy",
-                    )?);
-                }
-                "resend_igmp" => {
-                    let v = next_val()?;
-                    builder = builder.resend_igmp(parse_u32(v, "resend_igmp")?);
-                }
-                "num_grat_arp" | "num_unsol_na" => {
-                    let v = next_val()?;
-                    builder = builder.num_peer_notif(parse_u8(v, key)?);
-                }
-                "all_slaves_active" => {
-                    let v = next_val()?;
-                    builder = builder.all_ports_active(parse_from_str(
-                        v,
-                        "all_slaves_active",
-                    )?);
-                }
-                "min_links" => {
-                    let v = next_val()?;
-                    builder = builder.min_links(parse_u32(v, "min_links")?);
-                }
-                "lp_interval" => {
-                    let v = next_val()?;
-                    builder = builder.lp_interval(parse_u32(v, "lp_interval")?);
-                }
-                "packets_per_slave" => {
-                    let v = next_val()?;
-                    builder = builder.packets_per_port(parse_u32(v, key)?);
-                }
-                "tlb_dynamic_lb" => {
-                    let v = next_val()?;
-                    builder = builder.tlb_dynamic_lb(parse_on_off_01(v)?);
-                }
-                "lacp_rate" => {
-                    let v = next_val()?;
-                    builder =
-                        builder.ad_lacp_rate(parse_from_str(v, "lacp_rate")?);
-                }
-                "lacp_active" | "ad_lacp_active" => {
-                    let v = next_val()?;
-                    builder = builder.ad_lacp_active(parse_on_off_01(v)?);
-                }
-                "coupled_control" => {
-                    let v = next_val()?;
-                    builder = builder.append_info_data(
-                        InfoBond::CoupledControl(parse_on_off_01(v)?),
-                    );
-                }
-                "broadcast_neighbor" => {
-                    let v = next_val()?;
-                    builder = builder.append_info_data(
-                        InfoBond::BroadcastNeigh(parse_on_off_01(v)?),
-                    );
-                }
-                "ad_select" => {
-                    let v = next_val()?;
-                    builder =
-                        builder.ad_select(parse_from_str(v, "ad_select")?);
-                }
-                "ad_user_port_key" => {
-                    let v = next_val()?;
-                    builder = builder
-                        .ad_user_port_key(parse_u16(v, "ad_user_port_key")?);
-                }
-                "ad_actor_sys_prio" => {
-                    let v = next_val()?;
-                    builder = builder
-                        .ad_actor_sys_prio(parse_u16(v, "ad_actor_sys_prio")?);
-                }
-                "ad_actor_system" => {
-                    let v = next_val()?;
-                    let mac: [u8; 6] =
-                        parse_mac_str(v)?.try_into().map_err(|_| {
-                            CliError::from(format!(
-                                "Invalid ad_actor_system MAC: {v}"
-                            ))
-                        })?;
-                    builder = builder.ad_actor_system(mac);
-                }
-                "arp_missed_max" => {
-                    let v = next_val()?;
-                    builder =
-                        builder.missed_max(parse_u8(v, "arp_missed_max")?);
-                }
                 _ => {
-                    return Err(CliError::from(format!(
-                        "Unknown bond argument: {key}"
-                    )));
+                    remaining.push(key);
+                    if let Some(v) = iter.next() {
+                        remaining.push(v);
+                    }
                 }
             }
         }
 
+        let mut remaining_iter = remaining.into_iter();
+        builder = apply_bond_args(builder, &mut remaining_iter)?;
         Ok(builder)
     }
+}
+
+pub(crate) fn build_bond_entries(
+    args: &[String],
+) -> Result<Vec<LinkInfo>, CliError> {
+    let builder =
+        LinkMessageBuilder::<LinkBond>::new_with_info_kind(InfoKind::Bond);
+    let mut iter = args.iter().map(|s| s.as_str());
+    let builder = apply_bond_args(builder, &mut iter)?;
+    Ok(extract_link_info(builder.build()))
 }

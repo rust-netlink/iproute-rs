@@ -46,7 +46,7 @@ where
             "type",
             "dummy",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", DUMMY_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", DUMMY_NAME, "up"]);
 
         test(ns);
     });

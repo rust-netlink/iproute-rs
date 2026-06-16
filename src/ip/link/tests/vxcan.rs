@@ -48,8 +48,8 @@ where
             "name",
             VXCAN_PEER_NAME,
         ]);
-        ns.exec_cmd(&["ip", "link", "set", VXCAN_NAME, "up"]);
-        ns.exec_cmd(&["ip", "link", "set", VXCAN_PEER_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", VXCAN_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", VXCAN_PEER_NAME, "up"]);
 
         test(ns);
     });

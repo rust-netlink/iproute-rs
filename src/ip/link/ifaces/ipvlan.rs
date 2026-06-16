@@ -35,15 +35,7 @@ impl From<&[InfoIpVlan]> for CliLinkInfoDataIpVlan {
 
         for nla in info {
             match nla {
-                InfoIpVlan::Mode(v) => {
-                    mode = match v {
-                        IpVlanMode::L2 => "l2".to_string(),
-                        IpVlanMode::L3 => "l3".to_string(),
-                        IpVlanMode::L3S => "l3s".to_string(),
-                        IpVlanMode::Other(d) => format!("{d}"),
-                        _ => format!("{v:?}"),
-                    };
-                }
+                InfoIpVlan::Mode(v) => mode = v.to_string(),
                 InfoIpVlan::Flags(flags_val) => {
                     if flags_val.contains(IpVlanFlags::Private) {
                         private = true;
@@ -86,15 +78,7 @@ impl From<&[InfoIpVtap]> for CliLinkInfoDataIpVtap {
 
         for nla in info {
             match nla {
-                InfoIpVtap::Mode(v) => {
-                    mode = match v {
-                        IpVtapMode::L2 => "l2".to_string(),
-                        IpVtapMode::L3 => "l3".to_string(),
-                        IpVtapMode::L3S => "l3s".to_string(),
-                        IpVtapMode::Other(d) => format!("{d}"),
-                        _ => format!("{v:?}"),
-                    };
-                }
+                InfoIpVtap::Mode(v) => mode = v.to_string(),
                 InfoIpVtap::Flags(flags_val) => {
                     if flags_val.contains(IpVlanFlags::Private) {
                         private = true;
@@ -141,17 +125,12 @@ impl LinkBaseConf {
                             "IPVLAN mode requires a value",
                         ));
                     };
-                    let mode = match v.as_str() {
-                        "l2" => IpVlanMode::L2,
-                        "l3" => IpVlanMode::L3,
-                        "l3s" => IpVlanMode::L3S,
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Unknown IPVLAN mode: {v}, supported: l2, l3, \
-                                 l3s"
-                            )));
-                        }
-                    };
+                    let mode = v.parse::<IpVlanMode>().map_err(|e| {
+                        CliError::from(format!(
+                            "Unknown IPVLAN mode: {v}, supported: l2, l3, \
+                             l3s: {e}"
+                        ))
+                    })?;
                     builder = builder.mode(mode);
                 }
                 "flag" => {
@@ -207,17 +186,12 @@ impl LinkBaseConf {
                             "IPVTAP mode requires a value",
                         ));
                     };
-                    let mode = match v.as_str() {
-                        "l2" => IpVtapMode::L2,
-                        "l3" => IpVtapMode::L3,
-                        "l3s" => IpVtapMode::L3S,
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Unknown IPVTAP mode: {v}, supported: l2, l3, \
-                                 l3s"
-                            )));
-                        }
-                    };
+                    let mode = v.parse::<IpVtapMode>().map_err(|e| {
+                        CliError::from(format!(
+                            "Unknown IPVTAP mode: {v}, supported: l2, l3, \
+                             l3s: {e}"
+                        ))
+                    })?;
                     builder = builder.mode(mode);
                 }
                 "flag" => {

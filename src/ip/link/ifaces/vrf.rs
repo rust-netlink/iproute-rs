@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 
 use iproute_rs::CliError;
-use rtnetlink::{LinkMessageBuilder, LinkVrf, packet_route::link::InfoVrf};
+use rtnetlink::{
+    LinkMessageBuilder, LinkVrf,
+    packet_route::link::{InfoKind, InfoVrf, LinkInfo},
+};
 use serde::Serialize;
 
+use super::parse::{extract_link_info, parse_u32};
 use crate::link::LinkBaseConf;
 
 #[derive(Serialize)]
@@ -23,41 +27,64 @@ impl From<&[InfoVrf]> for CliLinkInfoDataVrf {
     }
 }
 
+fn apply_vrf_args<'a>(
+    mut builder: LinkMessageBuilder<LinkVrf>,
+    iter: &mut impl Iterator<Item = &'a str>,
+) -> Result<LinkMessageBuilder<LinkVrf>, CliError> {
+    while let Some(key) = iter.next() {
+        let Some(v) = iter.next() else {
+            return Err(CliError::from(format!("\"{key}\" requires a value")));
+        };
+        match key {
+            "table" => {
+                builder = builder.table_id(parse_u32(v, "table")?);
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "vrf: unknown option \"{key}\"",
+                )));
+            }
+        }
+    }
+    Ok(builder)
+}
+
 impl LinkBaseConf {
     pub(crate) fn apply_vrf(
         &self,
     ) -> Result<LinkMessageBuilder<LinkVrf>, CliError> {
+        let mut table_set = false;
+        let mut remaining: Vec<&str> = Vec::new();
         let mut iter = self.iface_specific.iter();
-        let mut table_id: Option<u32> = None;
-
-        while let Some(arg) = iter.next() {
-            match arg.as_str() {
-                "table" => {
-                    let Some(value) = iter.next() else {
-                        return Err(CliError::from(
-                            "vrf: \"table\" requires a value",
-                        ));
-                    };
-                    table_id = Some(value.parse::<u32>().map_err(|_| {
-                        CliError::from(format!(
-                            "vrf: invalid table ID \"{value}\""
-                        ))
-                    })?);
-                }
+        while let Some(key) = iter.next() {
+            match key.as_str() {
                 "help" => {
                     return Err(CliError::from("Usage: ... vrf table TABLEID"));
                 }
-                other => {
-                    return Err(CliError::from(format!(
-                        "vrf: unknown option \"{other}\"?",
-                    )));
+                "table" => {
+                    table_set = true;
+                    remaining.push(key);
+                    if let Some(v) = iter.next() {
+                        remaining.push(v);
+                    }
+                }
+                _ => {
+                    remaining.push(key);
+                    if let Some(v) = iter.next() {
+                        remaining.push(v);
+                    }
                 }
             }
         }
 
-        let table_id = table_id
-            .ok_or_else(|| CliError::from("vrf: missing \"table\" argument"))?;
-        Ok(LinkVrf::new(&self.name, table_id))
+        if !table_set {
+            return Err(CliError::from("vrf: missing \"table\" argument"));
+        }
+
+        let builder = LinkMessageBuilder::<LinkVrf>::new(&self.name);
+        let mut remaining_iter = remaining.into_iter();
+        let builder = apply_vrf_args(builder, &mut remaining_iter)?;
+        Ok(builder)
     }
 }
 
@@ -88,4 +115,14 @@ impl std::fmt::Display for CliLinkInfoDataVrfPort {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "table {}", self.table)
     }
+}
+
+pub(crate) fn build_vrf_entries(
+    args: &[String],
+) -> Result<Vec<LinkInfo>, CliError> {
+    let builder =
+        LinkMessageBuilder::<LinkVrf>::new_with_info_kind(InfoKind::Vrf);
+    let mut iter = args.iter().map(|s| s.as_str());
+    let builder = apply_vrf_args(builder, &mut iter)?;
+    Ok(extract_link_info(builder.build()))
 }

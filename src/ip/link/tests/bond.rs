@@ -148,8 +148,8 @@ where
             "ip", "link", "set", "dev", DUMMY_NAME, "master", BOND_NAME,
         ]);
 
-        ns.exec_cmd(&["ip", "link", "set", DUMMY_NAME, "up"]);
-        ns.exec_cmd(&["ip", "link", "set", BOND_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", DUMMY_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BOND_NAME, "up"]);
 
         test(ns);
     })
@@ -164,7 +164,7 @@ where
         args.extend_from_slice(opts);
 
         ns.ip_rs_exec_cmd(&args);
-        ns.exec_cmd(&["ip", "link", "set", BOND_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BOND_NAME, "up"]);
 
         test(ns);
     })

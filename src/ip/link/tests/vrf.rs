@@ -40,7 +40,7 @@ where
         ns.ip_rs_exec_cmd(&[
             "link", "add", VRF_NAME, "type", "vrf", "table", "10",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", VRF_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", VRF_NAME, "up"]);
 
         test(ns);
     });

@@ -129,9 +129,9 @@ fn netkit_bring_up_all(ns: &NetnsGuard, primary: &str) {
         .split_once('@')
         .and_then(|(_, rest)| rest.split_once(':').map(|(p, _)| p.trim()));
     if let Some(peer) = peer {
-        ns.exec_cmd(&["ip", "link", "set", peer, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", peer, "up"]);
     }
-    ns.exec_cmd(&["ip", "link", "set", primary, "up"]);
+    ns.ip_rs_exec_cmd(&["link", "set", primary, "up"]);
 }
 
 fn with_netkit_default<T>(test: T)

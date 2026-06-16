@@ -4,6 +4,8 @@ use iproute_rs::CliError;
 
 use super::{
     add::LinkAddCommand,
+    delete::LinkDeleteCommand,
+    set::LinkSetCommand,
     show::{CliLinkInfo, handle_show},
 };
 
@@ -34,14 +36,8 @@ impl LinkCommand {
                     ),
             )
             .subcommand(LinkAddCommand::gen_command())
-            .subcommand(
-                clap::Command::new("delete").about("delete virtual link"),
-            )
-            .subcommand(
-                clap::Command::new("change")
-                    .alias("set")
-                    .about("change device attributes"),
-            )
+            .subcommand(LinkDeleteCommand::gen_command())
+            .subcommand(LinkSetCommand::gen_command())
     }
 
     pub(crate) async fn handle(
@@ -49,6 +45,16 @@ impl LinkCommand {
     ) -> Result<Vec<CliLinkInfo>, CliError> {
         if let Some(matches) = matches.subcommand_matches(LinkAddCommand::CMD) {
             LinkAddCommand::handle(matches).await?;
+            Ok(vec![])
+        } else if let Some(matches) =
+            matches.subcommand_matches(LinkDeleteCommand::CMD)
+        {
+            LinkDeleteCommand::handle(matches).await?;
+            Ok(vec![])
+        } else if let Some(matches) =
+            matches.subcommand_matches(LinkSetCommand::CMD)
+        {
+            LinkSetCommand::handle(matches).await?;
             Ok(vec![])
         } else if let Some(matches) = matches.subcommand_matches("show") {
             let opts: Vec<&str> = matches

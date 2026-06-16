@@ -91,7 +91,7 @@ where
             "type",
             "dummy",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", &parent_name, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", &parent_name, "up"]);
 
         // Use IPv6 remote when testing udp6zerocsumtx (kernel only sends
         // IFLA_GENEVE_UDP_ZERO_CSUM6_TX for IPv6 tunnels)
@@ -121,7 +121,7 @@ where
         args.extend_from_slice(opts);
 
         ns.ip_rs_exec_cmd(&args);
-        ns.exec_cmd(&["ip", "link", "set", GENEVE_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", GENEVE_NAME, "up"]);
 
         test(ns);
     });

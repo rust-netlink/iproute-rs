@@ -159,8 +159,8 @@ where
             BRIDGE_NAME,
         ]);
 
-        ns.exec_cmd(&["ip", "link", "set", DUMMY_NAME, "up"]);
-        ns.exec_cmd(&["ip", "link", "set", BRIDGE_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", DUMMY_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME, "up"]);
 
         test(ns);
     });
@@ -170,7 +170,7 @@ where
 fn test_bridge_create_default() {
     with_netns(|ns| {
         ns.ip_rs_exec_cmd(&["link", "add", BRIDGE_NAME2, "type", "bridge"]);
-        ns.exec_cmd(&["ip", "link", "set", BRIDGE_NAME2, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
 
         ns.assert_eq_output_map(
             &["-d", "link", "show", BRIDGE_NAME2],
@@ -191,7 +191,7 @@ fn test_bridge_create_stp_state() {
             "stp_state",
             "1",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", BRIDGE_NAME2, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
 
         let outputs = ns.assert_eq_output_map(
             &["-d", "link", "show", BRIDGE_NAME2],
@@ -214,7 +214,7 @@ fn test_bridge_create_vlan_filtering() {
             "vlan_filtering",
             "1",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", BRIDGE_NAME2, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
 
         let outputs = ns.assert_eq_output_map(
             &["-d", "link", "show", BRIDGE_NAME2],
@@ -237,7 +237,7 @@ fn test_bridge_create_vlan_filtering_off() {
             "vlan_filtering",
             "off",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", BRIDGE_NAME2, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
 
         let outputs = ns.assert_eq_output_map(
             &["-d", "link", "show", BRIDGE_NAME2],
@@ -260,7 +260,7 @@ fn test_bridge_create_forward_delay() {
             "forward_delay",
             "2000",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", BRIDGE_NAME2, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
 
         let outputs = ns.assert_eq_output_map(
             &["-d", "link", "show", BRIDGE_NAME2],
@@ -282,7 +282,7 @@ fn test_bridge_create_priority() {
             "priority",
             "32768",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", BRIDGE_NAME2, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
 
         let outputs = ns.assert_eq_output_map(
             &["-d", "link", "show", BRIDGE_NAME2],
@@ -304,7 +304,7 @@ fn test_bridge_create_mcast_snooping() {
             "mcast_snooping",
             "0",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", BRIDGE_NAME2, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
 
         let outputs = ns.assert_eq_output_map(
             &["-d", "link", "show", BRIDGE_NAME2],
@@ -327,7 +327,7 @@ fn test_bridge_create_mcast_querier() {
             "mcast_querier",
             "on",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", BRIDGE_NAME2, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
 
         let outputs = ns.assert_eq_output_map(
             &["-d", "link", "show", BRIDGE_NAME2],
@@ -357,7 +357,7 @@ fn test_bridge_create_group_fwd_mask() {
             "group_fwd_mask",
             "16384",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", BRIDGE_NAME2, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
 
         let outputs = ns.assert_eq_output_map(
             &["-d", "link", "show", BRIDGE_NAME2],
@@ -379,7 +379,7 @@ fn test_bridge_create_nf_call_iptables() {
             "nf_call_iptables",
             "1",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", BRIDGE_NAME2, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
 
         let outputs = ns.assert_eq_output_map(
             &["-d", "link", "show", BRIDGE_NAME2],
@@ -425,7 +425,7 @@ fn test_bridge_create_multiple_options() {
             "nf_call_ip6tables",
             "on",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", BRIDGE_NAME2, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
 
         let outputs = ns.assert_eq_output_map(
             &["-d", "link", "show", BRIDGE_NAME2],

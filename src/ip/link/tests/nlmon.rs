@@ -38,7 +38,7 @@ where
 {
     with_netns(|ns| {
         ns.ip_rs_exec_cmd(&["link", "add", NLMON_NAME, "type", "nlmon"]);
-        ns.exec_cmd(&["ip", "link", "set", NLMON_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", NLMON_NAME, "up"]);
 
         test(ns);
     });

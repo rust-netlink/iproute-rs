@@ -47,8 +47,8 @@ where
             "peer",
             VETH_PEER_NAME,
         ]);
-        ns.exec_cmd(&["ip", "link", "set", VETH_NAME, "up"]);
-        ns.exec_cmd(&["ip", "link", "set", VETH_PEER_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", VETH_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", VETH_PEER_NAME, "up"]);
 
         test(ns);
     });

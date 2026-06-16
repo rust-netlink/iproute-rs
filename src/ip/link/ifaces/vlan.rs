@@ -3,10 +3,13 @@
 use iproute_rs::CliError;
 use rtnetlink::{
     LinkMessageBuilder, LinkVlan, QosMapping,
-    packet_route::link::{InfoVlan, VlanFlags, VlanProtocol, VlanQosMapping},
+    packet_route::link::{
+        InfoKind, InfoVlan, LinkInfo, VlanFlags, VlanProtocol, VlanQosMapping,
+    },
 };
 use serde::Serialize;
 
+use super::parse::extract_link_info;
 use crate::link::LinkBaseConf;
 
 #[derive(Serialize, Default)]
@@ -46,13 +49,7 @@ impl From<&[InfoVlan]> for CliLinkInfoDataVlan {
                         flags.push("BRIDGE_BINDING".to_string());
                     }
                 }
-                InfoVlan::Protocol(v) => {
-                    protocol = match v {
-                        VlanProtocol::Ieee8021Q => "802.1Q".to_string(),
-                        VlanProtocol::Ieee8021Ad => "802.1ad".to_string(),
-                        _ => v.to_string(),
-                    };
-                }
+                InfoVlan::Protocol(v) => protocol = v.to_string(),
                 InfoVlan::IngressQos(mappings) => {
                     for mapping in mappings {
                         if let VlanQosMapping::Mapping(from, to) = mapping {
@@ -81,6 +78,87 @@ impl From<&[InfoVlan]> for CliLinkInfoDataVlan {
     }
 }
 
+fn apply_vlan_args<'a>(
+    mut builder: LinkMessageBuilder<LinkVlan>,
+    iter: &mut impl Iterator<Item = &'a str>,
+    vlan_id: &mut Option<u16>,
+    flags: &mut VlanFlags,
+    flag_mask: &mut VlanFlags,
+    ingress_qos: &mut Vec<QosMapping>,
+    egress_qos: &mut Vec<QosMapping>,
+) -> Result<LinkMessageBuilder<LinkVlan>, CliError> {
+    macro_rules! set_flag {
+        ($v:expr, $flag:ident) => {
+            match $v {
+                "on" => {
+                    *flags |= VlanFlags::$flag;
+                    *flag_mask |= VlanFlags::$flag;
+                }
+                "off" => {
+                    *flag_mask |= VlanFlags::$flag;
+                }
+                _ => {
+                    return Err(CliError::from(format!(
+                        "{} must be on or off, got {}",
+                        stringify!($flag),
+                        $v
+                    )));
+                }
+            }
+        };
+    }
+
+    while let Some(key) = iter.next() {
+        let Some(v) = iter.next() else {
+            return Err(CliError::from(format!("VLAN {key} requires a value")));
+        };
+        match key {
+            "id" => {
+                let id = v.parse::<u16>().map_err(|_| {
+                    CliError::from(format!("Invalid VLAN id: {v}"))
+                })?;
+                builder = builder.id(id);
+                *vlan_id = Some(id);
+            }
+            "protocol" => {
+                let proto = v.parse::<VlanProtocol>().map_err(|e| {
+                    CliError::from(format!("Unknown VLAN protocol: {v}: {e}"))
+                })?;
+                builder = builder.protocol(proto);
+            }
+            "reorder_hdr" => {
+                set_flag!(v, ReorderHdr);
+            }
+            "gvrp" => {
+                set_flag!(v, Gvrp);
+            }
+            "mvrp" => {
+                set_flag!(v, Mvrp);
+            }
+            "loose_binding" => {
+                set_flag!(v, LooseBinding);
+            }
+            "bridge_binding" => {
+                set_flag!(v, BridgeBinding);
+            }
+            "ingress-qos-map" => {
+                let (from, to) = parse_qos_map(v)?;
+                ingress_qos.push(QosMapping { from, to });
+            }
+            "egress-qos-map" => {
+                let (from, to) = parse_qos_map(v)?;
+                egress_qos.push(QosMapping { from, to });
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown VLAN argument: {key}"
+                )));
+            }
+        }
+    }
+    Ok(builder)
+}
+
 impl LinkBaseConf {
     pub(crate) async fn apply_vlan(
         &self,
@@ -93,126 +171,26 @@ impl LinkBaseConf {
 
         let link_ifindex = self.get_ifindex_by_name(handle, link_name).await?;
 
-        let mut builder =
+        let builder =
             LinkMessageBuilder::<LinkVlan>::new(&self.name).link(link_ifindex);
         let mut vlan_id = None;
-        let mut ingress_qos = Vec::new();
-        let mut egress_qos = Vec::new();
         let mut flags = VlanFlags::empty();
         let mut flag_mask = VlanFlags::empty();
+        let mut ingress_qos = Vec::new();
+        let mut egress_qos = Vec::new();
 
-        macro_rules! set_flag {
-            ($v:expr, $flag:ident) => {
-                match $v.as_str() {
-                    "on" => {
-                        flags |= VlanFlags::$flag;
-                        flag_mask |= VlanFlags::$flag;
-                    }
-                    "off" => {
-                        flag_mask |= VlanFlags::$flag;
-                    }
-                    _ => {
-                        return Err(CliError::from(format!(
-                            "{} must be on or off, got {}",
-                            stringify!($flag),
-                            $v
-                        )));
-                    }
-                }
-            };
-        }
-
-        let mut iter = self.iface_specific.iter();
-        while let Some(key) = iter.next() {
-            match key.as_str() {
-                "id" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from("VLAN id requires a value"));
-                    };
-                    let id = v.parse::<u16>().map_err(|_| {
-                        CliError::from(format!("Invalid VLAN id: {v}"))
-                    })?;
-                    builder = builder.id(id);
-                    vlan_id = Some(id);
-                }
-                "protocol" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "VLAN protocol requires a value",
-                        ));
-                    };
-                    let proto = match v.to_lowercase().as_str() {
-                        "802.1q" => VlanProtocol::Ieee8021Q,
-                        "802.1ad" => VlanProtocol::Ieee8021Ad,
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Unknown VLAN protocol: {v}"
-                            )));
-                        }
-                    };
-                    builder = builder.protocol(proto);
-                }
-                "reorder_hdr" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "reorder_hdr requires a value",
-                        ));
-                    };
-                    set_flag!(v, ReorderHdr);
-                }
-                "gvrp" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from("gvrp requires a value"));
-                    };
-                    set_flag!(v, Gvrp);
-                }
-                "mvrp" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from("mvrp requires a value"));
-                    };
-                    set_flag!(v, Mvrp);
-                }
-                "loose_binding" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "loose_binding requires a value",
-                        ));
-                    };
-                    set_flag!(v, LooseBinding);
-                }
-                "bridge_binding" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "bridge_binding requires a value",
-                        ));
-                    };
-                    set_flag!(v, BridgeBinding);
-                }
-                "ingress-qos-map" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "ingress-qos-map requires a from:to mapping",
-                        ));
-                    };
-                    let (from, to) = parse_qos_map(v)?;
-                    ingress_qos.push(QosMapping { from, to });
-                }
-                "egress-qos-map" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "egress-qos-map requires a from:to mapping",
-                        ));
-                    };
-                    let (from, to) = parse_qos_map(v)?;
-                    egress_qos.push(QosMapping { from, to });
-                }
-                _ => {
-                    return Err(CliError::from(format!(
-                        "Unknown VLAN argument: {key}"
-                    )));
-                }
-            }
-        }
+        let mut builder = {
+            let mut iter = self.iface_specific.iter().map(|s| s.as_str());
+            apply_vlan_args(
+                builder,
+                &mut iter,
+                &mut vlan_id,
+                &mut flags,
+                &mut flag_mask,
+                &mut ingress_qos,
+                &mut egress_qos,
+            )?
+        };
 
         let Some(_) = vlan_id else {
             return Err(CliError::from("VLAN id is required"));
@@ -243,6 +221,47 @@ fn parse_qos_map(s: &str) -> Result<(u32, u32), CliError> {
         CliError::from(format!("Invalid QoS map 'to' value: {to}"))
     })?;
     Ok((from, to))
+}
+
+pub(crate) fn build_vlan_entries(
+    args: &[String],
+) -> Result<Vec<LinkInfo>, CliError> {
+    let builder =
+        LinkMessageBuilder::<LinkVlan>::new_with_info_kind(InfoKind::Vlan);
+
+    let mut vlan_id = None;
+    let mut flags = VlanFlags::empty();
+    let mut flag_mask = VlanFlags::empty();
+    let mut ingress_qos = Vec::new();
+    let mut egress_qos = Vec::new();
+
+    let mut builder = {
+        let mut iter = args.iter().map(|s| s.as_str());
+        apply_vlan_args(
+            builder,
+            &mut iter,
+            &mut vlan_id,
+            &mut flags,
+            &mut flag_mask,
+            &mut ingress_qos,
+            &mut egress_qos,
+        )?
+    };
+
+    if flag_mask != VlanFlags::empty() {
+        builder = builder.flags(flags, flag_mask);
+    }
+
+    if !ingress_qos.is_empty() || !egress_qos.is_empty() {
+        builder = builder.qos(ingress_qos, egress_qos);
+    }
+
+    let infos = extract_link_info(builder.build());
+    if infos.is_empty() {
+        Ok(vec![LinkInfo::Kind(InfoKind::Vlan)])
+    } else {
+        Ok(infos)
+    }
 }
 
 impl std::fmt::Display for CliLinkInfoDataVlan {

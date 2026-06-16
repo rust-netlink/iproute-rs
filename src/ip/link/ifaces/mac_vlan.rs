@@ -47,17 +47,7 @@ impl From<&[InfoMacVlan]> for CliLinkInfoDataMacVlan {
 
         for nla in info {
             match nla {
-                InfoMacVlan::Mode(v) => {
-                    mode = match v {
-                        MacVlanMode::Private => "private".to_string(),
-                        MacVlanMode::Vepa => "vepa".to_string(),
-                        MacVlanMode::Bridge => "bridge".to_string(),
-                        MacVlanMode::Passthrough => "passthru".to_string(),
-                        MacVlanMode::Source => "source".to_string(),
-                        MacVlanMode::Other(d) => format!("{d}"),
-                        _ => format!("{v:?}"),
-                    };
-                }
+                InfoMacVlan::Mode(v) => mode = v.to_string(),
                 InfoMacVlan::Flags(flags_val) => {
                     if flags_val.contains(MacVlanFlags::NoPromisc) {
                         nopromisc = true;
@@ -145,17 +135,7 @@ impl From<&[InfoMacVtap]> for CliLinkInfoDataMacVtap {
 
         for nla in info {
             match nla {
-                InfoMacVtap::Mode(v) => {
-                    mode = match v {
-                        MacVtapMode::Private => "private".to_string(),
-                        MacVtapMode::Vepa => "vepa".to_string(),
-                        MacVtapMode::Bridge => "bridge".to_string(),
-                        MacVtapMode::Passthrough => "passthru".to_string(),
-                        MacVtapMode::Source => "source".to_string(),
-                        MacVtapMode::Other(d) => format!("{d}"),
-                        _ => format!("{v:?}"),
-                    };
-                }
+                InfoMacVtap::Mode(v) => mode = v.to_string(),
                 InfoMacVtap::Flags(flags_val) => {
                     if flags_val.contains(MacVlanFlags::NoPromisc) {
                         nopromisc = true;
@@ -235,19 +215,12 @@ impl LinkBaseConf {
                             "MACVLAN mode requires a value",
                         ));
                     };
-                    let mode = match v.as_str() {
-                        "private" => MacVlanMode::Private,
-                        "vepa" => MacVlanMode::Vepa,
-                        "bridge" => MacVlanMode::Bridge,
-                        "passthru" => MacVlanMode::Passthrough,
-                        "source" => MacVlanMode::Source,
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Unknown MACVLAN mode: {v}, supported: \
-                                 private, vepa, bridge, passthru, source"
-                            )));
-                        }
-                    };
+                    let mode = v.parse::<MacVlanMode>().map_err(|e| {
+                        CliError::from(format!(
+                            "Unknown MACVLAN mode: {v}, supported: private, \
+                             vepa, bridge, passthru, source: {e}"
+                        ))
+                    })?;
                     builder = builder.mode(mode);
                 }
                 "flag" => {
@@ -340,19 +313,12 @@ impl LinkBaseConf {
                             "MACVTAP mode requires a value",
                         ));
                     };
-                    let mode = match v.as_str() {
-                        "private" => MacVtapMode::Private,
-                        "vepa" => MacVtapMode::Vepa,
-                        "bridge" => MacVtapMode::Bridge,
-                        "passthru" => MacVtapMode::Passthrough,
-                        "source" => MacVtapMode::Source,
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Unknown MACVTAP mode: {v}, supported: \
-                                 private, vepa, bridge, passthru, source"
-                            )));
-                        }
-                    };
+                    let mode = v.parse::<MacVtapMode>().map_err(|e| {
+                        CliError::from(format!(
+                            "Unknown MACVTAP mode: {v}, supported: private, \
+                             vepa, bridge, passthru, source: {e}"
+                        ))
+                    })?;
                     builder = builder.mode(mode);
                 }
                 "flag" => {

@@ -1,14 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use iproute_rs::CliError;
-use rtnetlink::{
-    LinkMessageBuilder, LinkXfrm,
-    packet_route::link::InfoXfrm,
-};
-use serde::{
-    Serialize,
-    Serializer,
-};
+use rtnetlink::{LinkMessageBuilder, LinkXfrm, packet_route::link::InfoXfrm};
+use serde::{Serialize, Serializer};
 
 use crate::link::LinkBaseConf;
 
@@ -63,10 +57,8 @@ impl LinkBaseConf {
                             "xfrm dev requires a value",
                         ));
                     };
-                    dev = Some(
-                        self.get_ifindex_by_name(handle, dev_name)
-                            .await?,
-                    );
+                    dev =
+                        Some(self.get_ifindex_by_name(handle, dev_name).await?);
                 }
                 "if_id" => {
                     let Some(val) = iter.next() else {
@@ -96,9 +88,6 @@ fn parse_if_id(val: &str) -> Result<u32, CliError> {
     let v = val
         .strip_prefix("0x")
         .or_else(|| val.strip_prefix("0X"))
-        .map_or_else(
-            || u32::from_str_radix(val, 10),
-            |hex| u32::from_str_radix(hex, 16),
-        );
+        .map_or_else(|| val.parse::<u32>(), |hex| u32::from_str_radix(hex, 16));
     v.map_err(|_| CliError::from(format!("invalid if_id value: {val}")))
 }

@@ -177,9 +177,7 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
             InfoData::GreTap6(v) => {
                 Ok(Self::GreTap6(Box::new(v.as_slice().into())))
             }
-            InfoData::Xfrm(v) => {
-                Ok(Self::Xfrm(Box::new(v.as_slice().into())))
-            }
+            InfoData::Xfrm(v) => Ok(Self::Xfrm(Box::new(v.as_slice().into()))),
             _ => Err(()),
         }
     }

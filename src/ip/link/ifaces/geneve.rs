@@ -74,7 +74,7 @@ impl From<&[InfoGeneve]> for CliLinkInfoDataGeneve {
                 InfoGeneve::UdpZeroCsum6Rx(v) => udp6zerocsumrx = Some(*v),
                 InfoGeneve::Label(v) => label = *v,
                 InfoGeneve::TtlInherit(v) => ttl_inherit = *v,
-                InfoGeneve::Df(v) => df = Some(df_to_string(v)),
+                InfoGeneve::Df(v) => df = Some(v.to_string()),
                 InfoGeneve::InnerProtoInherit => innerprotoinherit = true,
                 _ => (),
             }
@@ -96,15 +96,6 @@ impl From<&[InfoGeneve]> for CliLinkInfoDataGeneve {
             udp6zerocsumrx,
             innerprotoinherit,
         }
-    }
-}
-
-fn df_to_string(v: &GeneveDf) -> String {
-    match v {
-        GeneveDf::Unset => "unset".to_string(),
-        GeneveDf::Set => "set".to_string(),
-        GeneveDf::Inherit => "inherit".to_string(),
-        _ => format!("{v:?}"),
     }
 }
 
@@ -257,17 +248,12 @@ impl LinkBaseConf {
                             "GENEVE df requires a value",
                         ));
                     };
-                    let val = match v.as_str() {
-                        "unset" => GeneveDf::Unset,
-                        "set" => GeneveDf::Set,
-                        "inherit" => GeneveDf::Inherit,
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Invalid GENEVE df: {v}, supported: unset, \
-                                 set, inherit"
-                            )));
-                        }
-                    };
+                    let val = v.parse::<GeneveDf>().map_err(|e| {
+                        CliError::from(format!(
+                            "Invalid GENEVE df: {v}, supported: unset, set, \
+                             inherit: {e}"
+                        ))
+                    })?;
                     builder = builder.df(val);
                 }
                 "label" | "flowlabel" => {

@@ -66,8 +66,8 @@ where
         // Create two dummy interfaces as slaves
         ns.exec_cmd(&["ip", "link", "add", PORT1_NAME, "type", "dummy"]);
         ns.exec_cmd(&["ip", "link", "add", PORT2_NAME, "type", "dummy"]);
-        ns.exec_cmd(&["ip", "link", "set", PORT1_NAME, "up"]);
-        ns.exec_cmd(&["ip", "link", "set", PORT2_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", PORT1_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", PORT2_NAME, "up"]);
 
         // Create HSR interface via ip-rs
         let mut args = vec![
@@ -77,7 +77,7 @@ where
         args.extend_from_slice(opts);
 
         ns.ip_rs_exec_cmd(&args);
-        ns.exec_cmd(&["ip", "link", "set", HSR_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", HSR_NAME, "up"]);
 
         test(ns);
     });

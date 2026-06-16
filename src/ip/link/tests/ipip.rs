@@ -155,13 +155,13 @@ where
     T: FnOnce(&NetnsGuard),
 {
     with_netns(|ns| {
-        ns.exec_cmd(&["ip", "link", "set", "lo", "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", "lo", "up"]);
         // Create ipip interface via ip-rs
         let mut args = vec!["link", "add", IPIP_NAME, "type", "ipip"];
         args.extend_from_slice(opts);
 
         ns.ip_rs_exec_cmd(&args);
-        ns.exec_cmd(&["ip", "link", "set", IPIP_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", IPIP_NAME, "up"]);
 
         test(ns);
     });

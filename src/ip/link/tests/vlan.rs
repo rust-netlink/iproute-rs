@@ -151,7 +151,7 @@ where
             "type",
             "dummy",
         ]);
-        ns.exec_cmd(&["ip", "link", "set", &parent_name, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", &parent_name, "up"]);
 
         let mut args = vec![
             "link",
@@ -169,7 +169,7 @@ where
         args.extend_from_slice(opts);
 
         ns.ip_rs_exec_cmd(&args);
-        ns.exec_cmd(&["ip", "link", "set", VLAN_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", VLAN_NAME, "up"]);
 
         test(ns);
     });

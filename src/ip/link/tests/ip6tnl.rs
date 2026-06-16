@@ -354,12 +354,12 @@ where
     T: FnOnce(&NetnsGuard),
 {
     with_netns(|ns| {
-        ns.exec_cmd(&["ip", "link", "set", "lo", "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", "lo", "up"]);
         let mut args = vec!["link", "add", IP6TNL_NAME, "type", "ip6tnl"];
         args.extend_from_slice(opts);
 
         ns.ip_rs_exec_cmd(&args);
-        ns.exec_cmd(&["ip", "link", "set", IP6TNL_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", IP6TNL_NAME, "up"]);
 
         test(ns);
     });

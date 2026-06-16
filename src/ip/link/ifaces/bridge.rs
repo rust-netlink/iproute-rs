@@ -5,13 +5,14 @@ use rtnetlink::{
     LinkBridge, LinkMessageBuilder,
     packet_route::link::{
         BridgeBooleanOptionFlags as BoolOptFlags, BridgeQuerierState,
-        InfoBridge, InfoBridgePort, VlanProtocol,
+        InfoBridge, InfoBridgePort, LinkInfo,
     },
 };
 use serde::Serialize;
 
 use super::parse::{
-    parse_from_str, parse_on_off_01, parse_u8, parse_u16, parse_u32, parse_u64,
+    extract_link_info, parse_from_str, parse_on_off_01, parse_u8, parse_u32,
+    parse_u64,
 };
 use crate::link::LinkBaseConf;
 
@@ -156,13 +157,7 @@ impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
                 InfoBridge::VlanFiltering(v) => {
                     vlan_filtering = if *v { 1 } else { 0 }
                 }
-                InfoBridge::VlanProtocol(v) => {
-                    vlan_protocol = match v {
-                        VlanProtocol::Ieee8021Q => "802.1Q".to_string(),
-                        VlanProtocol::Ieee8021Ad => "802.1ad".to_string(),
-                        _ => format!("0x{:x}", u16::from(*v)),
-                    };
-                }
+                InfoBridge::VlanProtocol(v) => vlan_protocol = v.to_string(),
                 InfoBridge::BridgeId(v) => {
                     bridge_id = Some(format_bridge_id(v.priority, v.address));
                 }
@@ -731,223 +726,189 @@ fn format_bridge_timer(v: u64) -> String {
     format!("{:>7.2}", seconds)
 }
 
+fn apply_bridge_args<'a>(
+    mut builder: LinkMessageBuilder<LinkBridge>,
+    iter: &mut impl Iterator<Item = &'a str>,
+) -> Result<LinkMessageBuilder<LinkBridge>, CliError> {
+    while let Some(key) = iter.next() {
+        let Some(v) = iter.next() else {
+            return Err(CliError::from(format!(
+                "bridge {key} requires a value"
+            )));
+        };
+        match key {
+            "forward_delay" | "forwarddelay" => {
+                builder = builder.forward_delay(parse_u32(v, "forward_delay")?);
+            }
+            "hello_time" | "hellotime" => {
+                builder = builder.hello_time(parse_u32(v, "hello_time")?);
+            }
+            "max_age" | "maxage" => {
+                builder = builder.max_age(parse_u32(v, "max_age")?);
+            }
+            "ageing_time" | "ageingtime" => {
+                builder = builder.ageing_time(parse_u32(v, "ageing_time")?);
+            }
+            "stp_state" | "stp" => {
+                builder = builder.stp_state(parse_from_str(v, "stp_state")?);
+            }
+            "priority" => {
+                builder = builder.priority(parse_u32(v, "priority")? as u16);
+            }
+            "vlan_filtering" => {
+                builder = builder.vlan_filtering(parse_on_off_01(v)?);
+            }
+            "vlan_protocol" => {
+                builder =
+                    builder.vlan_protocol(parse_from_str(v, "vlan_protocol")?);
+            }
+            "vlan_default_pvid" => {
+                builder = builder
+                    .vlan_default_pvid(
+                        parse_u32(v, "vlan_default_pvid")? as u16
+                    );
+            }
+            "vlan_stats_enabled" => {
+                builder = builder.vlan_stats_enabled(parse_on_off_01(v)?);
+            }
+            "vlan_stats_per_port" => {
+                builder = builder.vlan_stats_per_port(parse_on_off_01(v)?);
+            }
+            "group_fwd_mask" => {
+                builder = builder
+                    .group_fwd_mask(parse_u32(v, "group_fwd_mask")? as u16);
+            }
+            "group_address" => {
+                let mac: [u8; 6] =
+                    parse_mac_str(v)?.try_into().map_err(|_| {
+                        CliError::from(format!(
+                            "Invalid group_address MAC: {v}"
+                        ))
+                    })?;
+                builder = builder.group_address(mac);
+            }
+            "mcast_snooping" => {
+                builder = builder.mcast_snooping(parse_on_off_01(v)?);
+            }
+            "mcast_vlan_snooping" => {
+                builder = builder.mcast_vlan_snooping(parse_on_off_01(v)?);
+            }
+            "mcast_router" => {
+                builder =
+                    builder.mcast_router(parse_from_str(v, "mcast_router")?);
+            }
+            "mcast_query_use_ifaddr" => {
+                builder = builder.mcast_query_use_ifaddr(parse_on_off_01(v)?);
+            }
+            "mcast_querier" => {
+                builder = builder.mcast_querier(parse_on_off_01(v)?);
+            }
+            "mcast_hash_max" => {
+                builder =
+                    builder.mcast_hash_max(parse_u32(v, "mcast_hash_max")?);
+            }
+            "mcast_last_member_count" => {
+                builder = builder.mcast_last_member_count(parse_u32(
+                    v,
+                    "mcast_last_member_count",
+                )?);
+            }
+            "mcast_startup_query_count" => {
+                builder = builder.mcast_startup_query_count(parse_u32(
+                    v,
+                    "mcast_startup_query_count",
+                )?);
+            }
+            "mcast_last_member_interval" => {
+                builder = builder.mcast_last_member_interval(parse_u64(
+                    v,
+                    "mcast_last_member_interval",
+                )?);
+            }
+            "mcast_membership_interval" => {
+                builder = builder.mcast_membership_interval(parse_u64(
+                    v,
+                    "mcast_membership_interval",
+                )?);
+            }
+            "mcast_querier_interval" => {
+                builder = builder.mcast_querier_interval(parse_u64(
+                    v,
+                    "mcast_querier_interval",
+                )?);
+            }
+            "mcast_query_interval" => {
+                builder = builder.mcast_query_interval(parse_u64(
+                    v,
+                    "mcast_query_interval",
+                )?);
+            }
+            "mcast_query_response_interval" => {
+                builder = builder.mcast_query_response_interval(parse_u64(
+                    v,
+                    "mcast_query_response_interval",
+                )?);
+            }
+            "mcast_startup_query_interval" => {
+                builder = builder.mcast_startup_query_interval(parse_u64(
+                    v,
+                    "mcast_startup_query_interval",
+                )?);
+            }
+            "mcast_stats_enabled" => {
+                builder = builder.mcast_stats_enabled(parse_on_off_01(v)?);
+            }
+            "mcast_igmp_version" => {
+                builder = builder
+                    .mcast_igmp_version(parse_u8(v, "mcast_igmp_version")?);
+            }
+            "mcast_mld_version" => {
+                builder = builder
+                    .mcast_mld_version(parse_u8(v, "mcast_mld_version")?);
+            }
+            "nf_call_iptables" => {
+                builder = builder.nf_call_iptables(parse_on_off_01(v)?);
+            }
+            "nf_call_ip6tables" => {
+                builder = builder.nf_call_ip6tables(parse_on_off_01(v)?);
+            }
+            "nf_call_arptables" => {
+                builder = builder.nf_call_arptables(parse_on_off_01(v)?);
+            }
+            "no_linklocal_learn" => {
+                builder = builder.no_linklocal_learn(parse_on_off_01(v)?);
+            }
+            "mdb_offload_fail_notification" => {
+                builder =
+                    builder.mdb_offload_fail_notification(parse_on_off_01(v)?);
+            }
+            "mst_enabled" => {
+                builder = builder.mst_enabled(parse_on_off_01(v)?);
+            }
+            "fdb_local_vlan_0" => {
+                builder = builder.fdb_local_vlan_0(parse_on_off_01(v)?);
+            }
+            "fdb_max_learned" => {
+                builder =
+                    builder.fdb_max_learned(parse_u32(v, "fdb_max_learned")?);
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown bridge argument: {key}"
+                )));
+            }
+        }
+    }
+    Ok(builder)
+}
+
 impl LinkBaseConf {
     pub(crate) fn apply_bridge(
         &self,
     ) -> Result<LinkMessageBuilder<LinkBridge>, CliError> {
-        let mut builder = LinkBridge::new(&self.name);
-
-        let mut iter = self.iface_specific.iter();
-        while let Some(key) = iter.next() {
-            let mut next_val = || {
-                iter.next().ok_or_else(|| {
-                    CliError::from(format!("bridge {key} requires a value"))
-                })
-            };
-            match key.as_str() {
-                "forward_delay" => {
-                    let v = next_val()?;
-                    builder =
-                        builder.forward_delay(parse_u32(v, "forward_delay")?);
-                }
-                "hello_time" => {
-                    let v = next_val()?;
-                    builder = builder.hello_time(parse_u32(v, "hello_time")?);
-                }
-                "max_age" => {
-                    let v = next_val()?;
-                    builder = builder.max_age(parse_u32(v, "max_age")?);
-                }
-                "ageing_time" => {
-                    let v = next_val()?;
-                    builder = builder.ageing_time(parse_u32(v, "ageing_time")?);
-                }
-                "stp_state" => {
-                    let v = next_val()?;
-                    builder =
-                        builder.stp_state(parse_from_str(v, "stp_state")?);
-                }
-                "priority" => {
-                    let v = next_val()?;
-                    builder = builder.priority(parse_u16(v, "priority")?);
-                }
-                "vlan_filtering" => {
-                    let v = next_val()?;
-                    builder = builder.vlan_filtering(parse_on_off_01(v)?);
-                }
-                "vlan_protocol" => {
-                    let v = next_val()?;
-                    builder = builder
-                        .vlan_protocol(parse_from_str(v, "vlan_protocol")?);
-                }
-                "vlan_default_pvid" => {
-                    let v = next_val()?;
-                    builder = builder
-                        .vlan_default_pvid(parse_u16(v, "vlan_default_pvid")?);
-                }
-                "vlan_stats_enabled" => {
-                    let v = next_val()?;
-                    builder = builder.vlan_stats_enabled(parse_on_off_01(v)?);
-                }
-                "vlan_stats_per_port" => {
-                    let v = next_val()?;
-                    builder = builder.vlan_stats_per_port(parse_on_off_01(v)?);
-                }
-                "group_fwd_mask" => {
-                    let v = next_val()?;
-                    builder =
-                        builder.group_fwd_mask(parse_u16(v, "group_fwd_mask")?);
-                }
-                "group_address" => {
-                    let v = next_val()?;
-                    let mac: [u8; 6] =
-                        parse_mac_str(v)?.try_into().map_err(|_| {
-                            CliError::from(format!(
-                                "Invalid group_address MAC: {v}"
-                            ))
-                        })?;
-                    builder = builder.group_address(mac);
-                }
-                "mcast_snooping" => {
-                    let v = next_val()?;
-                    builder = builder.mcast_snooping(parse_on_off_01(v)?);
-                }
-                "mcast_vlan_snooping" => {
-                    let v = next_val()?;
-                    builder = builder.mcast_vlan_snooping(parse_on_off_01(v)?);
-                }
-                "mcast_router" => {
-                    let v = next_val()?;
-                    builder = builder
-                        .mcast_router(parse_from_str(v, "mcast_router")?);
-                }
-                "mcast_query_use_ifaddr" => {
-                    let v = next_val()?;
-                    builder =
-                        builder.mcast_query_use_ifaddr(parse_on_off_01(v)?);
-                }
-                "mcast_querier" => {
-                    let v = next_val()?;
-                    builder = builder.mcast_querier(parse_on_off_01(v)?);
-                }
-                "mcast_hash_max" => {
-                    let v = next_val()?;
-                    builder =
-                        builder.mcast_hash_max(parse_u32(v, "mcast_hash_max")?);
-                }
-                "mcast_last_member_count" => {
-                    let v = next_val()?;
-                    builder = builder.mcast_last_member_count(parse_u32(
-                        v,
-                        "mcast_last_member_count",
-                    )?);
-                }
-                "mcast_startup_query_count" => {
-                    let v = next_val()?;
-                    builder = builder.mcast_startup_query_count(parse_u32(
-                        v,
-                        "mcast_startup_query_count",
-                    )?);
-                }
-                "mcast_last_member_interval" => {
-                    let v = next_val()?;
-                    builder = builder.mcast_last_member_interval(parse_u64(
-                        v,
-                        "mcast_last_member_interval",
-                    )?);
-                }
-                "mcast_membership_interval" => {
-                    let v = next_val()?;
-                    builder = builder.mcast_membership_interval(parse_u64(
-                        v,
-                        "mcast_membership_interval",
-                    )?);
-                }
-                "mcast_querier_interval" => {
-                    let v = next_val()?;
-                    builder = builder.mcast_querier_interval(parse_u64(
-                        v,
-                        "mcast_querier_interval",
-                    )?);
-                }
-                "mcast_query_interval" => {
-                    let v = next_val()?;
-                    builder = builder.mcast_query_interval(parse_u64(
-                        v,
-                        "mcast_query_interval",
-                    )?);
-                }
-                "mcast_query_response_interval" => {
-                    let v = next_val()?;
-                    builder = builder.mcast_query_response_interval(parse_u64(
-                        v,
-                        "mcast_query_response_interval",
-                    )?);
-                }
-                "mcast_startup_query_interval" => {
-                    let v = next_val()?;
-                    builder = builder.mcast_startup_query_interval(parse_u64(
-                        v,
-                        "mcast_startup_query_interval",
-                    )?);
-                }
-                "mcast_stats_enabled" => {
-                    let v = next_val()?;
-                    builder = builder.mcast_stats_enabled(parse_on_off_01(v)?);
-                }
-                "mcast_igmp_version" => {
-                    let v = next_val()?;
-                    builder = builder
-                        .mcast_igmp_version(parse_u8(v, "mcast_igmp_version")?);
-                }
-                "mcast_mld_version" => {
-                    let v = next_val()?;
-                    builder = builder
-                        .mcast_mld_version(parse_u8(v, "mcast_mld_version")?);
-                }
-                "nf_call_iptables" => {
-                    let v = next_val()?;
-                    builder = builder.nf_call_iptables(parse_on_off_01(v)?);
-                }
-                "nf_call_ip6tables" => {
-                    let v = next_val()?;
-                    builder = builder.nf_call_ip6tables(parse_on_off_01(v)?);
-                }
-                "nf_call_arptables" => {
-                    let v = next_val()?;
-                    builder = builder.nf_call_arptables(parse_on_off_01(v)?);
-                }
-                "no_linklocal_learn" => {
-                    let v = next_val()?;
-                    builder = builder.no_linklocal_learn(parse_on_off_01(v)?);
-                }
-                "mdb_offload_fail_notification" => {
-                    let v = next_val()?;
-                    builder = builder
-                        .mdb_offload_fail_notification(parse_on_off_01(v)?);
-                }
-                "mst_enabled" => {
-                    let v = next_val()?;
-                    builder = builder.mst_enabled(parse_on_off_01(v)?);
-                }
-                "fdb_local_vlan_0" => {
-                    let v = next_val()?;
-                    builder = builder.fdb_local_vlan_0(parse_on_off_01(v)?);
-                }
-                "fdb_max_learned" => {
-                    let v = next_val()?;
-                    builder = builder
-                        .fdb_max_learned(parse_u32(v, "fdb_max_learned")?);
-                }
-                _ => {
-                    return Err(CliError::from(format!(
-                        "Unknown bridge argument: {key}"
-                    )));
-                }
-            }
-        }
-
-        Ok(builder)
+        let builder = LinkBridge::new(&self.name);
+        let mut iter = self.iface_specific.iter().map(|s| s.as_str());
+        apply_bridge_args(builder, &mut iter)
     }
 }
 
@@ -965,4 +926,16 @@ fn format_bridge_id(priority: u16, mac_bytes: [u8; 6]) -> String {
         mac_bytes[4],
         mac_bytes[5]
     )
+}
+
+pub(crate) fn build_bridge_entries(
+    args: &[String],
+) -> Result<Vec<LinkInfo>, CliError> {
+    use rtnetlink::packet_route::link::InfoKind;
+
+    let builder =
+        LinkMessageBuilder::<LinkBridge>::new_with_info_kind(InfoKind::Bridge);
+    let mut iter = args.iter().map(|s| s.as_str());
+    let builder = apply_bridge_args(builder, &mut iter)?;
+    Ok(extract_link_info(builder.build()))
 }

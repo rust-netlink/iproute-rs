@@ -2,10 +2,12 @@
 
 mod add;
 mod cli;
+mod delete;
 mod detail;
 mod flags;
 mod ifaces;
 mod link_info;
+mod set;
 mod show;
 
 #[cfg(test)]

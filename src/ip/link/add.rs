@@ -67,9 +67,7 @@ impl LinkAddCommand {
             }
             InfoKind::Netkit => base_conf.apply(base_conf.apply_netkit()?)?,
             InfoKind::Vrf => base_conf.apply(base_conf.apply_vrf()?)?,
-            InfoKind::Vxcan => {
-                base_conf.apply(base_conf.apply_vxcan()?)?
-            }
+            InfoKind::Vxcan => base_conf.apply(base_conf.apply_vxcan()?)?,
             InfoKind::Xfrm => {
                 base_conf.apply(base_conf.apply_xfrm(&handle).await?)?
             }
