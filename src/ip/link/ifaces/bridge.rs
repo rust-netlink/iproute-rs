@@ -928,21 +928,22 @@ fn format_bridge_id(priority: u16, mac_bytes: [u8; 6]) -> String {
     )
 }
 
-pub(crate) fn build_bridge_entries(
-    args: &[String],
-) -> Result<Vec<LinkInfo>, CliError> {
-    use rtnetlink::packet_route::link::InfoKind;
-
-    let builder =
-        LinkMessageBuilder::<LinkBridge>::new_with_info_kind(InfoKind::Bridge);
-    let mut iter = args.iter().map(|s| s.as_str());
-    let builder = apply_bridge_args(builder, &mut iter)?;
-    Ok(extract_link_info(builder.build()))
-}
-
 pub(crate) struct IfaceBridge;
 
 impl IfaceBridge {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        use rtnetlink::packet_route::link::InfoKind;
+
+        let builder = LinkMessageBuilder::<LinkBridge>::new_with_info_kind(
+            InfoKind::Bridge,
+        );
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = apply_bridge_args(builder, &mut iter)?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... bridge [ fdb_flush ]

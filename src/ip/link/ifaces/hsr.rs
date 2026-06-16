@@ -214,19 +214,19 @@ impl LinkBaseConf {
     }
 }
 
-pub(crate) fn build_hsr_entries(
-    args: &[String],
-) -> Result<Vec<LinkInfo>, CliError> {
-    let builder =
-        LinkMessageBuilder::<LinkHsr>::new_with_info_kind(InfoKind::Hsr);
-    let mut iter = args.iter().map(|s| s.as_str());
-    let builder = apply_hsr_args(builder, &mut iter)?;
-    Ok(extract_link_info(builder.build()))
-}
-
 pub(crate) struct IfaceHsr;
 
 impl IfaceHsr {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder =
+            LinkMessageBuilder::<LinkHsr>::new_with_info_kind(InfoKind::Hsr);
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = apply_hsr_args(builder, &mut iter)?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage:        ip link add name NAME type hsr slave1 SLAVE1-IF slave2 SLAVE2-IF

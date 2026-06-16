@@ -117,19 +117,19 @@ impl std::fmt::Display for CliLinkInfoDataVrfPort {
     }
 }
 
-pub(crate) fn build_vrf_entries(
-    args: &[String],
-) -> Result<Vec<LinkInfo>, CliError> {
-    let builder =
-        LinkMessageBuilder::<LinkVrf>::new_with_info_kind(InfoKind::Vrf);
-    let mut iter = args.iter().map(|s| s.as_str());
-    let builder = apply_vrf_args(builder, &mut iter)?;
-    Ok(extract_link_info(builder.build()))
-}
-
 pub(crate) struct IfaceVrf;
 
 impl IfaceVrf {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder =
+            LinkMessageBuilder::<LinkVrf>::new_with_info_kind(InfoKind::Vrf);
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = apply_vrf_args(builder, &mut iter)?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... vrf table TABLEID

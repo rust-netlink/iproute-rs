@@ -10,12 +10,12 @@ use rtnetlink::packet_route::link::{
 };
 
 use super::ifaces::{
-    bond::build_bond_entries,
-    bridge::build_bridge_entries,
-    hsr::build_hsr_entries,
+    bond::IfaceBond,
+    bridge::IfaceBridge,
+    hsr::IfaceHsr,
     parse::{parse_on_off, parse_u32},
-    vlan::build_vlan_entries,
-    vrf::build_vrf_entries,
+    vlan::IfaceVlan,
+    vrf::IfaceVrf,
 };
 use crate::link::CliLinkInfo;
 
@@ -493,28 +493,28 @@ async fn build_type_link_info(
         | InfoKind::IpIp
         | InfoKind::Ip6Tnl => Ok(build_kind_only(kind)),
         InfoKind::Vlan => {
-            let mut infos = build_vlan_entries(args)?;
+            let mut infos = IfaceVlan::build_entries(args)?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }
         InfoKind::Bond => {
-            let mut infos = build_bond_entries(args)?;
+            let mut infos = IfaceBond::build_entries(args)?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }
         InfoKind::Bridge => {
-            let mut infos = build_bridge_entries(args)?;
+            let mut infos = IfaceBridge::build_entries(args)?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }
         InfoKind::Hsr => {
-            let mut infos = build_hsr_entries(args)?;
+            let mut infos = IfaceHsr::build_entries(args)?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }
         InfoKind::Netkit => Ok(build_kind_only(InfoKind::Netkit)),
         InfoKind::Vrf => {
-            let mut infos = build_vrf_entries(args)?;
+            let mut infos = IfaceVrf::build_entries(args)?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }

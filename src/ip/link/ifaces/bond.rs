@@ -536,19 +536,19 @@ impl LinkBaseConf {
     }
 }
 
-pub(crate) fn build_bond_entries(
-    args: &[String],
-) -> Result<Vec<LinkInfo>, CliError> {
-    let builder =
-        LinkMessageBuilder::<LinkBond>::new_with_info_kind(InfoKind::Bond);
-    let mut iter = args.iter().map(|s| s.as_str());
-    let builder = apply_bond_args(builder, &mut iter)?;
-    Ok(extract_link_info(builder.build()))
-}
-
 pub(crate) struct IfaceBond;
 
 impl IfaceBond {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder =
+            LinkMessageBuilder::<LinkBond>::new_with_info_kind(InfoKind::Bond);
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = apply_bond_args(builder, &mut iter)?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... bond [ mode BONDMODE ] [ active_slave SLAVE_DEV ]

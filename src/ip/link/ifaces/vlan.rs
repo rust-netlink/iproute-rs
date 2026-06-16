@@ -223,44 +223,67 @@ fn parse_qos_map(s: &str) -> Result<(u32, u32), CliError> {
     Ok((from, to))
 }
 
-pub(crate) fn build_vlan_entries(
-    args: &[String],
-) -> Result<Vec<LinkInfo>, CliError> {
-    let builder =
-        LinkMessageBuilder::<LinkVlan>::new_with_info_kind(InfoKind::Vlan);
+pub(crate) struct IfaceVlan;
 
-    let mut vlan_id = None;
-    let mut flags = VlanFlags::empty();
-    let mut flag_mask = VlanFlags::empty();
-    let mut ingress_qos = Vec::new();
-    let mut egress_qos = Vec::new();
+impl IfaceVlan {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder =
+            LinkMessageBuilder::<LinkVlan>::new_with_info_kind(InfoKind::Vlan);
 
-    let mut builder = {
-        let mut iter = args.iter().map(|s| s.as_str());
-        apply_vlan_args(
-            builder,
-            &mut iter,
-            &mut vlan_id,
-            &mut flags,
-            &mut flag_mask,
-            &mut ingress_qos,
-            &mut egress_qos,
-        )?
-    };
+        let mut vlan_id = None;
+        let mut flags = VlanFlags::empty();
+        let mut flag_mask = VlanFlags::empty();
+        let mut ingress_qos = Vec::new();
+        let mut egress_qos = Vec::new();
 
-    if flag_mask != VlanFlags::empty() {
-        builder = builder.flags(flags, flag_mask);
+        let mut builder = {
+            let mut iter = args.iter().map(|s| s.as_str());
+            apply_vlan_args(
+                builder,
+                &mut iter,
+                &mut vlan_id,
+                &mut flags,
+                &mut flag_mask,
+                &mut ingress_qos,
+                &mut egress_qos,
+            )?
+        };
+
+        if flag_mask != VlanFlags::empty() {
+            builder = builder.flags(flags, flag_mask);
+        }
+
+        if !ingress_qos.is_empty() || !egress_qos.is_empty() {
+            builder = builder.qos(ingress_qos, egress_qos);
+        }
+
+        let infos = extract_link_info(builder.build());
+        if infos.is_empty() {
+            Ok(vec![LinkInfo::Kind(InfoKind::Vlan)])
+        } else {
+            Ok(infos)
+        }
     }
 
-    if !ingress_qos.is_empty() || !egress_qos.is_empty() {
-        builder = builder.qos(ingress_qos, egress_qos);
-    }
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... vlan id VLANID
+                [ protocol VLANPROTO ]
+                [ reorder_hdr { on | off } ]
+                [ gvrp { on | off } ]
+                [ mvrp { on | off } ]
+                [ loose_binding { on | off } ]
+                [ bridge_binding { on | off } ]
+                [ ingress-qos-map QOS-MAP ]
+                [ egress-qos-map QOS-MAP ]
 
-    let infos = extract_link_info(builder.build());
-    if infos.is_empty() {
-        Ok(vec![LinkInfo::Kind(InfoKind::Vlan)])
-    } else {
-        Ok(infos)
+VLANID := 0-4095
+VLANPROTO: [ 802.1Q | 802.1ad ]
+QOS-MAP := [ QOS-MAP ] QOS-MAPPING
+QOS-MAPPING := FROM:TO
+"
     }
 }
 
@@ -288,25 +311,4 @@ impl std::fmt::Display for CliLinkInfoDataVlan {
     }
 }
 
-pub(crate) struct IfaceVlan;
 
-impl IfaceVlan {
-    #[rustfmt::skip]
-    pub(crate) fn print_help() -> &'static str {
-        r"Usage: ... vlan id VLANID
-                [ protocol VLANPROTO ]
-                [ reorder_hdr { on | off } ]
-                [ gvrp { on | off } ]
-                [ mvrp { on | off } ]
-                [ loose_binding { on | off } ]
-                [ bridge_binding { on | off } ]
-                [ ingress-qos-map QOS-MAP ]
-                [ egress-qos-map QOS-MAP ]
-
-VLANID := 0-4095
-VLANPROTO: [ 802.1Q | 802.1ad ]
-QOS-MAP := [ QOS-MAP ] QOS-MAPPING
-QOS-MAPPING := FROM:TO
-"
-    }
-}
