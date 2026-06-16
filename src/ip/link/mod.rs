@@ -10,6 +10,7 @@ mod link_info;
 mod property;
 mod set;
 mod show;
+mod xdp;
 
 #[cfg(test)]
 mod tests;

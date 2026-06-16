@@ -12,13 +12,16 @@ use rtnetlink::packet_route::link::{
     VfInfoVlan, VfLinkState, VfVlan, VfVlanInfo, VlanProtocol,
 };
 
-use super::ifaces::{
-    bond::IfaceBond,
-    bridge::IfaceBridge,
-    hsr::IfaceHsr,
-    parse::{parse_eui64, parse_i32, parse_on_off, parse_u32},
-    vlan::IfaceVlan,
-    vrf::IfaceVrf,
+use super::{
+    ifaces::{
+        bond::IfaceBond,
+        bridge::IfaceBridge,
+        hsr::IfaceHsr,
+        parse::{parse_eui64, parse_i32, parse_on_off, parse_u32},
+        vlan::IfaceVlan,
+        vrf::IfaceVrf,
+    },
+    xdp::{XdpConfig, build_xdp_attrs, parse_xdp_args},
 };
 use crate::link::CliLinkInfo;
 
@@ -253,6 +256,11 @@ impl LinkSetCommand {
             }
         }
 
+        if let Some(ref xdp_conf) = conf.xdp {
+            let xdp_attrs = build_xdp_attrs(xdp_conf)?;
+            attrs.push(LinkAttribute::Xdp(xdp_attrs));
+        }
+
         let mut message = LinkMessage::default();
         message.header = header;
         message.attributes = attrs;
@@ -324,6 +332,7 @@ struct LinkSetConf {
     vf_configs: Vec<VfConfig>,
     iface_type: Option<InfoKind>,
     iface_specific: Vec<String>,
+    xdp: Option<XdpConfig>,
 }
 
 impl LinkSetConf {
@@ -361,6 +370,7 @@ impl LinkSetConf {
         let mut vf_configs: Vec<VfConfig> = Vec::new();
         let mut iface_type = None;
         let mut iface_specific = Vec::new();
+        let mut xdp = None;
 
         let mut iter = args.iter().peekable();
         while let Some(arg) = iter.next() {
@@ -824,6 +834,15 @@ impl LinkSetConf {
                     iface_specific = iter.cloned().collect();
                     break;
                 }
+                "xdp" | "xdpgeneric" | "xdpdrv" | "xdpoffload" => {
+                    let cfg = parse_xdp_args(&mut iter, arg.as_str())?;
+                    if xdp.is_some() {
+                        return Err(CliError::from(
+                            "Duplicate XDP configuration",
+                        ));
+                    }
+                    xdp = Some(cfg);
+                }
                 _ => {
                     if dev.is_none() {
                         dev = Some(arg.clone());
@@ -873,6 +892,7 @@ impl LinkSetConf {
             vf_configs,
             iface_type,
             iface_specific,
+            xdp,
         })
     }
 }
