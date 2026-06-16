@@ -310,5 +310,3 @@ impl std::fmt::Display for CliLinkInfoDataVlan {
         Ok(())
     }
 }
-
-

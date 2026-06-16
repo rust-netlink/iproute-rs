@@ -5,7 +5,8 @@ use std::os::unix::io::AsRawFd;
 use futures_util::TryStreamExt;
 use iproute_rs::{CliError, parse_mac_str};
 use rtnetlink::packet_route::link::{
-    InfoKind, LinkAttribute, LinkFlags, LinkHeader, LinkInfo, LinkMessage,
+    AfSpecInet6, AfSpecUnspec, In6AddrGenMode, InfoKind, LinkAttribute,
+    LinkFlags, LinkHeader, LinkInfo, LinkMessage, LinkProtocolDownReason,
     State,
 };
 
@@ -13,7 +14,7 @@ use super::ifaces::{
     bond::IfaceBond,
     bridge::IfaceBridge,
     hsr::IfaceHsr,
-    parse::{parse_on_off, parse_u32},
+    parse::{parse_i32, parse_on_off, parse_u32},
     vlan::IfaceVlan,
     vrf::IfaceVrf,
 };
@@ -149,6 +150,37 @@ impl LinkSetCommand {
         if let Some(v) = conf.alias {
             attrs.push(LinkAttribute::IfAlias(v));
         }
+        if let Some((preason, on)) = conf.proto_down_reason {
+            let mask = 1u32.checked_shl(preason).unwrap_or(0);
+            let value = if on { mask } else { 0 };
+            attrs.push(LinkAttribute::ProtoDownReason(vec![
+                LinkProtocolDownReason::Mask(mask),
+                LinkProtocolDownReason::Value(value),
+            ]));
+        }
+        if let Some(v) = conf.gso_max_size {
+            attrs.push(LinkAttribute::GsoMaxSize(v));
+        }
+        if let Some(v) = conf.gso_ipv4_max_size {
+            attrs.push(LinkAttribute::GsoIpv4MaxSize(v));
+        }
+        if let Some(v) = conf.gso_max_segs {
+            attrs.push(LinkAttribute::GsoMaxSegs(v));
+        }
+        if let Some(v) = conf.gro_max_size {
+            attrs.push(LinkAttribute::GroMaxSize(v));
+        }
+        if let Some(v) = conf.gro_ipv4_max_size {
+            attrs.push(LinkAttribute::GroIpv4MaxSize(v));
+        }
+        if let Some(v) = conf.link_netnsid {
+            attrs.push(LinkAttribute::LinkNetNsId(v));
+        }
+        if let Some(v) = conf.addrgenmode {
+            attrs.push(LinkAttribute::AfSpecUnspec(vec![AfSpecUnspec::Inet6(
+                vec![AfSpecInet6::AddrGenMode(v)],
+            )]));
+        }
 
         if let Some(iface_type) = conf.iface_type {
             let link_infos =
@@ -200,9 +232,17 @@ struct LinkSetConf {
     netns_pid: Option<u32>,
     netns_file: Option<std::fs::File>,
     protodown: Option<bool>,
+    proto_down_reason: Option<(u32, bool)>,
     carrier: Option<bool>,
     state: Option<State>,
     alias: Option<String>,
+    gso_max_size: Option<u32>,
+    gso_ipv4_max_size: Option<u32>,
+    gso_max_segs: Option<u32>,
+    gro_max_size: Option<u32>,
+    gro_ipv4_max_size: Option<u32>,
+    link_netnsid: Option<i32>,
+    addrgenmode: Option<In6AddrGenMode>,
     iface_type: Option<InfoKind>,
     iface_specific: Vec<String>,
 }
@@ -228,9 +268,17 @@ impl LinkSetConf {
         let mut netns_pid = None;
         let mut netns_file = None;
         let mut protodown = None;
+        let mut proto_down_reason = None;
         let mut carrier = None;
         let mut state = None;
         let mut alias = None;
+        let mut gso_max_size = None;
+        let mut gso_ipv4_max_size = None;
+        let mut gso_max_segs = None;
+        let mut gro_max_size = None;
+        let mut gro_ipv4_max_size = None;
+        let mut link_netnsid = None;
+        let mut addrgenmode = None;
         let mut iface_type = None;
         let mut iface_specific = Vec::new();
 
@@ -378,6 +426,20 @@ impl LinkSetConf {
                     };
                     protodown = Some(parse_on_off(v)?);
                 }
+                "protodown_reason" => {
+                    let Some(preason_str) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"protodown_reason\" requires a value",
+                        ));
+                    };
+                    let preason = parse_u32(preason_str, "protodown_reason")?;
+                    let Some(on_off) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"protodown_reason\" requires on or off",
+                        ));
+                    };
+                    proto_down_reason = Some((preason, parse_on_off(on_off)?));
+                }
                 "carrier" => {
                     let Some(v) = iter.next() else {
                         return Err(CliError::from(
@@ -404,6 +466,74 @@ impl LinkSetConf {
                         ));
                     };
                     alias = Some(v.clone());
+                }
+                "gso_max_size" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"gso_max_size\" requires a value",
+                        ));
+                    };
+                    gso_max_size = Some(parse_u32(v, "gso_max_size")?);
+                }
+                "gso_ipv4_max_size" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"gso_ipv4_max_size\" requires a value",
+                        ));
+                    };
+                    gso_ipv4_max_size =
+                        Some(parse_u32(v, "gso_ipv4_max_size")?);
+                }
+                "gso_max_segs" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"gso_max_segs\" requires a value",
+                        ));
+                    };
+                    gso_max_segs = Some(parse_u32(v, "gso_max_segs")?);
+                }
+                "gro_max_size" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"gro_max_size\" requires a value",
+                        ));
+                    };
+                    gro_max_size = Some(parse_u32(v, "gro_max_size")?);
+                }
+                "gro_ipv4_max_size" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"gro_ipv4_max_size\" requires a value",
+                        ));
+                    };
+                    gro_ipv4_max_size =
+                        Some(parse_u32(v, "gro_ipv4_max_size")?);
+                }
+                "link-netnsid" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"link-netnsid\" requires a value",
+                        ));
+                    };
+                    link_netnsid = Some(parse_i32(v, "link-netnsid")?);
+                }
+                "addrgenmode" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"addrgenmode\" requires a value",
+                        ));
+                    };
+                    addrgenmode = Some(match v.as_str() {
+                        "eui64" => In6AddrGenMode::Eui64,
+                        "none" => In6AddrGenMode::None,
+                        "stable_secret" => In6AddrGenMode::StablePrivacy,
+                        "random" => In6AddrGenMode::Random,
+                        _ => {
+                            return Err(CliError::from(format!(
+                                "Invalid address generation mode: {v}"
+                            )));
+                        }
+                    });
                 }
                 "type" => {
                     let Some(kind_str) = iter.next() else {
@@ -450,9 +580,17 @@ impl LinkSetConf {
             netns_pid,
             netns_file,
             protodown,
+            proto_down_reason,
             carrier,
             state,
             alias,
+            gso_max_size,
+            gso_ipv4_max_size,
+            gso_max_segs,
+            gro_max_size,
+            gro_ipv4_max_size,
+            link_netnsid,
+            addrgenmode,
             iface_type,
             iface_specific,
         })

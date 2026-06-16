@@ -367,6 +367,113 @@ fn test_set_vrf_mtu() {
     });
 }
 
+// --- GSO/GRO tests ---
+
+#[test]
+fn test_set_dummy_gso_max_size() {
+    with_dummy_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            DUMMY_NAME,
+            "gso_max_size",
+            "65536",
+        ]);
+        ns.assert_eq_output(&["-d", "link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_set_dummy_gso_ipv4_max_size() {
+    with_dummy_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            DUMMY_NAME,
+            "gso_ipv4_max_size",
+            "65536",
+        ]);
+        ns.assert_eq_output(&["-d", "link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_set_dummy_gso_max_segs() {
+    with_dummy_iface(|ns| {
+        ns.ip_rs_exec_cmd(&["link", "set", DUMMY_NAME, "gso_max_segs", "200"]);
+        ns.assert_eq_output(&["-d", "link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_set_dummy_gro_max_size() {
+    with_dummy_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            DUMMY_NAME,
+            "gro_max_size",
+            "131072",
+        ]);
+        ns.assert_eq_output(&["-d", "link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_set_dummy_gro_ipv4_max_size() {
+    with_dummy_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            DUMMY_NAME,
+            "gro_ipv4_max_size",
+            "65536",
+        ]);
+        ns.assert_eq_output(&["-d", "link", "show", DUMMY_NAME]);
+    });
+}
+
+// protodown not supported on dummy interfaces; skip the test
+// #[test]
+
+// --- addrgenmode test ---
+
+#[test]
+fn test_set_dummy_addrgenmode_none() {
+    with_dummy_iface(|ns| {
+        ns.ip_rs_exec_cmd(&["link", "set", DUMMY_NAME, "addrgenmode", "none"]);
+        ns.assert_eq_output(&["link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_set_dummy_addrgenmode_eui64() {
+    with_dummy_iface(|ns| {
+        ns.ip_rs_exec_cmd(&["link", "set", DUMMY_NAME, "addrgenmode", "eui64"]);
+        ns.assert_eq_output(&["link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_set_dummy_addrgenmode_random() {
+    with_dummy_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            DUMMY_NAME,
+            "addrgenmode",
+            "random",
+        ]);
+        ns.assert_eq_output(&["link", "show", DUMMY_NAME]);
+    });
+}
+
+// addrgenmode stable_secret not supported on dummy; skip the test
+// #[test]
+
+// link-netnsid requires specific netns setup; skip the basic test
+// #[test]
+
 // --- Generic set tests ---
 
 #[test]

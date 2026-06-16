@@ -43,6 +43,16 @@ pub(crate) fn extract_link_info(msg: LinkMessage) -> Vec<LinkInfo> {
         .unwrap_or_default()
 }
 
+pub(crate) fn parse_i32(s: &str, name: &str) -> Result<i32, CliError> {
+    if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        i32::from_str_radix(hex, 16)
+            .map_err(|_| CliError::from(format!("Invalid {name} value: {s}")))
+    } else {
+        s.parse::<i32>()
+            .map_err(|_| CliError::from(format!("Invalid {name} value: {s}")))
+    }
+}
+
 pub(crate) fn parse_u64(s: &str, name: &str) -> Result<u64, CliError> {
     s.parse::<u64>()
         .map_err(|_| CliError::from(format!("Invalid {name} value: {s}")))
