@@ -256,3 +256,31 @@ impl std::fmt::Display for CliLinkInfoDataIpVtap {
         Ok(())
     }
 }
+
+pub(crate) struct IfaceIpVlan;
+
+impl IfaceIpVlan {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... ipvlan [ mode MODE ] [ FLAGS ]
+
+MODE: l3 | l3s | l2
+FLAGS: bridge | private | vepa
+(first values are the defaults if nothing is specified).
+"
+    }
+}
+
+pub(crate) struct IfaceIpVtap;
+
+impl IfaceIpVtap {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... ipvtap [ mode MODE ] [ FLAGS ]
+
+MODE: l3 | l3s | l2
+FLAGS: bridge | private | vepa
+(first values are the defaults if nothing is specified).
+"
+    }
+}

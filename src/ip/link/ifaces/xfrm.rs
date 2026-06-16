@@ -91,3 +91,16 @@ fn parse_if_id(val: &str) -> Result<u32, CliError> {
         .map_or_else(|| val.parse::<u32>(), |hex| u32::from_str_radix(hex, 16));
     v.map_err(|_| CliError::from(format!("invalid if_id value: {val}")))
 }
+
+pub(crate) struct IfaceXfrm;
+
+impl IfaceXfrm {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... xfrm dev [ PHYS_DEV ] [ if_id IF-ID ]
+                [ external ]
+
+Where: IF-ID := { 0x1..0xffffffff }
+"
+    }
+}

@@ -317,3 +317,31 @@ impl LinkBaseConf {
         Ok(builder)
     }
 }
+
+pub(crate) struct IfaceGeneve;
+
+impl IfaceGeneve {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... geneve id VNI
+                remote ADDR
+                [ ttl TTL ]
+                [ tos TOS ]
+                [ df DF ]
+                [ flowlabel LABEL ]
+                [ dstport PORT ]
+                [ [no]external ]
+                [ [no]udpcsum ]
+                [ [no]udp6zerocsumtx ]
+                [ [no]udp6zerocsumrx ]
+                [ innerprotoinherit ]
+
+Where:        VNI   := 0-16777215
+        ADDR  := IP_ADDRESS
+        TOS   := { NUMBER | inherit }
+        TTL   := { 1..255 | auto | inherit }
+        DF    := { unset | set | inherit }
+        LABEL := 0-1048575
+"
+    }
+}

@@ -764,3 +764,71 @@ mod tests {
         assert!(parse_dsfield("xyz").is_err());
     }
 }
+
+pub(crate) struct IfaceIpIp;
+
+impl IfaceIpIp {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... ipip          [ remote ADDR ]
+                        [ local ADDR ]
+                        [ ttl TTL ]
+                        [ tos TOS ]
+                        [ [no]pmtudisc ]
+                        [ 6rd-prefix ADDR ]
+                        [ 6rd-relay_prefix ADDR ]
+                        [ 6rd-reset ]
+                        [ dev PHYS_DEV ]
+                        [ fwmark MARK ]
+                        [ external ]
+                        [ noencap ]
+                        [ encap { fou | gue | none } ]
+                        [ encap-sport PORT ]
+                        [ encap-dport PORT ]
+                        [ [no]encap-csum ]
+                        [ [no]encap-csum6 ]
+                        [ [no]encap-remcsum ]
+                        [ mode { ipip | mplsip | any } ]
+
+Where:        ADDR := { IP_ADDRESS | any }
+        TOS  := { NUMBER | inherit }
+        TTL  := { 1..255 | inherit }
+        MARK := { 0x0..0xffffffff }
+"
+    }
+}
+
+pub(crate) struct IfaceIp6Tnl;
+
+impl IfaceIp6Tnl {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... ip6tnl        [ remote ADDR ]
+                        [ local ADDR ]
+                        [ encaplimit ELIM ]
+                        [ hoplimit HLIM ]
+                        [ tclass TCLASS ]
+                        [ flowlabel FLOWLABEL ]
+                        [ dscp inherit ]
+                        [ [no]allow-localremote ]
+                        [ dev PHYS_DEV ]
+                        [ fwmark MARK ]
+                        [ external ]
+                        [ noencap ]
+                        [ encap { fou | gue | none } ]
+                        [ encap-sport PORT ]
+                        [ encap-dport PORT ]
+                        [ [no]encap-csum ]
+                        [ [no]encap-csum6 ]
+                        [ [no]encap-remcsum ]
+                        [ mode { ip6ip6 | ipip6 | any } ]
+
+Where:        ADDR          := IPV6_ADDRESS
+        ELIM          := { none | 0..255 }(default=4)
+        HLIM          := 0..255 (default=64)
+        TCLASS    := { 0x0..0xff | inherit }
+        FLOWLABEL := { 0x0..0xfffff | inherit }
+        MARK          := { 0x0..0xffffffff | inherit }
+"
+    }
+}

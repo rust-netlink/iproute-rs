@@ -284,3 +284,45 @@ impl std::fmt::Display for CliLinkInfoDataVxlan {
         Ok(())
     }
 }
+
+pub(crate) struct IfaceVxlan;
+
+impl IfaceVxlan {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... vxlan id VNI
+                [ { group | remote } IP_ADDRESS ]
+                [ local ADDR ]
+                [ ttl TTL ]
+                [ tos TOS ]
+                [ df DF ]
+                [ flowlabel LABEL ]
+                [ dev PHYS_DEV ]
+                [ dstport PORT ]
+                [ srcport MIN MAX ]
+                [ reserved_bits VALUE ]
+                [ [no]learning ]
+                [ [no]proxy ]
+                [ [no]rsc ]
+                [ [no]l2miss ]
+                [ [no]l3miss ]
+                [ ageing SECONDS ]
+                [ maxaddress NUMBER ]
+                [ [no]udpcsum ]
+                [ [no]udp6zerocsumtx ]
+                [ [no]udp6zerocsumrx ]
+                [ [no]remcsumtx ] [ [no]remcsumrx ]
+                [ [no]localbypass ]
+                [ [no]external ] [ gbp ] [ gpe ]
+                [ [no]vnifilter ]
+                [ [no]mcroute ]
+
+Where:        VNI        := 0-16777215
+        ADDR        := { IP_ADDRESS | any }
+        TOS        := { NUMBER | inherit }
+        TTL        := { 1..255 | auto | inherit }
+        DF        := { unset | set | inherit }
+        LABEL := 0-1048575
+"
+    }
+}

@@ -33,3 +33,14 @@ impl LinkBaseConf {
         Ok(LinkVxcan::new(&self.name, peer))
     }
 }
+
+pub(crate) struct IfaceVxcan;
+
+impl IfaceVxcan {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ip link <options> type vxcan [peer <options>]
+To get <options> type 'ip link add help'
+"
+    }
+}

@@ -60,3 +60,14 @@ impl std::fmt::Display for CliLinkInfoDataVeth {
         Ok(())
     }
 }
+
+pub(crate) struct IfaceVeth;
+
+impl IfaceVeth {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ip link <options> type veth [peer <options>]
+To get <options> type 'ip link add help'
+"
+    }
+}

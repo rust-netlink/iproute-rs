@@ -270,6 +270,43 @@ impl std::fmt::Display for CliLinkInfoDataVlan {
         if !self.flags.is_empty() {
             write!(f, " <{}>", self.flags.as_slice().join(","))?;
         }
+        if !self.ingress_qos.is_empty() {
+            write!(
+                f,
+                "\n      ingress-qos-map {{ {} }}",
+                self.ingress_qos.join(" ")
+            )?;
+        }
+        if !self.egress_qos.is_empty() {
+            write!(
+                f,
+                "\n      egress-qos-map {{ {} }}",
+                self.egress_qos.join(" ")
+            )?;
+        }
         Ok(())
+    }
+}
+
+pub(crate) struct IfaceVlan;
+
+impl IfaceVlan {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... vlan id VLANID
+                [ protocol VLANPROTO ]
+                [ reorder_hdr { on | off } ]
+                [ gvrp { on | off } ]
+                [ mvrp { on | off } ]
+                [ loose_binding { on | off } ]
+                [ bridge_binding { on | off } ]
+                [ ingress-qos-map QOS-MAP ]
+                [ egress-qos-map QOS-MAP ]
+
+VLANID := 0-4095
+VLANPROTO: [ 802.1Q | 802.1ad ]
+QOS-MAP := [ QOS-MAP ] QOS-MAPPING
+QOS-MAPPING := FROM:TO
+"
     }
 }

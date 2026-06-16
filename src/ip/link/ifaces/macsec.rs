@@ -419,3 +419,24 @@ impl LinkBaseConf {
         Ok(builder)
     }
 }
+
+pub(crate) struct IfaceMacSec;
+
+impl IfaceMacSec {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... macsec [ [ address <lladdr> ] port { 1..2^16-1 } | sci <u64> ]
+                  [ cipher { default | gcm-aes-128 | gcm-aes-256 | gcm-aes-xpn-128 | gcm-aes-xpn-256 } ]
+                  [ icvlen { 8..16 } ]
+                  [ encrypt { on | off } ]
+                  [ send_sci { on | off } ]
+                  [ end_station { on | off } ]
+                  [ scb { on | off } ]
+                  [ protect { on | off } ]
+                  [ replay { on | off} window { 0..2^32-1 } ]
+                  [ validate { strict | check | disabled } ]
+                  [ encodingsa { 0..3 } ]
+                  [ offload { mac | phy | off } ]
+"
+    }
+}

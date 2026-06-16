@@ -223,3 +223,29 @@ pub(crate) fn build_hsr_entries(
     let builder = apply_hsr_args(builder, &mut iter)?;
     Ok(extract_link_info(builder.build()))
 }
+
+pub(crate) struct IfaceHsr;
+
+impl IfaceHsr {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage:        ip link add name NAME type hsr slave1 SLAVE1-IF slave2 SLAVE2-IF
+        [ interlink INTERLINK-IF ] [ supervision ADDR-BYTE ] [ version VERSION ]
+        [ proto PROTOCOL ]
+
+NAME
+        name of new hsr device (e.g. hsr0)
+SLAVE1-IF, SLAVE2-IF
+        the two slave devices bound to the HSR device
+INTERLINK-IF
+        the interlink device bound to the HSR network to connect SAN device(s)
+ADDR-BYTE
+        0-255; the last byte of the multicast address used for HSR supervision
+        frames (default = 0)
+VERSION
+        0,1; the protocol version to be used. (default = 0)
+PROTOCOL
+        0 - HSR, 1 - PRP. (default = 0 - HSR)
+"
+    }
+}

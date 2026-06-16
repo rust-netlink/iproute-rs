@@ -126,3 +126,13 @@ pub(crate) fn build_vrf_entries(
     let builder = apply_vrf_args(builder, &mut iter)?;
     Ok(extract_link_info(builder.build()))
 }
+
+pub(crate) struct IfaceVrf;
+
+impl IfaceVrf {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... vrf table TABLEID
+"
+    }
+}

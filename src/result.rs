@@ -64,7 +64,9 @@ where
                 OutputFormat::Json => s.to_json_string(),
                 OutputFormat::Yaml => s.to_yaml_string(),
             };
-            writeln!(stdout, "{output}").ok();
+            if !output.is_empty() {
+                writeln!(stdout, "{output}").ok();
+            }
             std::process::exit(0);
         }
         Err(e) => {

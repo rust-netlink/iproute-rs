@@ -7,6 +7,7 @@ mod delete;
 mod dummy;
 mod geneve;
 mod gre;
+mod help;
 mod hsr;
 mod ip6tnl;
 mod ipip;

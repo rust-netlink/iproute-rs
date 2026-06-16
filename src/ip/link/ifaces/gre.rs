@@ -783,3 +783,155 @@ async fn build_gre6_opts(
 
     Ok(builder)
 }
+
+pub(crate) struct IfaceGre;
+
+impl IfaceGre {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... gre              [ remote ADDR ]
+                        [ local ADDR ]
+                        [ [no][i|o]seq ]
+                        [ [i|o]key KEY | no[i|o]key ]
+                        [ [no][i|o]csum ]
+                        [ ttl TTL ]
+                        [ tos TOS ]
+                        [ [no]pmtudisc ]
+                        [ [no]ignore-df ]
+                        [ dev PHYS_DEV ]
+                        [ fwmark MARK ]
+                        [ external ]
+                        [ noencap ]
+                        [ encap { fou | gue | none } ]
+                        [ encap-sport PORT ]
+                        [ encap-dport PORT ]
+                        [ [no]encap-csum ]
+                        [ [no]encap-csum6 ]
+                        [ [no]encap-remcsum ]
+
+Where:        ADDR := { IP_ADDRESS | any }
+        TOS  := { NUMBER | inherit }
+        TTL  := { 1..255 | inherit }
+        KEY  := { DOTTED_QUAD | NUMBER }
+        MARK := { 0x0..0xffffffff }
+"
+    }
+}
+
+pub(crate) struct IfaceGreTap;
+
+impl IfaceGreTap {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... gretap           [ remote ADDR ]
+                        [ local ADDR ]
+                        [ [no][i|o]seq ]
+                        [ [i|o]key KEY | no[i|o]key ]
+                        [ [no][i|o]csum ]
+                        [ ttl TTL ]
+                        [ tos TOS ]
+                        [ [no]pmtudisc ]
+                        [ [no]ignore-df ]
+                        [ dev PHYS_DEV ]
+                        [ fwmark MARK ]
+                        [ external ]
+                        [ noencap ]
+                        [ encap { fou | gue | none } ]
+                        [ encap-sport PORT ]
+                        [ encap-dport PORT ]
+                        [ [no]encap-csum ]
+                        [ [no]encap-csum6 ]
+                        [ [no]encap-remcsum ]
+
+Where:        ADDR := { IP_ADDRESS | any }
+        TOS  := { NUMBER | inherit }
+        TTL  := { 1..255 | inherit }
+        KEY  := { DOTTED_QUAD | NUMBER }
+        MARK := { 0x0..0xffffffff }
+"
+    }
+}
+
+pub(crate) struct IfaceGre6;
+
+impl IfaceGre6 {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... ip6gre           [ remote ADDR ]
+                        [ local ADDR ]
+                        [ [no][i|o]seq ]
+                        [ [i|o]key KEY | no[i|o]key ]
+                        [ [no][i|o]csum ]
+                        [ hoplimit TTL ]
+                        [ encaplimit ELIM ]
+                        [ tclass TCLASS ]
+                        [ flowlabel FLOWLABEL ]
+                        [ dscp inherit ]
+                        [ dev PHYS_DEV ]
+                        [ fwmark MARK ]
+                        [ [no]allow-localremote ]
+                        [ external ]
+                        [ noencap ]
+                        [ encap { fou | gue | none } ]
+                        [ encap-sport PORT ]
+                        [ encap-dport PORT ]
+                        [ [no]encap-csum ]
+                        [ [no]encap-csum6 ]
+                        [ [no]encap-remcsum ]
+                        [ erspan_ver version ]
+                        [ erspan IDX ]
+                        [ erspan_dir { ingress | egress } ]
+                        [ erspan_hwid hwid ]
+
+Where:        ADDR          := IPV6_ADDRESS
+        TTL          := { 0..255 } (default=64)
+        KEY          := { DOTTED_QUAD | NUMBER }
+        ELIM          := { none | 0..255 }(default=4)
+        TCLASS          := { 0x0..0xff | inherit }
+        FLOWLABEL := { 0x0..0xfffff | inherit }
+        MARK          := { 0x0..0xffffffff | inherit }
+"
+    }
+}
+
+pub(crate) struct IfaceGreTap6;
+
+impl IfaceGreTap6 {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... ip6gretap        [ remote ADDR ]
+                        [ local ADDR ]
+                        [ [no][i|o]seq ]
+                        [ [i|o]key KEY | no[i|o]key ]
+                        [ [no][i|o]csum ]
+                        [ hoplimit TTL ]
+                        [ encaplimit ELIM ]
+                        [ tclass TCLASS ]
+                        [ flowlabel FLOWLABEL ]
+                        [ dscp inherit ]
+                        [ dev PHYS_DEV ]
+                        [ fwmark MARK ]
+                        [ [no]allow-localremote ]
+                        [ external ]
+                        [ noencap ]
+                        [ encap { fou | gue | none } ]
+                        [ encap-sport PORT ]
+                        [ encap-dport PORT ]
+                        [ [no]encap-csum ]
+                        [ [no]encap-csum6 ]
+                        [ [no]encap-remcsum ]
+                        [ erspan_ver version ]
+                        [ erspan IDX ]
+                        [ erspan_dir { ingress | egress } ]
+                        [ erspan_hwid hwid ]
+
+Where:        ADDR          := IPV6_ADDRESS
+        TTL          := { 0..255 } (default=64)
+        KEY          := { DOTTED_QUAD | NUMBER }
+        ELIM          := { none | 0..255 }(default=4)
+        TCLASS          := { 0x0..0xff | inherit }
+        FLOWLABEL := { 0x0..0xfffff | inherit }
+        MARK          := { 0x0..0xffffffff | inherit }
+"
+    }
+}

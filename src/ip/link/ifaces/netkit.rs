@@ -198,3 +198,20 @@ impl std::fmt::Display for CliLinkInfoDataNetkit {
         Ok(())
     }
 }
+
+pub(crate) struct IfaceNetkit;
+
+impl IfaceNetkit {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... netkit [ mode MODE ] [ POLICY ] [ scrub SCRUB ] [ peer [ POLICY <options> ] ]
+
+MODE: l3 | l2
+POLICY: forward | blackhole
+SCRUB: default | none
+(first values are the defaults if nothing is specified)
+
+To get <options> type 'ip link add help'.
+"
+    }
+}

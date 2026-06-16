@@ -545,3 +545,54 @@ pub(crate) fn build_bond_entries(
     let builder = apply_bond_args(builder, &mut iter)?;
     Ok(extract_link_info(builder.build()))
 }
+
+pub(crate) struct IfaceBond;
+
+impl IfaceBond {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... bond [ mode BONDMODE ] [ active_slave SLAVE_DEV ]
+                [ clear_active_slave ] [ miimon MIIMON ]
+                [ updelay UPDELAY ] [ downdelay DOWNDELAY ]
+                [ peer_notify_delay DELAY ]
+                [ use_carrier USE_CARRIER ]
+                [ arp_interval ARP_INTERVAL ]
+                [ arp_validate ARP_VALIDATE ]
+                [ arp_all_targets ARP_ALL_TARGETS ]
+                [ arp_ip_target [ ARP_IP_TARGET, ... ] ]
+                [ ns_ip6_target [ NS_IP6_TARGET, ... ] ]
+                [ primary SLAVE_DEV ]
+                [ primary_reselect PRIMARY_RESELECT ]
+                [ fail_over_mac FAIL_OVER_MAC ]
+                [ xmit_hash_policy XMIT_HASH_POLICY ]
+                [ resend_igmp RESEND_IGMP ]
+                [ num_grat_arp|num_unsol_na NUM_GRAT_ARP|NUM_UNSOL_NA ]
+                [ all_slaves_active ALL_SLAVES_ACTIVE ]
+                [ min_links MIN_LINKS ]
+                [ lp_interval LP_INTERVAL ]
+                [ packets_per_slave PACKETS_PER_SLAVE ]
+                [ tlb_dynamic_lb TLB_DYNAMIC_LB ]
+                [ lacp_rate LACP_RATE ]
+                [ lacp_active LACP_ACTIVE]
+                [ coupled_control COUPLED_CONTROL ]
+                [ broadcast_neighbor BROADCAST_NEIGHBOR ]
+                [ ad_select AD_SELECT ]
+                [ ad_user_port_key PORTKEY ]
+                [ ad_actor_sys_prio SYSPRIO ]
+                [ ad_actor_system LLADDR ]
+                [ arp_missed_max MISSED_MAX ]
+
+BONDMODE := balance-rr|active-backup|balance-xor|broadcast|802.3ad|balance-tlb|balance-alb
+ARP_VALIDATE := none|active|backup|all|filter|filter_active|filter_backup
+ARP_ALL_TARGETS := any|all
+PRIMARY_RESELECT := always|better|failure
+FAIL_OVER_MAC := none|active|follow
+XMIT_HASH_POLICY := layer2|layer2+3|layer3+4|encap2+3|encap3+4|vlan+srcmac
+LACP_ACTIVE := off|on
+LACP_RATE := slow|fast
+AD_SELECT := stable|bandwidth|count
+COUPLED_CONTROL := off|on
+BROADCAST_NEIGHBOR := off|on
+"
+    }
+}

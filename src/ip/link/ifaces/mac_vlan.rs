@@ -452,3 +452,37 @@ impl std::fmt::Display for CliLinkInfoDataMacVtap {
         Ok(())
     }
 }
+
+pub(crate) struct IfaceMacVlan;
+
+impl IfaceMacVlan {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r#"Usage: ... macvlan mode MODE [flag MODE_FLAG] MODE_OPTS [bcqueuelen BC_QUEUE_LEN] [bclim BCLIM]
+
+MODE: private | vepa | bridge | passthru | source
+MODE_FLAG: null | nopromisc | nodst
+MODE_OPTS: for mode "source":
+        macaddr { { add | del } <macaddr> | set [ <macaddr> [ <macaddr>  ... ] ] | flush }
+BC_QUEUE_LEN: Length of the rx queue for broadcast/multicast: [0-4294967295]
+BCLIM: Threshold for broadcast queueing: 32-bit integer
+"#
+    }
+}
+
+pub(crate) struct IfaceMacVtap;
+
+impl IfaceMacVtap {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r#"Usage: ... macvtap mode MODE [flag MODE_FLAG] MODE_OPTS [bcqueuelen BC_QUEUE_LEN] [bclim BCLIM]
+
+MODE: private | vepa | bridge | passthru | source
+MODE_FLAG: null | nopromisc | nodst
+MODE_OPTS: for mode "source":
+        macaddr { { add | del } <macaddr> | set [ <macaddr> [ <macaddr>  ... ] ] | flush }
+BC_QUEUE_LEN: Length of the rx queue for broadcast/multicast: [0-4294967295]
+BCLIM: Threshold for broadcast queueing: 32-bit integer
+"#
+    }
+}
