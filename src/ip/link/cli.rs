@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use super::{
     add::LinkAddCommand,
+    afstats::{AfstatsOutput, handle_afstats},
     delete::LinkDeleteCommand,
     ifaces::{
         bond::IfaceBond,
@@ -34,6 +35,7 @@ use super::{
 pub(crate) enum LinkOutput {
     Show(Vec<CliLinkInfo>),
     Xstats(XstatsOutput),
+    Afstats(AfstatsOutput),
 }
 
 impl Serialize for LinkOutput {
@@ -44,6 +46,7 @@ impl Serialize for LinkOutput {
         match self {
             LinkOutput::Show(v) => v.serialize(serializer),
             LinkOutput::Xstats(v) => v.serialize(serializer),
+            LinkOutput::Afstats(v) => v.serialize(serializer),
         }
     }
 }
@@ -53,6 +56,15 @@ impl CanDisplay for LinkOutput {
         match self {
             LinkOutput::Show(v) => v.gen_string(),
             LinkOutput::Xstats(v) => v.gen_string(),
+            LinkOutput::Afstats(v) => v.gen_string(),
+        }
+    }
+
+    fn to_json_string(&self) -> String {
+        match self {
+            LinkOutput::Show(v) => v.to_json_string(),
+            LinkOutput::Xstats(v) => v.to_json_string(),
+            LinkOutput::Afstats(v) => v.to_json_string(),
         }
     }
 }
@@ -100,6 +112,15 @@ impl LinkCommand {
                     ),
             )
             .subcommand(
+                clap::Command::new("afstats")
+                    .about("show address-family specific statistics")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
+            )
+            .subcommand(
                 clap::Command::new("help")
                     .about("show help for link type")
                     .alias("h")
@@ -139,6 +160,13 @@ impl LinkCommand {
                 .cloned()
                 .collect();
             handle_xstats(&opts).await.map(LinkOutput::Xstats)
+        } else if let Some(matches) = matches.subcommand_matches("afstats") {
+            let opts: Vec<String> = matches
+                .get_many::<String>("options")
+                .unwrap_or_default()
+                .cloned()
+                .collect();
+            handle_afstats(&opts).await.map(LinkOutput::Afstats)
         } else if let Some(matches) = matches.subcommand_matches("help") {
             let opts: Vec<&str> = matches
                 .get_many::<String>("type")

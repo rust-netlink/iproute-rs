@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod add;
+mod afstats;
 mod cli;
 mod delete;
 mod detail;

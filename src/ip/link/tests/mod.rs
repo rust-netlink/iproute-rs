@@ -27,6 +27,7 @@ mod vlan;
 mod vrf;
 mod vxcan;
 mod vxlan;
+mod afstats;
 mod xdp;
 mod xfrm;
 mod xstats;
