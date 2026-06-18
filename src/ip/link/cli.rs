@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use iproute_rs::CliError;
+use iproute_rs::{CanDisplay, CanOutput, CliError};
+use serde::Serialize;
 
 use super::{
     add::LinkAddCommand,
@@ -27,7 +28,36 @@ use super::{
     property::LinkPropertyCommand,
     set::LinkSetCommand,
     show::{CliLinkInfo, handle_show},
+    xstats::{XstatsOutput, handle_xstats},
 };
+
+pub(crate) enum LinkOutput {
+    Show(Vec<CliLinkInfo>),
+    Xstats(XstatsOutput),
+}
+
+impl Serialize for LinkOutput {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            LinkOutput::Show(v) => v.serialize(serializer),
+            LinkOutput::Xstats(v) => v.serialize(serializer),
+        }
+    }
+}
+
+impl CanDisplay for LinkOutput {
+    fn gen_string(&self) -> String {
+        match self {
+            LinkOutput::Show(v) => v.gen_string(),
+            LinkOutput::Xstats(v) => v.gen_string(),
+        }
+    }
+}
+
+impl CanOutput for LinkOutput {}
 
 pub(crate) struct LinkCommand;
 
@@ -61,6 +91,15 @@ impl LinkCommand {
             .subcommand(LinkSetCommand::gen_command())
             .subcommand(LinkPropertyCommand::gen_command())
             .subcommand(
+                clap::Command::new("xstats")
+                    .about("show extended statistics")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
+            )
+            .subcommand(
                 clap::Command::new("help")
                     .about("show help for link type")
                     .alias("h")
@@ -74,25 +113,32 @@ impl LinkCommand {
 
     pub(crate) async fn handle(
         matches: &clap::ArgMatches,
-    ) -> Result<Vec<CliLinkInfo>, CliError> {
+    ) -> Result<LinkOutput, CliError> {
         if let Some(matches) = matches.subcommand_matches(LinkAddCommand::CMD) {
             LinkAddCommand::handle(matches).await?;
-            Ok(vec![])
+            Ok(LinkOutput::Show(vec![]))
         } else if let Some(matches) =
             matches.subcommand_matches(LinkDeleteCommand::CMD)
         {
             LinkDeleteCommand::handle(matches).await?;
-            Ok(vec![])
+            Ok(LinkOutput::Show(vec![]))
         } else if let Some(matches) =
             matches.subcommand_matches(LinkSetCommand::CMD)
         {
             LinkSetCommand::handle(matches).await?;
-            Ok(vec![])
+            Ok(LinkOutput::Show(vec![]))
         } else if let Some(matches) =
             matches.subcommand_matches(LinkPropertyCommand::CMD)
         {
             LinkPropertyCommand::handle(matches).await?;
-            Ok(vec![])
+            Ok(LinkOutput::Show(vec![]))
+        } else if let Some(matches) = matches.subcommand_matches("xstats") {
+            let opts: Vec<String> = matches
+                .get_many::<String>("options")
+                .unwrap_or_default()
+                .cloned()
+                .collect();
+            handle_xstats(&opts).await.map(LinkOutput::Xstats)
         } else if let Some(matches) = matches.subcommand_matches("help") {
             let opts: Vec<&str> = matches
                 .get_many::<String>("type")
@@ -100,16 +146,20 @@ impl LinkCommand {
                 .map(String::as_str)
                 .collect();
             print_link_type_help(&opts)?;
-            Ok(vec![])
+            Ok(LinkOutput::Show(vec![]))
         } else if let Some(matches) = matches.subcommand_matches("show") {
             let opts: Vec<&str> = matches
                 .get_many::<String>("options")
                 .unwrap_or_default()
                 .map(String::as_str)
                 .collect();
-            handle_show(&opts, matches.get_flag("DETAILS")).await
+            handle_show(&opts, matches.get_flag("DETAILS"))
+                .await
+                .map(LinkOutput::Show)
         } else {
-            handle_show(&[], matches.get_flag("DETAILS")).await
+            handle_show(&[], matches.get_flag("DETAILS"))
+                .await
+                .map(LinkOutput::Show)
         }
     }
 }

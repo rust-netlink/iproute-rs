@@ -29,3 +29,4 @@ mod vxcan;
 mod vxlan;
 mod xdp;
 mod xfrm;
+mod xstats;

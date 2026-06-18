@@ -11,6 +11,7 @@ mod property;
 mod set;
 mod show;
 mod xdp;
+mod xstats;
 
 #[cfg(test)]
 mod tests;
