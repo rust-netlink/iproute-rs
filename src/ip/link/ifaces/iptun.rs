@@ -8,7 +8,7 @@ use std::{
 
 use iproute_rs::CliError;
 use rtnetlink::{
-    LinkIp6Tnl, LinkIpIp, LinkMessageBuilder,
+    LinkIp6Tnl, LinkIpIp, LinkMessageBuilder, LinkSit,
     packet_route::{
         IpProtocol,
         link::{
@@ -50,6 +50,16 @@ pub(crate) struct CliLinkInfoDataIpIp {
     flow_info: Option<u32>,
     #[serde(skip)]
     ipv6_flags: Option<Ip6TunnelFlags>,
+    #[serde(skip)]
+    sit_flags: Option<u16>,
+    #[serde(skip)]
+    ipv6_rd_prefix: Option<Ipv6Addr>,
+    #[serde(skip)]
+    ipv6_rd_relay_prefix: Option<Ipv4Addr>,
+    #[serde(skip)]
+    ipv6_rd_prefixlen: Option<u16>,
+    #[serde(skip)]
+    ipv6_rd_relay_prefixlen: Option<u16>,
 }
 
 impl CliLinkInfoDataIpIp {
@@ -80,6 +90,11 @@ impl From<&[InfoIpTunnel]> for CliLinkInfoDataIpIp {
         let mut encap_limit = None;
         let mut flow_info = None;
         let mut ipv6_flags = None;
+        let mut sit_flags = None;
+        let mut ipv6_rd_prefix = None;
+        let mut ipv6_rd_relay_prefix = None;
+        let mut ipv6_rd_prefixlen = None;
+        let mut ipv6_rd_relay_prefixlen = None;
 
         for nla in info {
             match nla {
@@ -99,6 +114,17 @@ impl From<&[InfoIpTunnel]> for CliLinkInfoDataIpIp {
                 InfoIpTunnel::EncapLimit(v) => encap_limit = Some(*v),
                 InfoIpTunnel::FlowInfo(v) => flow_info = Some(*v),
                 InfoIpTunnel::Ipv6Flags(v) => ipv6_flags = Some(*v),
+                InfoIpTunnel::Ipv6SitFlags(v) => sit_flags = Some(*v),
+                InfoIpTunnel::Ipv6RdPrefix(v) => ipv6_rd_prefix = Some(*v),
+                InfoIpTunnel::Ipv6RdRelayPrefix(v) => {
+                    ipv6_rd_relay_prefix = Some(*v)
+                }
+                InfoIpTunnel::Ipv6RdPrefixLen(v) => {
+                    ipv6_rd_prefixlen = Some(*v)
+                }
+                InfoIpTunnel::Ipv6RdRelayPrefixLen(v) => {
+                    ipv6_rd_relay_prefixlen = Some(*v)
+                }
                 _ => (),
             }
         }
@@ -121,6 +147,11 @@ impl From<&[InfoIpTunnel]> for CliLinkInfoDataIpIp {
             encap_limit,
             flow_info,
             ipv6_flags,
+            sit_flags,
+            ipv6_rd_prefix,
+            ipv6_rd_relay_prefix,
+            ipv6_rd_prefixlen,
+            ipv6_rd_relay_prefixlen,
         }
     }
 }
@@ -263,6 +294,27 @@ impl std::fmt::Display for CliLinkInfoDataIpIp {
                 }
             } else {
                 emit!("nopmtudisc");
+            }
+        }
+
+        const SIT_ISATAP: u16 = 0x0001;
+
+        if let Some(flags) = self.sit_flags {
+            if flags & SIT_ISATAP != 0 {
+                emit!("isatap");
+            }
+        }
+
+        if let Some(prefix) = self.ipv6_rd_prefix
+            && let Some(prefixlen) = self.ipv6_rd_prefixlen
+            && prefixlen != 0
+        {
+            emit!("6rd-prefix {prefix}/{prefixlen}");
+            if let Some(relay) = self.ipv6_rd_relay_prefix
+                && let Some(relaylen) = self.ipv6_rd_relay_prefixlen
+                && relaylen != 0
+            {
+                emit!("6rd-relay_prefix {relay}/{relaylen}");
             }
         }
 
@@ -743,6 +795,205 @@ impl LinkBaseConf {
 
         Ok(builder)
     }
+
+    pub(crate) async fn apply_sit(
+        &self,
+        handle: &rtnetlink::Handle,
+    ) -> Result<LinkMessageBuilder<LinkSit>, CliError> {
+        let mut builder = LinkSit::new(&self.name);
+        let mut metadata = false;
+
+        let mut iter = self.iface_specific.iter();
+        while let Some(key) = iter.next() {
+            let mut next_val = || {
+                iter.next().ok_or_else(|| {
+                    CliError::from(format!("sit {key} requires a value"))
+                })
+            };
+            match key.as_str() {
+                "local" => {
+                    let v = next_val()?;
+                    let addr: Ipv4Addr = parse_ip(v, "local")?;
+                    builder = builder.local(addr);
+                }
+                "remote" => {
+                    let v = next_val()?;
+                    let addr: Ipv4Addr = parse_ip(v, "remote")?;
+                    builder = builder.remote(addr);
+                }
+                "dev" => {
+                    let v = next_val()?;
+                    let ifindex = self.get_ifindex_by_name(handle, v).await?;
+                    builder = builder.dev(ifindex);
+                }
+                "ttl" | "hoplimit" | "hlim" => {
+                    let v = next_val()?;
+                    match v.as_str() {
+                        "inherit" => {
+                            builder = builder.ttl(0);
+                        }
+                        _ => {
+                            let ttl: u8 = v.parse().map_err(|_| {
+                                CliError::from(format!("invalid TTL: {v}"))
+                            })?;
+                            builder = builder.ttl(ttl);
+                        }
+                    }
+                }
+                "tos" | "tclass" | "tc" | "dsfield" => {
+                    let v = next_val()?;
+                    match v.as_str() {
+                        "inherit" => {
+                            builder = builder.tos(1);
+                        }
+                        _ => {
+                            let tos: u8 = parse_dsfield(v)?;
+                            builder = builder.tos(tos);
+                        }
+                    }
+                }
+                "pmtudisc" => {
+                    builder = builder.pmtudisc(true);
+                }
+                "nopmtudisc" => {
+                    builder = builder.pmtudisc(false);
+                }
+                "isatap" => {
+                    builder = builder.isatap(true);
+                }
+                "mode" => {
+                    let v = next_val()?;
+                    match v.as_str() {
+                        "ip6ip" | "ipv6/ipv4" => {
+                            builder = builder.protocol(IpProtocol::Ipv6);
+                        }
+                        "ipip" | "ipv4/ipv4" | "ip4ip4" => {
+                            builder = builder.protocol(IpProtocol::Ipip);
+                        }
+                        "mplsip" | "mpls/ipv4" => {
+                            let proto = IpProtocol::from(137u8);
+                            builder = builder.protocol(proto);
+                        }
+                        "any" | "any/ipv4" => {
+                            let proto = IpProtocol::from(0u8);
+                            builder = builder.protocol(proto);
+                        }
+                        _ => {
+                            return Err(CliError::from(format!(
+                                "Cannot guess tunnel mode: {v}"
+                            )));
+                        }
+                    }
+                }
+                "external" => {
+                    metadata = true;
+                }
+                "noencap" => {
+                    builder = builder.encap_type(TunnelEncapType::None);
+                }
+                "encap" => {
+                    let v = next_val()?;
+                    match v.as_str() {
+                        "fou" => {
+                            builder = builder.encap_type(TunnelEncapType::Fou);
+                        }
+                        "gue" => {
+                            builder = builder.encap_type(TunnelEncapType::Gue);
+                        }
+                        "none" => {
+                            builder = builder.encap_type(TunnelEncapType::None);
+                        }
+                        _ => {
+                            return Err(CliError::from(format!(
+                                "Invalid encap type: {v}"
+                            )));
+                        }
+                    }
+                }
+                "encap-sport" => {
+                    let v = next_val()?;
+                    if v == "auto" {
+                        builder = builder.encap_sport(0);
+                    } else {
+                        let port = parse_u16(v, "encap-sport")?;
+                        builder = builder.encap_sport(port);
+                    }
+                }
+                "encap-dport" => {
+                    let v = next_val()?;
+                    let port = parse_u16(v, "encap-dport")?;
+                    builder = builder.encap_dport(port);
+                }
+                "encap-csum" => {
+                    let flags = TunnelEncapFlags::CSum;
+                    builder = builder.encap_flags(flags);
+                }
+                "noencap-csum" => {
+                    let flags = TunnelEncapFlags::empty();
+                    builder = builder.encap_flags(flags);
+                }
+                "encap-udp6-csum" => {
+                    let flags = TunnelEncapFlags::CSum6;
+                    builder = builder.encap_flags(flags);
+                }
+                "noencap-udp6-csum" => {
+                    let flags = TunnelEncapFlags::empty();
+                    builder = builder.encap_flags(flags);
+                }
+                "encap-remcsum" => {
+                    let flags = TunnelEncapFlags::RemCSum;
+                    builder = builder.encap_flags(flags);
+                }
+                "noencap-remcsum" => {
+                    let flags = TunnelEncapFlags::empty();
+                    builder = builder.encap_flags(flags);
+                }
+                "fwmark" => {
+                    let v = next_val()?;
+                    let mark = if let Some(hex) = v.strip_prefix("0x") {
+                        u32::from_str_radix(hex, 16)
+                    } else {
+                        v.parse()
+                    };
+                    let mark = mark.map_err(|_| {
+                        CliError::from(format!("invalid fwmark: {v}"))
+                    })?;
+                    builder = builder.fwmark(mark);
+                }
+                "6rd-prefix" => {
+                    let v = next_val()?;
+                    let (addr, prefixlen) =
+                        parse_addr_with_prefix::<Ipv6Addr>(v)?;
+                    builder = builder.ipv6_rd_prefix(addr);
+                    builder = builder.ipv6_rd_prefixlen(prefixlen);
+                }
+                "6rd-relay_prefix" => {
+                    let v = next_val()?;
+                    let (addr, prefixlen) =
+                        parse_addr_with_prefix::<Ipv4Addr>(v)?;
+                    builder = builder.ipv6_rd_relay_prefix(addr);
+                    builder = builder.ipv6_rd_relay_prefixlen(prefixlen);
+                }
+                "6rd-reset" => {
+                    builder = builder.ipv6_rd_prefix(Ipv6Addr::new(
+                        0x2002, 0, 0, 0, 0, 0, 0, 0,
+                    ));
+                    builder = builder.ipv6_rd_prefixlen(16);
+                }
+                _ => {
+                    return Err(CliError::from(format!(
+                        "Unknown sit argument: {key}"
+                    )));
+                }
+            }
+        }
+
+        if metadata {
+            builder = builder.collect_metadata(true);
+        }
+
+        Ok(builder)
+    }
 }
 
 #[cfg(test)]
@@ -762,6 +1013,26 @@ mod tests {
     #[test]
     fn parse_dsfield_invalid() {
         assert!(parse_dsfield("xyz").is_err());
+    }
+}
+
+fn parse_addr_with_prefix<T: FromStr>(s: &str) -> Result<(T, u16), CliError>
+where
+    T::Err: std::fmt::Display,
+{
+    if let Some((addr_str, prefix_str)) = s.split_once('/') {
+        let addr: T = addr_str
+            .parse()
+            .map_err(|e| CliError::from(format!("Invalid address: {e}")))?;
+        let prefixlen: u16 = prefix_str.parse().map_err(|_| {
+            CliError::from(format!("Invalid prefix length: {prefix_str}"))
+        })?;
+        Ok((addr, prefixlen))
+    } else {
+        let addr: T = s
+            .parse()
+            .map_err(|e| CliError::from(format!("Invalid address: {e}")))?;
+        Ok((addr, 0))
     }
 }
 
@@ -829,6 +1100,40 @@ Where:        ADDR          := IPV6_ADDRESS
         TCLASS    := { 0x0..0xff | inherit }
         FLOWLABEL := { 0x0..0xfffff | inherit }
         MARK          := { 0x0..0xffffffff | inherit }
+"
+    }
+}
+
+pub(crate) struct IfaceSit;
+
+impl IfaceSit {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... sit           [ remote ADDR ]
+                        [ local ADDR ]
+                        [ ttl TTL ]
+                        [ tos TOS ]
+                        [ [no]pmtudisc ]
+                        [ 6rd-prefix ADDR ]
+                        [ 6rd-relay_prefix ADDR ]
+                        [ 6rd-reset ]
+                        [ dev PHYS_DEV ]
+                        [ fwmark MARK ]
+                        [ external ]
+                        [ noencap ]
+                        [ encap { fou | gue | none } ]
+                        [ encap-sport PORT ]
+                        [ encap-dport PORT ]
+                        [ [no]encap-csum ]
+                        [ [no]encap-csum6 ]
+                        [ [no]encap-remcsum ]
+                        [ mode { ip6ip | ipip | mplsip | any } ]
+                        [ isatap ]
+
+Where:        ADDR := { IP_ADDRESS | any }
+        TOS  := { NUMBER | inherit }
+        TTL  := { 1..255 | inherit }
+        MARK := { 0x0..0xffffffff }
 "
     }
 }

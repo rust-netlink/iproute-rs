@@ -14,7 +14,7 @@ use super::{
         gre::{IfaceGre, IfaceGre6, IfaceGreTap, IfaceGreTap6},
         hsr::IfaceHsr,
         ifb::IfaceIfb,
-        iptun::{IfaceIp6Tnl, IfaceIpIp},
+        iptun::{IfaceIp6Tnl, IfaceIpIp, IfaceSit},
         ipvlan::{IfaceIpVlan, IfaceIpVtap},
         mac_vlan::{IfaceMacVlan, IfaceMacVtap},
         macsec::IfaceMacSec,
@@ -239,6 +239,7 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
                 "netkit" => IfaceNetkit::print_help(),
                 "vxlan" => IfaceVxlan::print_help(),
                 "xfrm" => IfaceXfrm::print_help(),
+                "sit" => IfaceSit::print_help(),
                 unknown => {
                     return Err(CliError::from(format!(
                         "Unknown device type: {unknown}"

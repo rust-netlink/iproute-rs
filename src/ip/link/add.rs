@@ -76,6 +76,9 @@ impl LinkAddCommand {
             InfoKind::IpIp => {
                 base_conf.apply(base_conf.apply_iptun(&handle).await?)?
             }
+            InfoKind::SitTun => {
+                base_conf.apply(base_conf.apply_sit(&handle).await?)?
+            }
             InfoKind::Ip6Tnl => {
                 base_conf.apply(base_conf.apply_ip6tnl(&handle).await?)?
             }

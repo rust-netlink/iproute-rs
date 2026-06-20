@@ -24,6 +24,7 @@ mod nlmon;
 mod property;
 mod set;
 mod show;
+mod sit;
 mod vcan;
 mod veth;
 mod vlan;
