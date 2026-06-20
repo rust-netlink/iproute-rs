@@ -5,6 +5,7 @@ pub(super) mod bridge;
 pub(super) mod geneve;
 pub(super) mod gre;
 pub(super) mod hsr;
+pub(super) mod ifb;
 pub(super) mod iptun;
 pub(super) mod ipvlan;
 pub(super) mod mac_vlan;

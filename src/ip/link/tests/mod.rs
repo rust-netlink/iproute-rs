@@ -11,6 +11,7 @@ mod geneve;
 mod gre;
 mod help;
 mod hsr;
+mod ifb;
 mod ip6tnl;
 mod ipip;
 mod ipvlan;
