@@ -37,6 +37,9 @@ impl LinkSetCommand {
             .alias("se")
             .alias("c")
             .alias("ch")
+            .alias("cha")
+            .alias("chan")
+            .alias("chang")
             .alias("change")
             .arg(
                 clap::Arg::new("options")

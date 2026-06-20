@@ -92,6 +92,8 @@ impl LinkCommand {
                     .alias("ls")
                     .alias("li")
                     .alias("l")
+                    .alias("sh")
+                    .alias("sho")
                     .arg(
                         clap::Arg::new("options")
                             .action(clap::ArgAction::Append)
@@ -105,6 +107,11 @@ impl LinkCommand {
             .subcommand(
                 clap::Command::new("xstats")
                     .about("show extended statistics")
+                    .alias("x")
+                    .alias("xs")
+                    .alias("xst")
+                    .alias("xsta")
+                    .alias("xstat")
                     .arg(
                         clap::Arg::new("options")
                             .action(clap::ArgAction::Append)
@@ -114,6 +121,11 @@ impl LinkCommand {
             .subcommand(
                 clap::Command::new("afstats")
                     .about("show address-family specific statistics")
+                    .alias("af")
+                    .alias("afs")
+                    .alias("afst")
+                    .alias("afsta")
+                    .alias("afstat")
                     .arg(
                         clap::Arg::new("options")
                             .action(clap::ArgAction::Append)
@@ -124,6 +136,8 @@ impl LinkCommand {
                 clap::Command::new("help")
                     .about("show help for link type")
                     .alias("h")
+                    .alias("he")
+                    .alias("hel")
                     .arg(
                         clap::Arg::new("type")
                             .action(clap::ArgAction::Append)

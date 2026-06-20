@@ -27,7 +27,11 @@ fn is_valid_filter_for_type(link_type: &str, token: &str) -> bool {
     }
 }
 
-fn filter_matches(last_filter: Option<&str>, xstat_type: &str, alt_type: &str) -> bool {
+fn filter_matches(
+    last_filter: Option<&str>,
+    xstat_type: &str,
+    alt_type: &str,
+) -> bool {
     match last_filter {
         None => true,
         Some(f) => f == xstat_type || f == alt_type,
@@ -363,39 +367,40 @@ fn build_xstats_info(
             _ => continue,
         };
 
-            for group in groups {
-                match group {
-                    LinkXstatGroup::Bridge(xstats) => {
-                        for xstat in xstats {
-                            match xstat {
-                                BridgeXstat::Mcast(m) => {
-                                    if !filter_matches(last_filter, "mcast", "igmp") {
-                                        continue;
-                                    }
-                                    multicast = Some(build_bridge_mcast(m));
-                                }
-                                BridgeXstat::Stp(s) => {
-                                    if !filter_matches(last_filter, "stp", "stp") {
-                                        continue;
-                                    }
-                                    stp = Some(build_bridge_stp(s));
-                                }
-                                BridgeXstat::Vlan(_) | BridgeXstat::Other(_, _) => {
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    LinkXstatGroup::Bond(xstats) => {
-                        for xstat in xstats {
-                            if let BondXstat::Threead(s) = xstat {
-                                if !filter_matches(last_filter, "lacp", "802.3ad") {
+        for group in groups {
+            match group {
+                LinkXstatGroup::Bridge(xstats) => {
+                    for xstat in xstats {
+                        match xstat {
+                            BridgeXstat::Mcast(m) => {
+                                if !filter_matches(last_filter, "mcast", "igmp")
+                                {
                                     continue;
                                 }
-                                threead = Some(build_bond_3ad(s));
+                                multicast = Some(build_bridge_mcast(m));
                             }
+                            BridgeXstat::Stp(s) => {
+                                if !filter_matches(last_filter, "stp", "stp") {
+                                    continue;
+                                }
+                                stp = Some(build_bridge_stp(s));
+                            }
+                            BridgeXstat::Vlan(_) | BridgeXstat::Other(_, _) => {
+                            }
+                            _ => {}
                         }
                     }
+                }
+                LinkXstatGroup::Bond(xstats) => {
+                    for xstat in xstats {
+                        if let BondXstat::Threead(s) = xstat {
+                            if !filter_matches(last_filter, "lacp", "802.3ad") {
+                                continue;
+                            }
+                            threead = Some(build_bond_3ad(s));
+                        }
+                    }
+                }
                 LinkXstatGroup::Other(_, _) => {}
                 _ => {}
             }

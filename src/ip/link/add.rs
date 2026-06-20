@@ -20,6 +20,7 @@ impl LinkAddCommand {
         clap::Command::new(Self::CMD)
             .about("add network device")
             .alias("a")
+            .alias("ad")
             .arg(
                 clap::Arg::new("options")
                     .action(clap::ArgAction::Append)

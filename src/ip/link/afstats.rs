@@ -125,16 +125,29 @@ pub(crate) struct CliAfstatsInfo {
 impl CliAfstatsInfo {
     fn to_json_fragment(&self) -> String {
         let mut s = String::new();
-        write!(s, "\"ifindex\":{},\"ifname\":\"{}\"", self.ifindex, self.ifname).ok();
+        write!(
+            s,
+            "\"ifindex\":{},\"ifname\":\"{}\"",
+            self.ifindex, self.ifname
+        )
+        .ok();
         if let Some(ref mpls) = self.mpls {
             write!(
                 s,
-                ",\"rx\":{{\"bytes\":{},\"packets\":{},\"errors\":{},\"dropped\":{},\"noroute\":{}}},\"tx\":{{\"bytes\":{},\"packets\":{},\"errors\":{},\"dropped\":{}}}",
-                mpls.rx.bytes, mpls.rx.packets, mpls.rx.errors,
-                mpls.rx.dropped, mpls.rx.noroute,
-                mpls.tx.bytes, mpls.tx.packets, mpls.tx.errors,
+                ",\"rx\":{{\"bytes\":{},\"packets\":{},\"errors\":{},\"\
+                 dropped\":{},\"noroute\":{}}},\"tx\":{{\"bytes\":{},\"\
+                 packets\":{},\"errors\":{},\"dropped\":{}}}",
+                mpls.rx.bytes,
+                mpls.rx.packets,
+                mpls.rx.errors,
+                mpls.rx.dropped,
+                mpls.rx.noroute,
+                mpls.tx.bytes,
+                mpls.tx.packets,
+                mpls.tx.errors,
                 mpls.tx.dropped,
-            ).ok();
+            )
+            .ok();
         }
         s
     }
@@ -287,16 +300,13 @@ pub(crate) struct AfstatsOutput(pub(crate) Vec<CliAfstatsInfo>);
 
 impl CanDisplay for AfstatsOutput {
     fn gen_string(&self) -> String {
-        let s: String = self
-            .0
-            .iter()
-            .map(|info| info.gen_string())
-            .collect();
+        let s: String = self.0.iter().map(|info| info.gen_string()).collect();
         s.trim_end_matches('\n').to_string()
     }
 
     fn to_json_string(&self) -> String {
-        let parts: Vec<String> = self.0.iter().map(|info| info.to_json_fragment()).collect();
+        let parts: Vec<String> =
+            self.0.iter().map(|info| info.to_json_fragment()).collect();
         format!("[{}]", parts.join(","))
     }
 }

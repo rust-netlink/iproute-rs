@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+mod afstats;
+mod alias;
 mod bond;
 mod bridge;
 mod color;
@@ -27,7 +29,6 @@ mod vlan;
 mod vrf;
 mod vxcan;
 mod vxlan;
-mod afstats;
 mod xdp;
 mod xfrm;
 mod xstats;

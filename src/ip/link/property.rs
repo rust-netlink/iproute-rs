@@ -13,6 +13,13 @@ impl LinkPropertyCommand {
     pub(crate) fn gen_command() -> clap::Command {
         clap::Command::new(Self::CMD)
             .about("network device properties")
+            .alias("p")
+            .alias("pr")
+            .alias("pro")
+            .alias("prop")
+            .alias("prope")
+            .alias("proper")
+            .alias("propert")
             .subcommand(
                 clap::Command::new("add").about("add property").arg(
                     clap::Arg::new("options")

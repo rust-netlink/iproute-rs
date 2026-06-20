@@ -13,7 +13,10 @@ impl LinkDeleteCommand {
     pub(crate) fn gen_command() -> clap::Command {
         clap::Command::new(Self::CMD)
             .about("delete virtual link")
+            .alias("de")
             .alias("del")
+            .alias("dele")
+            .alias("delet")
             .alias("d")
             .arg(
                 clap::Arg::new("options")
