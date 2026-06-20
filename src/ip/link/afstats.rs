@@ -20,7 +20,7 @@ fn parse_afstats_args(args: &[String]) -> Result<AfstatsConfig, CliError> {
                 config.filter_dev = Some(
                     iter.next()
                         .ok_or_else(|| {
-                            CliError::from("\"dev\" requires a value\n")
+                            CliError::from("\"dev\" requires a value")
                         })?
                         .clone(),
                 );
@@ -31,7 +31,7 @@ fn parse_afstats_args(args: &[String]) -> Result<AfstatsConfig, CliError> {
             }
             unknown => {
                 return Err(CliError::from(format!(
-                    "Command \"{unknown}\" is unknown, try \"ip link help\".\n"
+                    "Command \"{unknown}\" is unknown, try \"ip link help\"."
                 )));
             }
         }
@@ -336,7 +336,7 @@ pub(crate) async fn handle_afstats(
 
     if config.filter_dev.is_some() && filter_dev_ifindex.is_none() {
         return Err(CliError::from(format!(
-            "Device \"{}\" does not exist.\n",
+            "Device \"{}\" does not exist.",
             config.filter_dev.unwrap()
         )));
     }

@@ -8,7 +8,7 @@ use rtnetlink::{
         AddressFamily, RouteNetlinkMessage,
         stats::{
             Bond3adStats, BondXstat, BridgeMcastStats, BridgeStpXstats,
-            BridgeXstat, LinkXstatGroup, StatsAttribute, StatsHeader,
+            BridgeXstat, LinkXstatGroup, StatsAttribute, StatsFilterMask,
             StatsMessage,
         },
     },
@@ -51,7 +51,7 @@ fn parse_xstats_args(args: &[String]) -> Result<XstatsConfig, CliError> {
 
     match iter.peek() {
         None => {
-            return Err(CliError::from("xstats: missing argument\n"));
+            return Err(CliError::from("xstats: missing argument"));
         }
         Some(arg) if *arg == "help" => {
             print_xstats_help("");
@@ -59,7 +59,7 @@ fn parse_xstats_args(args: &[String]) -> Result<XstatsConfig, CliError> {
         }
         Some(arg) if *arg != "type" => {
             return Err(CliError::from(format!(
-                "xstats: unknown argument \"{arg}\"\n"
+                "xstats: unknown argument \"{arg}\""
             )));
         }
         _ => {}
@@ -68,7 +68,7 @@ fn parse_xstats_args(args: &[String]) -> Result<XstatsConfig, CliError> {
     iter.next();
     config.link_type = iter
         .next()
-        .ok_or_else(|| CliError::from("xstats: missing link type\n"))?
+        .ok_or_else(|| CliError::from("xstats: missing link type"))?
         .clone();
 
     while let Some(arg) = iter.next() {
@@ -76,7 +76,7 @@ fn parse_xstats_args(args: &[String]) -> Result<XstatsConfig, CliError> {
             "igmp" | "mcast" | "stp" | "lacp" | "802.3ad" => {
                 if !is_valid_filter_for_type(&config.link_type, arg) {
                     return Err(CliError::from(format!(
-                        "xstats: unknown argument \"{arg}\"\n"
+                        "xstats: unknown argument \"{arg}\""
                     )));
                 }
                 config.last_filter = Some(arg.to_string());
@@ -85,7 +85,7 @@ fn parse_xstats_args(args: &[String]) -> Result<XstatsConfig, CliError> {
                 config.filter_dev = Some(
                     iter.next()
                         .ok_or_else(|| {
-                            CliError::from("xstats: \"dev\" requires a value\n")
+                            CliError::from("xstats: \"dev\" requires a value")
                         })?
                         .clone(),
                 );
@@ -96,7 +96,7 @@ fn parse_xstats_args(args: &[String]) -> Result<XstatsConfig, CliError> {
             }
             unknown => {
                 return Err(CliError::from(format!(
-                    "xstats: unknown argument \"{unknown}\"\n"
+                    "xstats: unknown argument \"{unknown}\""
                 )));
             }
         }
@@ -140,8 +140,12 @@ async fn build_ifindex_map(
     Ok(map)
 }
 
-fn filter_mask_for_type(link_type: &str) -> u32 {
-    if link_type.ends_with("_slave") { 4 } else { 2 }
+fn filter_mask_for_type(link_type: &str) -> StatsFilterMask {
+    if link_type.ends_with("_slave") {
+        StatsFilterMask::LinkXstatsPort
+    } else {
+        StatsFilterMask::LinkXstats
+    }
 }
 
 // ===== Serializable output structs matching iproute2 JSON output =====
@@ -320,17 +324,41 @@ fn build_bridge_stp(s: &BridgeStpXstats) -> BridgeStp {
     }
 }
 
-fn build_bond_3ad(s: &Bond3adStats) -> Bond3ad {
+fn build_bond_3ad(stats: &[Bond3adStats]) -> Bond3ad {
+    let mut lacpdu_rx = 0;
+    let mut lacpdu_tx = 0;
+    let mut lacpdu_unknown_rx = 0;
+    let mut lacpdu_illegal_rx = 0;
+    let mut marker_rx = 0;
+    let mut marker_tx = 0;
+    let mut marker_resp_rx = 0;
+    let mut marker_resp_tx = 0;
+    let mut marker_unknown_rx = 0;
+    for stat in stats {
+        match stat {
+            Bond3adStats::LacpduRx(v) => lacpdu_rx = *v,
+            Bond3adStats::LacpduTx(v) => lacpdu_tx = *v,
+            Bond3adStats::LacpduUnknownRx(v) => lacpdu_unknown_rx = *v,
+            Bond3adStats::LacpduIllegalRx(v) => lacpdu_illegal_rx = *v,
+            Bond3adStats::MarkerRx(v) => marker_rx = *v,
+            Bond3adStats::MarkerTx(v) => marker_tx = *v,
+            Bond3adStats::MarkerRespRx(v) => marker_resp_rx = *v,
+            Bond3adStats::MarkerRespTx(v) => marker_resp_tx = *v,
+            Bond3adStats::MarkerUnknownRx(v) => marker_unknown_rx = *v,
+            Bond3adStats::Other(_) => {}
+            _ => {}
+        }
+    }
     Bond3ad {
-        lacpdu_rx: s.lacpdu_rx.unwrap_or(0),
-        lacpdu_tx: s.lacpdu_tx.unwrap_or(0),
-        lacpdu_unknown_rx: s.lacpdu_unknown_rx.unwrap_or(0),
-        lacpdu_illegal_rx: s.lacpdu_illegal_rx.unwrap_or(0),
-        marker_rx: s.marker_rx.unwrap_or(0),
-        marker_tx: s.marker_tx.unwrap_or(0),
-        marker_resp_rx: s.marker_resp_rx.unwrap_or(0),
-        marker_resp_tx: s.marker_resp_tx.unwrap_or(0),
-        marker_unknown_rx: s.marker_unknown_rx.unwrap_or(0),
+        lacpdu_rx,
+        lacpdu_tx,
+        lacpdu_unknown_rx,
+        lacpdu_illegal_rx,
+        marker_rx,
+        marker_tx,
+        marker_resp_rx,
+        marker_resp_tx,
+        marker_unknown_rx,
     }
 }
 
@@ -385,7 +413,7 @@ fn build_xstats_info(
                                 }
                                 stp = Some(build_bridge_stp(s));
                             }
-                            BridgeXstat::Vlan(_) | BridgeXstat::Other(_, _) => {
+                            BridgeXstat::Vlan(_) | BridgeXstat::Other(_) => {
                             }
                             _ => {}
                         }
@@ -393,7 +421,7 @@ fn build_xstats_info(
                 }
                 LinkXstatGroup::Bond(xstats) => {
                     for xstat in xstats {
-                        if let BondXstat::Threead(s) = xstat {
+                        if let BondXstat::ThreeAd(s) = xstat {
                             if !filter_matches(last_filter, "lacp", "802.3ad") {
                                 continue;
                             }
@@ -401,7 +429,7 @@ fn build_xstats_info(
                         }
                     }
                 }
-                LinkXstatGroup::Other(_, _) => {}
+                LinkXstatGroup::Other(_) => {}
                 _ => {}
             }
         }
@@ -617,7 +645,7 @@ pub(crate) async fn handle_xstats(
         "bridge" | "bridge_slave" | "bond" | "bond_slave" => {}
         _ => {
             return Err(CliError::from(format!(
-                "xstats: link type {} doesn't support xstats\n",
+                "xstats: link type {} doesn't support xstats",
                 config.link_type
             )));
         }
@@ -633,11 +661,9 @@ pub(crate) async fn handle_xstats(
     });
 
     let mut stats_msg = StatsMessage::default();
-    stats_msg.header = StatsHeader {
-        family: AddressFamily::Unspec,
-        ifindex: filter_dev_ifindex.unwrap_or(0),
-        filter_mask: filter_mask_for_type(&config.link_type),
-    };
+    stats_msg.header.family = AddressFamily::Unspec;
+    stats_msg.header.ifindex = filter_dev_ifindex.unwrap_or(0);
+    stats_msg.header.filter_mask = filter_mask_for_type(&config.link_type);
 
     let mut nl_msg =
         NetlinkMessage::from(RouteNetlinkMessage::GetStats(stats_msg));
