@@ -7,7 +7,7 @@ use iproute_rs::{CliError, parse_mac_str};
 use rtnetlink::{
     LinkDummy, LinkIfb, LinkMessageBuilder, LinkNetdevsim, LinkNlmon, LinkVcan,
     LinkVirtWifi,
-    packet_route::link::{InfoKind, LinkMessage},
+    packet_route::link::{InfoKind, LinkAttribute, LinkMessage},
 };
 
 use crate::link::CliLinkInfo;
@@ -79,6 +79,14 @@ impl LinkAddCommand {
                 }
                 base_conf.apply(builder)?
             }
+            InfoKind::Wwan => {
+                if base_conf.parentdev_name.is_none() {
+                    return Err(CliError::from(
+                        "wwan: missing required \"parentdev\" argument",
+                    ));
+                }
+                base_conf.apply(base_conf.apply_wwan(&handle).await?)?
+            }
             InfoKind::Netkit => base_conf.apply(base_conf.apply_netkit()?)?,
             InfoKind::Vrf => base_conf.apply(base_conf.apply_vrf()?)?,
             InfoKind::Vxcan => base_conf.apply(base_conf.apply_vxcan()?)?,
@@ -134,6 +142,7 @@ impl LinkAddCommand {
 #[derive(Debug)]
 pub(crate) struct LinkBaseConf {
     pub(crate) link: Option<String>,
+    pub(crate) parentdev_name: Option<String>,
     pub(crate) name: String,
     pub(crate) address: Option<String>,
     pub(crate) iface_type: InfoKind,
@@ -147,6 +156,11 @@ impl LinkBaseConf {
     ) -> Result<LinkMessage, CliError> {
         if let Some(v) = self.address.as_deref() {
             builder = builder.address(parse_mac_str(v)?)
+        }
+        if let Some(v) = self.parentdev_name.as_deref() {
+            builder = builder.append_extra_attribute(LinkAttribute::ParentDevName(
+                v.to_string(),
+            ));
         }
         Ok(builder.build())
     }
@@ -200,6 +214,8 @@ impl LinkBaseConf {
             let address =
                 base_args_dict.remove("address").map(|s| s.to_string());
             let link = base_args_dict.remove("link").map(|s| s.to_string());
+            let parentdev_name =
+                base_args_dict.remove("parentdev").map(|s| s.to_string());
 
             let iface_specific = if args.len() > type_index + 1 {
                 args[type_index + 2..].to_vec()
@@ -210,6 +226,7 @@ impl LinkBaseConf {
                 name,
                 address,
                 link,
+                parentdev_name,
                 iface_type,
                 iface_specific,
             })

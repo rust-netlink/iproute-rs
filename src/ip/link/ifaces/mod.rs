@@ -19,4 +19,5 @@ pub(super) mod vlan;
 pub(super) mod vrf;
 pub(super) mod vxcan;
 pub(super) mod vxlan;
+pub(super) mod wwan;
 pub(super) mod xfrm;

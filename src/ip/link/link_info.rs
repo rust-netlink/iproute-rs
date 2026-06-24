@@ -20,6 +20,7 @@ use super::ifaces::{
     vlan::CliLinkInfoDataVlan,
     vrf::{CliLinkInfoDataVrf, CliLinkInfoDataVrfPort},
     vxlan::CliLinkInfoDataVxlan,
+    wwan::CliLinkInfoDataWwan,
     xfrm::CliLinkInfoDataXfrm,
 };
 use crate::link::ifaces::bond::{CliLinkInfoDataBond, CliLinkInfoDataBondPort};
@@ -130,6 +131,7 @@ pub(crate) enum CliLinkInfoData {
     GreTun6(Box<CliLinkInfoDataGre>),
     GreTap6(Box<CliLinkInfoDataGre>),
     Vrf(Box<CliLinkInfoDataVrf>),
+    Wwan(Box<CliLinkInfoDataWwan>),
     Xfrm(Box<CliLinkInfoDataXfrm>),
 }
 
@@ -187,6 +189,7 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
                 Ok(Self::GreTap6(Box::new(v.as_slice().into())))
             }
             InfoData::Xfrm(v) => Ok(Self::Xfrm(Box::new(v.as_slice().into()))),
+            InfoData::Wwan(v) => Ok(Self::Wwan(Box::new(v.as_slice().into()))),
             _ => Err(()),
         }
     }
@@ -230,6 +233,7 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::GreTun6(v) => write!(f, "{v}"),
             CliLinkInfoData::GreTap6(v) => write!(f, "{v}"),
             CliLinkInfoData::Vrf(v) => write!(f, "{v}"),
+            CliLinkInfoData::Wwan(v) => write!(f, "{v}"),
             CliLinkInfoData::Xfrm(v) => write!(f, "{v}"),
         }
     }

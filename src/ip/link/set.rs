@@ -21,6 +21,7 @@ use super::{
         parse::{parse_eui64, parse_i32, parse_on_off, parse_u32},
         vlan::IfaceVlan,
         vrf::IfaceVrf,
+        wwan::IfaceWwan,
     },
     xdp::{XdpConfig, build_xdp_attrs, parse_xdp_args},
 };
@@ -190,6 +191,9 @@ impl LinkSetCommand {
                 vec![AfSpecInet6::AddrGenMode(v)],
             )]));
         }
+        if let Some(v) = conf.parentdev_name {
+            attrs.push(LinkAttribute::ParentDevName(v));
+        }
 
         if !conf.vf_configs.is_empty() {
             let mut vf_info_list: Vec<LinkVfInfo> = Vec::new();
@@ -333,6 +337,7 @@ struct LinkSetConf {
     gro_ipv4_max_size: Option<u32>,
     link_netnsid: Option<i32>,
     addrgenmode: Option<In6AddrGenMode>,
+    parentdev_name: Option<String>,
     vf_configs: Vec<VfConfig>,
     iface_type: Option<InfoKind>,
     iface_specific: Vec<String>,
@@ -371,6 +376,7 @@ impl LinkSetConf {
         let mut gro_ipv4_max_size = None;
         let mut link_netnsid = None;
         let mut addrgenmode = None;
+        let mut parentdev_name = None;
         let mut vf_configs: Vec<VfConfig> = Vec::new();
         let mut iface_type = None;
         let mut iface_specific = Vec::new();
@@ -602,6 +608,14 @@ impl LinkSetConf {
                     };
                     gro_ipv4_max_size =
                         Some(parse_u32(v, "gro_ipv4_max_size")?);
+                }
+                "parentdev" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"parentdev\" requires a value",
+                        ));
+                    };
+                    parentdev_name = Some(v.clone());
                 }
                 "link-netnsid" => {
                     let Some(v) = iter.next() else {
@@ -893,6 +907,7 @@ impl LinkSetConf {
             gro_ipv4_max_size,
             link_netnsid,
             addrgenmode,
+            parentdev_name,
             vf_configs,
             iface_type,
             iface_specific,
@@ -970,6 +985,11 @@ async fn build_type_link_info(
         InfoKind::IpVtap => Ok(build_kind_only(InfoKind::IpVtap)),
         InfoKind::MacVlan => Ok(build_kind_only(InfoKind::MacVlan)),
         InfoKind::MacVtap => Ok(build_kind_only(InfoKind::MacVtap)),
+        InfoKind::Wwan => {
+            let mut infos = IfaceWwan::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
         _ => Err(CliError::from(format!("Unsupported device type: {kind}"))),
     }
 }

@@ -26,6 +26,7 @@ use super::{
         vrf::IfaceVrf,
         vxcan::IfaceVxcan,
         vxlan::IfaceVxlan,
+        wwan::IfaceWwan,
         xfrm::IfaceXfrm,
     },
     property::LinkPropertyCommand,
@@ -241,6 +242,7 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
                 "macsec" => IfaceMacSec::print_help(),
                 "netkit" => IfaceNetkit::print_help(),
                 "vxlan" => IfaceVxlan::print_help(),
+                "wwan" => IfaceWwan::print_help(),
                 "xfrm" => IfaceXfrm::print_help(),
                 "sit" => IfaceSit::print_help(),
                 unknown => {

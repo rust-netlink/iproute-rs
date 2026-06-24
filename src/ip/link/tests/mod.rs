@@ -31,6 +31,7 @@ mod veth;
 mod vlan;
 mod vrf;
 mod virt_wifi;
+mod wwan;
 mod vxcan;
 mod vxlan;
 mod xdp;
