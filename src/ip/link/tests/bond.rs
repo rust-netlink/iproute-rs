@@ -169,3 +169,63 @@ where
         test(ns);
     })
 }
+
+// --- bond_slave set tests ---
+
+fn with_bond_port_iface<T>(bond_opts: &[&str], test: T)
+where
+    T: FnOnce(&NetnsGuard),
+{
+    with_netns(|ns| {
+        ns.exec_cmd(&["ip", "link", "add", DUMMY_NAME, "type", "dummy"]);
+
+        let mut bond_args =
+            vec!["ip", "link", "add", BOND_NAME, "type", "bond"];
+        bond_args.extend_from_slice(bond_opts);
+        ns.exec_cmd(&bond_args);
+
+        ns.exec_cmd(&[
+            "ip", "link", "set", "dev", DUMMY_NAME, "master", BOND_NAME,
+        ]);
+        ns.ip_rs_exec_cmd(&["link", "set", DUMMY_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BOND_NAME, "up"]);
+
+        test(ns);
+    })
+}
+
+#[test]
+fn test_set_bond_port_queue_id() {
+    with_bond_port_iface(&[], |ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bond_slave",
+            "queue_id",
+            "10",
+        ]);
+        let outputs = ns.assert_eq_output(&["-d", "link", "show", DUMMY_NAME]);
+        assert!(outputs.expected.contains("queue_id 10"));
+    });
+}
+
+#[test]
+fn test_set_bond_port_prio() {
+    with_bond_port_iface(&["mode", "active-backup"], |ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bond_slave",
+            "prio",
+            "5",
+        ]);
+        let outputs = ns.assert_eq_output(&["-d", "link", "show", DUMMY_NAME]);
+        assert!(outputs.expected.contains("prio 5"));
+    });
+}

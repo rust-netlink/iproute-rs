@@ -16,7 +16,7 @@ use super::{
     ifaces::{
         bareudp::IfaceBareudp,
         batadv::IfaceBatAdv,
-        bond::IfaceBond,
+        bond::{IfaceBond, IfaceBondPort},
         bridge::IfaceBridge,
         gtp::IfaceGtp,
         hsr::IfaceHsr,
@@ -1002,6 +1002,9 @@ async fn build_type_link_info(
             let mut infos = IfaceBatAdv::build_entries(args)?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
+        }
+        InfoKind::Other(s) if s == "bond_slave" => {
+            IfaceBondPort::build_entries(args)
         }
         _ => Err(CliError::from(format!("Unsupported device type: {kind}"))),
     }

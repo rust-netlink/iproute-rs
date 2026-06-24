@@ -10,7 +10,7 @@ use super::{
     ifaces::{
         bareudp::IfaceBareudp,
         batadv::IfaceBatAdv,
-        bond::IfaceBond,
+        bond::{IfaceBond, IfaceBondPort},
         bridge::IfaceBridge,
         geneve::IfaceGeneve,
         gre::{IfaceGre, IfaceGre6, IfaceGreTap, IfaceGreTap6},
@@ -249,6 +249,7 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
                 "netkit" => IfaceNetkit::print_help(),
                 "bareudp" => IfaceBareudp::print_help(),
                 "batadv" => IfaceBatAdv::print_help(),
+                "bond_slave" => IfaceBondPort::print_help(),
                 "vxlan" => IfaceVxlan::print_help(),
                 "wwan" => IfaceWwan::print_help(),
                 "xfrm" => IfaceXfrm::print_help(),

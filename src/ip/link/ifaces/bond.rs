@@ -11,7 +11,8 @@ use rtnetlink::{
     packet_route::link::{
         BondAdSelect, BondAllPortActive, BondArpAllTargets, BondArpValidate,
         BondFailOverMac, BondLacpRate, BondMode, BondPrimaryReselect,
-        BondXmitHashPolicy, InfoBond, InfoBondPort, InfoKind, LinkInfo,
+        BondXmitHashPolicy, ChurnState, InfoBond, InfoBondPort, InfoKind,
+        InfoPortData, InfoPortKind, LinkInfo,
     },
 };
 use serde::Serialize;
@@ -257,6 +258,18 @@ pub(crate) struct CliLinkInfoDataBondPort {
     perm_hwaddr: String,
     queue_id: u16,
     prio: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ad_aggregator_id: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ad_actor_oper_port_state: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ad_partner_oper_port_state: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    actor_port_prio: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ad_churn_actor_state: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ad_churn_partner_state: Option<u8>,
 }
 
 impl From<&[InfoBondPort]> for CliLinkInfoDataBondPort {
@@ -267,6 +280,12 @@ impl From<&[InfoBondPort]> for CliLinkInfoDataBondPort {
         let mut perm_hwaddr = String::new();
         let mut queue_id = 0;
         let mut prio = 0;
+        let mut ad_aggregator_id = None;
+        let mut ad_actor_oper_port_state = None;
+        let mut ad_partner_oper_port_state = None;
+        let mut actor_port_prio = None;
+        let mut ad_churn_actor_state = None;
+        let mut ad_churn_partner_state = None;
 
         for nla in info {
             match nla {
@@ -282,6 +301,20 @@ impl From<&[InfoBondPort]> for CliLinkInfoDataBondPort {
                 }
                 InfoBondPort::Prio(p) => prio = *p,
                 InfoBondPort::QueueId(q) => queue_id = *q,
+                InfoBondPort::AdAggregatorId(v) => ad_aggregator_id = Some(*v),
+                InfoBondPort::AdActorOperPortState(v) => {
+                    ad_actor_oper_port_state = Some(v.bits())
+                }
+                InfoBondPort::AdPartnerOperPortState(v) => {
+                    ad_partner_oper_port_state = Some(v.bits())
+                }
+                InfoBondPort::ActorPortPrio(v) => actor_port_prio = Some(*v),
+                InfoBondPort::AdChurnActorState(v) => {
+                    ad_churn_actor_state = Some(u8::from(*v))
+                }
+                InfoBondPort::AdChurnPartnerState(v) => {
+                    ad_churn_partner_state = Some(u8::from(*v))
+                }
                 _ => {}
             }
         }
@@ -293,6 +326,12 @@ impl From<&[InfoBondPort]> for CliLinkInfoDataBondPort {
             perm_hwaddr,
             queue_id,
             prio,
+            ad_aggregator_id,
+            ad_actor_oper_port_state,
+            ad_partner_oper_port_state,
+            actor_port_prio,
+            ad_churn_actor_state,
+            ad_churn_partner_state,
         }
     }
 }
@@ -305,7 +344,24 @@ impl std::fmt::Display for CliLinkInfoDataBondPort {
         write!(f, " perm_hwaddr {}", self.perm_hwaddr)?;
         write!(f, " queue_id {}", self.queue_id)?;
         write!(f, " prio {}", self.prio)?;
-
+        if let Some(v) = self.ad_aggregator_id {
+            write!(f, " ad_aggregator_id {v}")?;
+        }
+        if let Some(v) = self.ad_actor_oper_port_state {
+            write!(f, " ad_actor_oper_port_state {v}")?;
+        }
+        if let Some(v) = self.ad_partner_oper_port_state {
+            write!(f, " ad_partner_oper_port_state {v}")?;
+        }
+        if let Some(v) = self.actor_port_prio {
+            write!(f, " actor_port_prio {v}")?;
+        }
+        if let Some(v) = self.ad_churn_actor_state {
+            write!(f, " ad_churn_actor_state {}", ChurnState::from(v))?;
+        }
+        if let Some(v) = self.ad_churn_partner_state {
+            write!(f, " ad_churn_partner_state {}", ChurnState::from(v))?;
+        }
         Ok(())
     }
 }
@@ -594,5 +650,71 @@ AD_SELECT := stable|bandwidth|count
 COUPLED_CONTROL := off|on
 BROADCAST_NEIGHBOR := off|on
 "
+    }
+}
+
+fn apply_bond_port_args(
+    mut infos: Vec<LinkInfo>,
+    iter: &mut impl Iterator<Item = impl AsRef<str>>,
+) -> Result<Vec<LinkInfo>, CliError> {
+    let mut port_data: Vec<InfoBondPort> = Vec::new();
+    while let Some(key) = iter.next() {
+        let Some(v) = iter.next() else {
+            return Err(CliError::from(format!(
+                "bond port {} requires a value",
+                key.as_ref()
+            )));
+        };
+        match key.as_ref() {
+            "queue_id" => {
+                port_data.push(InfoBondPort::QueueId(parse_u16(
+                    v.as_ref(),
+                    "queue_id",
+                )?));
+            }
+            "prio" => {
+                let val: i32 = v.as_ref().parse().map_err(|_| {
+                    CliError::from(format!(
+                        "Invalid prio value: {}",
+                        v.as_ref()
+                    ))
+                })?;
+                port_data.push(InfoBondPort::Prio(val));
+            }
+            "actor_port_prio" => {
+                port_data.push(InfoBondPort::ActorPortPrio(parse_u16(
+                    v.as_ref(),
+                    "actor_port_prio",
+                )?));
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown bond port argument: {}",
+                    key.as_ref(),
+                )));
+            }
+        }
+    }
+    infos.push(LinkInfo::PortKind(InfoPortKind::Bond));
+    if !port_data.is_empty() {
+        infos.push(LinkInfo::PortData(InfoPortData::BondPort(port_data)));
+    }
+    Ok(infos)
+}
+
+pub(crate) struct IfaceBondPort;
+
+impl IfaceBondPort {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let infos = Vec::new();
+        let mut iter = args.iter();
+        apply_bond_port_args(infos, &mut iter)
+    }
+
+    pub(crate) fn print_help() -> &'static str {
+        "Usage: ... bond_slave [ queue_id ID ] [ prio PRIORITY ]\n\t\t      [ \
+         actor_port_prio PRIORITY ]\n"
     }
 }
