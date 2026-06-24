@@ -48,6 +48,7 @@ test_link_help!(test_link_help_vlan, "vlan");
 test_link_help!(test_link_help_vrf, "vrf");
 test_link_help!(test_link_help_vxcan, "vxcan");
 test_link_help!(test_link_help_vxlan, "vxlan");
+test_link_help!(test_link_help_bareudp, "bareudp");
 test_link_help!(test_link_help_virt_wifi, "virt_wifi");
 test_link_help!(test_link_help_wwan, "wwan");
 test_link_help!(test_link_help_xfrm, "xfrm");

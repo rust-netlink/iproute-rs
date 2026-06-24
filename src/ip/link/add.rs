@@ -123,6 +123,7 @@ impl LinkAddCommand {
             InfoKind::Geneve => {
                 base_conf.apply(base_conf.apply_geneve(&handle).await?)?
             }
+            InfoKind::BareUdp => base_conf.apply(base_conf.apply_bareudp()?)?,
             InfoKind::GreTun => {
                 base_conf.apply(base_conf.apply_gre(&handle).await?)?
             }

@@ -2,6 +2,7 @@
 
 mod afstats;
 mod alias;
+mod bareudp;
 mod bond;
 mod bridge;
 mod color;

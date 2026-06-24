@@ -6,6 +6,7 @@ use rtnetlink::packet_route::link::{InfoData, InfoPortData, LinkInfo};
 use serde::Serialize;
 
 use super::ifaces::{
+    bareudp::CliLinkInfoDataBareudp,
     bridge::{CliLinkInfoDataBridge, CliLinkInfoDataBridgePort},
     geneve::CliLinkInfoDataGeneve,
     gre::CliLinkInfoDataGre,
@@ -111,6 +112,7 @@ impl std::fmt::Display for CliLinkInfo {
 #[derive(Serialize)]
 #[serde(untagged)]
 pub(crate) enum CliLinkInfoData {
+    BareUdp(Box<CliLinkInfoDataBareudp>),
     Netkit(Box<CliLinkInfoDataNetkit>),
     Vlan(Box<CliLinkInfoDataVlan>),
     Veth(Box<CliLinkInfoDataVeth>),
@@ -189,6 +191,9 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
                 Ok(Self::GreTap6(Box::new(v.as_slice().into())))
             }
             InfoData::Xfrm(v) => Ok(Self::Xfrm(Box::new(v.as_slice().into()))),
+            InfoData::BareUdp(v) => {
+                Ok(Self::BareUdp(Box::new(v.as_slice().into())))
+            }
             InfoData::Wwan(v) => Ok(Self::Wwan(Box::new(v.as_slice().into()))),
             _ => Err(()),
         }
@@ -213,6 +218,7 @@ impl CliLinkInfoData {
 impl std::fmt::Display for CliLinkInfoData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            CliLinkInfoData::BareUdp(v) => write!(f, "{v}"),
             CliLinkInfoData::Netkit(v) => write!(f, "{v}"),
             CliLinkInfoData::Vlan(v) => write!(f, "{v}"),
             CliLinkInfoData::Veth(v) => write!(f, "{v}"),

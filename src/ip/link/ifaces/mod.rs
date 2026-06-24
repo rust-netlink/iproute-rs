@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+pub(super) mod bareudp;
 pub(super) mod bond;
 pub(super) mod bridge;
 pub(super) mod geneve;
