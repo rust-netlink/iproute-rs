@@ -6,6 +6,7 @@ use futures_util::TryStreamExt;
 use iproute_rs::{CliError, parse_mac_str};
 use rtnetlink::{
     LinkDummy, LinkIfb, LinkMessageBuilder, LinkNetdevsim, LinkNlmon, LinkVcan,
+    LinkVirtWifi,
     packet_route::link::{InfoKind, LinkMessage},
 };
 
@@ -67,6 +68,16 @@ impl LinkAddCommand {
             InfoKind::Gtp => base_conf.apply(base_conf.apply_gtp(&handle)?)?,
             InfoKind::Netdevsim => {
                 base_conf.apply(LinkNetdevsim::new(&base_conf.name))?
+            }
+            InfoKind::VirtWifi => {
+                let mut builder = LinkVirtWifi::new(&base_conf.name);
+                if let Some(ref link_name) = base_conf.link {
+                    let link_ifindex = base_conf
+                        .get_ifindex_by_name(&handle, link_name)
+                        .await?;
+                    builder = builder.link(link_ifindex);
+                }
+                base_conf.apply(builder)?
             }
             InfoKind::Netkit => base_conf.apply(base_conf.apply_netkit()?)?,
             InfoKind::Vrf => base_conf.apply(base_conf.apply_vrf()?)?,

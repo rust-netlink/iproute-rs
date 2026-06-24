@@ -39,3 +39,13 @@ impl IfaceNetdevsim {
 "
     }
 }
+
+pub(crate) struct IfaceVirtWifi;
+
+impl IfaceVirtWifi {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... virt_wifi 
+"
+    }
+}

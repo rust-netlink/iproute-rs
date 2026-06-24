@@ -923,6 +923,7 @@ async fn build_type_link_info(
         | InfoKind::Nlmon
         | InfoKind::Vcan
         | InfoKind::Netdevsim
+        | InfoKind::VirtWifi
         | InfoKind::Veth
         | InfoKind::Vxcan
         | InfoKind::Xfrm
