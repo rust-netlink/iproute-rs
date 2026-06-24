@@ -2,7 +2,7 @@
 
 use iproute_rs::CliError;
 use rtnetlink::{
-    LinkWwan, LinkMessageBuilder,
+    LinkMessageBuilder, LinkWwan,
     packet_route::link::{InfoKind, InfoWwan, LinkInfo},
 };
 use serde::Serialize;

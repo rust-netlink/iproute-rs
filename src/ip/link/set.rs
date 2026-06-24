@@ -936,6 +936,7 @@ async fn build_type_link_info(
     match kind {
         InfoKind::Dummy
         | InfoKind::Nlmon
+        | InfoKind::Team
         | InfoKind::Vcan
         | InfoKind::Netdevsim
         | InfoKind::VirtWifi

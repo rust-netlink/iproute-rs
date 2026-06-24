@@ -39,6 +39,7 @@ test_link_help!(test_link_help_macsec, "macsec");
 test_link_help!(test_link_help_macvlan, "macvlan");
 test_link_help!(test_link_help_macvtap, "macvtap");
 test_link_help!(test_link_help_netkit, "netkit");
+test_link_help!(test_link_help_team, "team");
 test_link_help!(test_link_help_netdevsim, "netdevsim");
 test_link_help!(test_link_help_nlmon, "nlmon");
 test_link_help!(test_link_help_vcan, "vcan");

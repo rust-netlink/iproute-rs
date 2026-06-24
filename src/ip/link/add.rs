@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use futures_util::TryStreamExt;
 use iproute_rs::{CliError, parse_mac_str};
 use rtnetlink::{
-    LinkDummy, LinkIfb, LinkMessageBuilder, LinkNetdevsim, LinkNlmon, LinkVcan,
-    LinkVirtWifi,
+    LinkDummy, LinkIfb, LinkMessageBuilder, LinkNetdevsim, LinkNlmon, LinkTeam,
+    LinkVcan, LinkVirtWifi,
     packet_route::link::{InfoKind, LinkAttribute, LinkMessage},
 };
 
@@ -46,6 +46,9 @@ impl LinkAddCommand {
         let nl_msg = match base_conf.iface_type {
             InfoKind::Dummy => {
                 base_conf.apply(LinkDummy::new(&base_conf.name))?
+            }
+            InfoKind::Team => {
+                base_conf.apply(LinkTeam::new(&base_conf.name))?
             }
             InfoKind::Nlmon => {
                 base_conf.apply(LinkNlmon::new(&base_conf.name))?
@@ -158,9 +161,9 @@ impl LinkBaseConf {
             builder = builder.address(parse_mac_str(v)?)
         }
         if let Some(v) = self.parentdev_name.as_deref() {
-            builder = builder.append_extra_attribute(LinkAttribute::ParentDevName(
-                v.to_string(),
-            ));
+            builder = builder.append_extra_attribute(
+                LinkAttribute::ParentDevName(v.to_string()),
+            );
         }
         Ok(builder.build())
     }
