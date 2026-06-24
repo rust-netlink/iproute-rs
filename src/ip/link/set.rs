@@ -15,6 +15,7 @@ use rtnetlink::packet_route::link::{
 use super::{
     ifaces::{
         bareudp::IfaceBareudp,
+        batadv::IfaceBatAdv,
         bond::IfaceBond,
         bridge::IfaceBridge,
         gtp::IfaceGtp,
@@ -994,6 +995,11 @@ async fn build_type_link_info(
         }
         InfoKind::BareUdp => {
             let mut infos = IfaceBareudp::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::BatAdv => {
+            let mut infos = IfaceBatAdv::build_entries(args)?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }

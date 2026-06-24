@@ -9,6 +9,7 @@ use super::{
     delete::LinkDeleteCommand,
     ifaces::{
         bareudp::IfaceBareudp,
+        batadv::IfaceBatAdv,
         bond::IfaceBond,
         bridge::IfaceBridge,
         geneve::IfaceGeneve,
@@ -247,6 +248,7 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
                 "macsec" => IfaceMacSec::print_help(),
                 "netkit" => IfaceNetkit::print_help(),
                 "bareudp" => IfaceBareudp::print_help(),
+                "batadv" => IfaceBatAdv::print_help(),
                 "vxlan" => IfaceVxlan::print_help(),
                 "wwan" => IfaceWwan::print_help(),
                 "xfrm" => IfaceXfrm::print_help(),
