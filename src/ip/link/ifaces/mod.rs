@@ -4,6 +4,7 @@ pub(super) mod bond;
 pub(super) mod bridge;
 pub(super) mod geneve;
 pub(super) mod gre;
+pub(super) mod gtp;
 pub(super) mod hsr;
 pub(super) mod ifb;
 pub(super) mod iptun;

@@ -64,6 +64,7 @@ impl LinkAddCommand {
                 base_conf.apply(base_conf.apply_hsr(&handle).await?)?
             }
             InfoKind::Ifb => base_conf.apply(LinkIfb::new(&base_conf.name))?,
+            InfoKind::Gtp => base_conf.apply(base_conf.apply_gtp(&handle)?)?,
             InfoKind::Netdevsim => {
                 base_conf.apply(LinkNetdevsim::new(&base_conf.name))?
             }
@@ -293,5 +294,37 @@ mod tests {
             LinkBaseConf::parse(args(&["foo", "bar", "baz", "type", "dummy"]))
                 .unwrap();
         assert_eq!(conf.name, "foo");
+    }
+
+    #[test]
+    fn parse_gtp_basic() {
+        let conf =
+            LinkBaseConf::parse(args(&["gtp0", "type", "gtp", "role", "sgsn"]))
+                .unwrap();
+        assert_eq!(conf.name, "gtp0");
+        assert_eq!(conf.iface_type, InfoKind::Gtp);
+        assert_eq!(conf.iface_specific, vec!["role", "sgsn"]);
+    }
+
+    #[test]
+    fn parse_gtp_full() {
+        let conf = LinkBaseConf::parse(args(&[
+            "gtp0",
+            "type",
+            "gtp",
+            "role",
+            "ggsn",
+            "hsize",
+            "2048",
+            "restart_count",
+            "5",
+        ]))
+        .unwrap();
+        assert_eq!(conf.name, "gtp0");
+        assert_eq!(conf.iface_type, InfoKind::Gtp);
+        assert_eq!(
+            conf.iface_specific,
+            vec!["role", "ggsn", "hsize", "2048", "restart_count", "5"]
+        );
     }
 }

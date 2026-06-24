@@ -176,7 +176,7 @@ impl std::fmt::Display for CliLinkInfoDetail {
         }
 
         if let Some(linkinfo) = &self.linkinfo {
-            write!(f, "{linkinfo}")?;
+            write!(f, "{linkinfo} ")?;
         }
 
         if !self.inet6_addr_gen_mode.is_empty() {

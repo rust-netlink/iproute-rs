@@ -27,6 +27,7 @@ test_link_help!(test_link_help_dummy, "dummy");
 test_link_help!(test_link_help_geneve, "geneve");
 test_link_help!(test_link_help_gre, "gre");
 test_link_help!(test_link_help_gretap, "gretap");
+test_link_help!(test_link_help_gtp, "gtp");
 test_link_help!(test_link_help_hsr, "hsr");
 test_link_help!(test_link_help_ip6gre, "ip6gre");
 test_link_help!(test_link_help_ip6gretap, "ip6gretap");

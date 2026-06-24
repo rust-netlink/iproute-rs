@@ -190,15 +190,15 @@ impl std::fmt::Display for CliLinkInfo {
         write_with_color!(f, CliColor::IfaceName, "{}{link}: ", self.ifname)?;
         write!(
             f,
-            "<{}> mtu {} qdisc {}",
+            "<{}> mtu {} qdisc {} ",
             self.flags.as_slice().join(","),
             self.mtu,
             self.qdisc,
         )?;
         if let Some(ctrl) = self.controller.as_ref() {
-            write!(f, " master {ctrl}")?;
+            write!(f, "master {ctrl} ")?;
         }
-        write!(f, " state ")?;
+        write!(f, "state ")?;
         if self.operstate == "UP" {
             write_with_color!(f, CliColor::StateUp, "{} ", self.operstate)?;
         } else if self.operstate == "DOWN" {
@@ -219,26 +219,36 @@ impl std::fmt::Display for CliLinkInfo {
         write!(f, "link/{} ", self.link_type)?;
         if !self.address.is_empty() {
             write_with_color!(f, CliColor::Mac, "{}", self.address)?;
+            write!(f, " ")?;
             if self.is_point_2_point {
-                write!(f, " peer ")?;
+                write!(f, "peer ")?;
             } else {
-                write!(f, " brd ")?;
+                write!(f, "brd ")?;
             }
             write_with_color!(f, CliColor::Mac, "{}", self.broadcast)?;
         }
         if !self.permaddr.is_empty() {
-            write!(f, " permaddr ")?;
+            // Previous one did not add space because it does not know whether
+            // they are more options
+            write!(f, " ")?;
+            write!(f, "permaddr ")?;
             write_with_color!(f, CliColor::Mac, "{}", self.permaddr)?;
         }
 
         if !self.link_netns.is_empty() {
-            write!(f, " link-netns {}", self.link_netns)?;
+            // Previous one did not add space because it does not know whether
+            // they are more options
+            write!(f, " ")?;
+            write!(f, "link-netns {} ", self.link_netns)?;
         } else if let Some(netns_id) = self.link_netnsid {
-            write!(f, " link-netnsid {netns_id}")?;
+            // Previous one did not add space because it does not know whether
+            // they are more options
+            write!(f, " ")?;
+            write!(f, "link-netnsid {netns_id} ")?;
         }
 
         if let Some(details) = &self.details {
-            write!(f, "{details}",)?;
+            write!(f, "{details}")?;
         }
 
         for altname in &self.altnames {

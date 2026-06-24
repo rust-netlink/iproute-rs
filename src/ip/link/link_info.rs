@@ -9,6 +9,7 @@ use super::ifaces::{
     bridge::{CliLinkInfoDataBridge, CliLinkInfoDataBridgePort},
     geneve::CliLinkInfoDataGeneve,
     gre::CliLinkInfoDataGre,
+    gtp::CliLinkInfoDataGtp,
     hsr::CliLinkInfoDataHsr,
     iptun::CliLinkInfoDataIpIp,
     ipvlan::{CliLinkInfoDataIpVlan, CliLinkInfoDataIpVtap},
@@ -85,15 +86,21 @@ impl CliLinkInfo {
 impl std::fmt::Display for CliLinkInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "\n    ")?;
-        write!(f, "{} ", self.info_kind)?;
+        write!(f, "{}", self.info_kind)?;
         if let Some(data) = &self.info_data {
-            write!(f, "{data} ")?;
+            write!(f, " ")?;
+            write!(f, "{data}")?;
         }
 
         if let Some(port_kind) = &self.info_port_kind {
-            write!(f, "\n    {}_slave ", port_kind)?;
+            if self.info_kind == "dummy" {
+                // iproute2 add a trailing space for dummy interface when it is
+                // port, do the same to pass the tests
+                write!(f, " ")?;
+            }
+            write!(f, "\n    {}_slave", port_kind)?;
             if let Some(port_data) = &self.info_port_data {
-                write!(f, "{port_data} ")?;
+                write!(f, " {port_data}")?;
             }
         }
         Ok(())
@@ -117,6 +124,7 @@ pub(crate) enum CliLinkInfoData {
     MacVtap(Box<CliLinkInfoDataMacVtap>),
     MacSec(Box<CliLinkInfoDataMacSec>),
     Geneve(Box<CliLinkInfoDataGeneve>),
+    Gtp(Box<CliLinkInfoDataGtp>),
     GreTun(Box<CliLinkInfoDataGre>),
     GreTap(Box<CliLinkInfoDataGre>),
     GreTun6(Box<CliLinkInfoDataGre>),
@@ -165,6 +173,7 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
             InfoData::Geneve(v) => {
                 Ok(Self::Geneve(Box::new(v.as_slice().into())))
             }
+            InfoData::Gtp(v) => Ok(Self::Gtp(Box::new(v.as_slice().into()))),
             InfoData::GreTun(v) => {
                 Ok(Self::GreTun(Box::new(v.as_slice().into())))
             }
@@ -215,6 +224,7 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::MacVtap(v) => write!(f, "{v}"),
             CliLinkInfoData::MacSec(v) => write!(f, "{v}"),
             CliLinkInfoData::Geneve(v) => write!(f, "{v}"),
+            CliLinkInfoData::Gtp(v) => write!(f, "{v}"),
             CliLinkInfoData::GreTun(v) => write!(f, "{v}"),
             CliLinkInfoData::GreTap(v) => write!(f, "{v}"),
             CliLinkInfoData::GreTun6(v) => write!(f, "{v}"),

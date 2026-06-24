@@ -45,8 +45,9 @@ impl From<std::io::Error> for CliError {
 
 impl From<rtnetlink::Error> for CliError {
     fn from(e: rtnetlink::Error) -> Self {
+        // iproute2 exits with code 2 for kernel/netlink errors
         CliError {
-            code: DEFAULT_ERROR_CODE,
+            code: 2,
             msg: format!("rtnetlink::Error: {e}"),
         }
     }

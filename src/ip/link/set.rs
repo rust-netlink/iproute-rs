@@ -16,6 +16,7 @@ use super::{
     ifaces::{
         bond::IfaceBond,
         bridge::IfaceBridge,
+        gtp::IfaceGtp,
         hsr::IfaceHsr,
         parse::{parse_eui64, parse_i32, parse_on_off, parse_u32},
         vlan::IfaceVlan,
@@ -956,6 +957,11 @@ async fn build_type_link_info(
         InfoKind::Netkit => Ok(build_kind_only(InfoKind::Netkit)),
         InfoKind::Vrf => {
             let mut infos = IfaceVrf::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::Gtp => {
+            let mut infos = IfaceGtp::build_entries(args)?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }
