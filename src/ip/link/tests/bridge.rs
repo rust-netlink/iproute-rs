@@ -446,3 +446,223 @@ fn test_bridge_create_multiple_options() {
         assert!(outputs.expected.contains("nf_call_ip6tables 1"));
     });
 }
+
+#[test]
+fn test_bridge_port_set_hairpin() {
+    with_bridge_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bridge_slave",
+            "hairpin",
+            "on",
+        ]);
+
+        let outputs = ns.assert_eq_output_map(
+            &["-d", "link", "show", DUMMY_NAME],
+            normalize_timers,
+        );
+        assert!(outputs.expected.contains("hairpin on"));
+    });
+}
+
+#[test]
+fn test_bridge_port_set_guard() {
+    with_bridge_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bridge_slave",
+            "guard",
+            "on",
+        ]);
+
+        let outputs = ns.assert_eq_output_map(
+            &["-d", "link", "show", DUMMY_NAME],
+            normalize_timers,
+        );
+        assert!(outputs.expected.contains("guard on"));
+    });
+}
+
+#[test]
+fn test_bridge_port_set_root_block() {
+    with_bridge_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bridge_slave",
+            "root_block",
+            "on",
+        ]);
+
+        let outputs = ns.assert_eq_output_map(
+            &["-d", "link", "show", DUMMY_NAME],
+            normalize_timers,
+        );
+        assert!(outputs.expected.contains("root_block on"));
+    });
+}
+
+#[test]
+fn test_bridge_port_set_learning() {
+    with_bridge_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bridge_slave",
+            "learning",
+            "off",
+        ]);
+
+        let outputs = ns.assert_eq_output_map(
+            &["-d", "link", "show", DUMMY_NAME],
+            normalize_timers,
+        );
+        assert!(outputs.expected.contains("learning off"));
+    });
+}
+
+#[test]
+fn test_bridge_port_set_flood() {
+    with_bridge_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bridge_slave",
+            "flood",
+            "off",
+        ]);
+
+        let outputs = ns.assert_eq_output_map(
+            &["-d", "link", "show", DUMMY_NAME],
+            normalize_timers,
+        );
+        assert!(outputs.expected.contains("flood off"));
+    });
+}
+
+#[test]
+fn test_bridge_port_set_priority() {
+    with_bridge_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bridge_slave",
+            "priority",
+            "48",
+        ]);
+
+        let outputs = ns.assert_eq_output_map(
+            &["-d", "link", "show", DUMMY_NAME],
+            normalize_timers,
+        );
+        assert!(outputs.expected.contains("priority 48"));
+    });
+}
+
+#[test]
+fn test_bridge_port_set_cost() {
+    with_bridge_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bridge_slave",
+            "cost",
+            "200",
+        ]);
+
+        let outputs = ns.assert_eq_output_map(
+            &["-d", "link", "show", DUMMY_NAME],
+            normalize_timers,
+        );
+        assert!(outputs.expected.contains("cost 200"));
+    });
+}
+
+#[test]
+fn test_bridge_port_set_mcast_flood() {
+    with_bridge_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bridge_slave",
+            "mcast_flood",
+            "off",
+        ]);
+
+        let outputs = ns.assert_eq_output_map(
+            &["-d", "link", "show", DUMMY_NAME],
+            normalize_timers,
+        );
+        assert!(outputs.expected.contains("mcast_flood off"));
+    });
+}
+
+#[test]
+fn test_bridge_port_set_proxy_arp() {
+    with_bridge_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bridge_slave",
+            "proxy_arp",
+            "on",
+        ]);
+
+        let outputs = ns.assert_eq_output_map(
+            &["-d", "link", "show", DUMMY_NAME],
+            normalize_timers,
+        );
+        assert!(outputs.expected.contains("proxy_arp on"));
+    });
+}
+
+#[test]
+fn test_bridge_port_set_isolated() {
+    with_bridge_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bridge_slave",
+            "isolated",
+            "on",
+        ]);
+
+        let outputs = ns.assert_eq_output_map(
+            &["-d", "link", "show", DUMMY_NAME],
+            normalize_timers,
+        );
+        assert!(outputs.expected.contains("isolated on"));
+    });
+}

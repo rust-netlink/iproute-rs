@@ -51,6 +51,7 @@ test_link_help!(test_link_help_vxlan, "vxlan");
 test_link_help!(test_link_help_bareudp, "bareudp");
 test_link_help!(test_link_help_batadv, "batadv");
 test_link_help!(test_link_help_bond_port, "bond_slave");
+test_link_help!(test_link_help_bridge_port, "bridge_slave");
 test_link_help!(test_link_help_virt_wifi, "virt_wifi");
 test_link_help!(test_link_help_wwan, "wwan");
 test_link_help!(test_link_help_xfrm, "xfrm");

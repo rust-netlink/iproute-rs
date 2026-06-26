@@ -17,7 +17,7 @@ use super::{
         bareudp::IfaceBareudp,
         batadv::IfaceBatAdv,
         bond::{IfaceBond, IfaceBondPort},
-        bridge::IfaceBridge,
+        bridge::{IfaceBridge, IfaceBridgePort},
         gtp::IfaceGtp,
         hsr::IfaceHsr,
         parse::{parse_eui64, parse_i32, parse_on_off, parse_u32},
@@ -1005,6 +1005,9 @@ async fn build_type_link_info(
         }
         InfoKind::Other(s) if s == "bond_slave" => {
             IfaceBondPort::build_entries(args)
+        }
+        InfoKind::Other(s) if s == "bridge_slave" => {
+            IfaceBridgePort::build_entries(args)
         }
         _ => Err(CliError::from(format!("Unsupported device type: {kind}"))),
     }

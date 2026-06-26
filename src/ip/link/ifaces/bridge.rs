@@ -4,15 +4,16 @@ use iproute_rs::{CliError, mac_to_string, parse_mac_str};
 use rtnetlink::{
     LinkBridge, LinkMessageBuilder,
     packet_route::link::{
-        BridgeBooleanOptionFlags as BoolOptFlags, BridgeQuerierState,
-        InfoBridge, InfoBridgePort, LinkInfo,
+        BridgeBooleanOptionFlags as BoolOptFlags, BridgeMulticastRouterType,
+        BridgePortState, BridgeQuerierState, InfoBridge, InfoBridgePort,
+        InfoPortData, InfoPortKind, LinkInfo,
     },
 };
 use serde::Serialize;
 
 use super::parse::{
-    extract_link_info, parse_from_str, parse_on_off_01, parse_u8, parse_u32,
-    parse_u64,
+    extract_link_info, parse_from_str, parse_on_off_01, parse_u8, parse_u16,
+    parse_u32, parse_u64,
 };
 use crate::link::LinkBaseConf;
 
@@ -909,6 +910,209 @@ impl LinkBaseConf {
         let builder = LinkBridge::new(&self.name);
         let mut iter = self.iface_specific.iter().map(|s| s.as_str());
         apply_bridge_args(builder, &mut iter)
+    }
+}
+
+fn apply_bridge_port_args(
+    mut infos: Vec<LinkInfo>,
+    iter: &mut impl Iterator<Item = impl AsRef<str>>,
+) -> Result<Vec<LinkInfo>, CliError> {
+    let mut port_data: Vec<InfoBridgePort> = Vec::new();
+    while let Some(key) = iter.next() {
+        let Some(v) = iter.next() else {
+            return Err(CliError::from(format!(
+                "bridge port {} requires a value",
+                key.as_ref()
+            )));
+        };
+        match key.as_ref() {
+            "fdb_flush" => {
+                port_data.push(InfoBridgePort::Flush);
+            }
+            "state" => {
+                let state =
+                    v.as_ref().parse::<BridgePortState>().map_err(|e| {
+                        CliError::from(format!(
+                            "Invalid bridge port state: {}: {e}",
+                            v.as_ref()
+                        ))
+                    })?;
+                port_data.push(InfoBridgePort::State(state));
+            }
+            "priority" => {
+                port_data.push(InfoBridgePort::Priority(parse_u16(
+                    v.as_ref(),
+                    "priority",
+                )?));
+            }
+            "cost" => {
+                port_data
+                    .push(InfoBridgePort::Cost(parse_u32(v.as_ref(), "cost")?));
+            }
+            "hairpin" => {
+                port_data.push(InfoBridgePort::HairpinMode(parse_on_off_01(
+                    v.as_ref(),
+                )?));
+            }
+            "guard" => {
+                port_data
+                    .push(InfoBridgePort::Guard(parse_on_off_01(v.as_ref())?));
+            }
+            "root_block" => {
+                port_data.push(InfoBridgePort::Protect(parse_on_off_01(
+                    v.as_ref(),
+                )?));
+            }
+            "fastleave" | "mcast_fast_leave" => {
+                port_data.push(InfoBridgePort::FastLeave(parse_on_off_01(
+                    v.as_ref(),
+                )?));
+            }
+            "learning" => {
+                port_data.push(InfoBridgePort::Learning(parse_on_off_01(
+                    v.as_ref(),
+                )?));
+            }
+            "flood" => {
+                port_data.push(InfoBridgePort::UnicastFlood(parse_on_off_01(
+                    v.as_ref(),
+                )?));
+            }
+            "proxy_arp" => {
+                port_data.push(InfoBridgePort::ProxyARP(parse_on_off_01(
+                    v.as_ref(),
+                )?));
+            }
+            "proxy_arp_wifi" => {
+                port_data.push(InfoBridgePort::ProxyARPWifi(parse_on_off_01(
+                    v.as_ref(),
+                )?));
+            }
+            "mcast_router" => {
+                let mcast_router = v
+                    .as_ref()
+                    .parse::<BridgeMulticastRouterType>()
+                    .map_err(|e| {
+                        CliError::from(format!(
+                            "Invalid mcast_router: {}: {e}",
+                            v.as_ref()
+                        ))
+                    })?;
+                port_data.push(InfoBridgePort::MulticastRouter(mcast_router));
+            }
+            "mcast_flood" => {
+                port_data.push(InfoBridgePort::MulticastFlood(
+                    parse_on_off_01(v.as_ref())?,
+                ));
+            }
+            "bcast_flood" => {
+                port_data.push(InfoBridgePort::BroadcastFlood(
+                    parse_on_off_01(v.as_ref())?,
+                ));
+            }
+            "mcast_to_unicast" => {
+                port_data.push(InfoBridgePort::MulticastToUnicast(
+                    parse_on_off_01(v.as_ref())?,
+                ));
+            }
+            "group_fwd_mask" => {
+                port_data.push(InfoBridgePort::GroupFwdMask(parse_u16(
+                    v.as_ref(),
+                    "group_fwd_mask",
+                )?));
+            }
+            "neigh_suppress" => {
+                port_data.push(InfoBridgePort::NeighSupress(parse_on_off_01(
+                    v.as_ref(),
+                )?));
+            }
+            "neigh_vlan_suppress" => {
+                port_data.push(InfoBridgePort::NeighVlanSuppress(
+                    parse_on_off_01(v.as_ref())?,
+                ));
+            }
+            "vlan_tunnel" => {
+                port_data.push(InfoBridgePort::VlanTunnel(parse_on_off_01(
+                    v.as_ref(),
+                )?));
+            }
+            "isolated" => {
+                port_data.push(InfoBridgePort::Isolated(parse_on_off_01(
+                    v.as_ref(),
+                )?));
+            }
+            "locked" => {
+                port_data
+                    .push(InfoBridgePort::Locked(parse_on_off_01(v.as_ref())?));
+            }
+            "mab" => {
+                port_data
+                    .push(InfoBridgePort::Mab(parse_on_off_01(v.as_ref())?));
+            }
+            "nobackup_port" => {
+                port_data.push(InfoBridgePort::BackupPort(0));
+            }
+            "backup_nhid" => {
+                port_data.push(InfoBridgePort::BackupNextHopId(parse_u32(
+                    v.as_ref(),
+                    "backup_nhid",
+                )?));
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown bridge port argument: {}",
+                    key.as_ref(),
+                )));
+            }
+        }
+    }
+    infos.push(LinkInfo::PortKind(InfoPortKind::Bridge));
+    if !port_data.is_empty() {
+        infos.push(LinkInfo::PortData(InfoPortData::BridgePort(port_data)));
+    }
+    Ok(infos)
+}
+
+pub(crate) struct IfaceBridgePort;
+
+impl IfaceBridgePort {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let infos = Vec::new();
+        let mut iter = args.iter();
+        apply_bridge_port_args(infos, &mut iter)
+    }
+
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... bridge_slave [ fdb_flush ]
+                        [ state STATE ]
+                        [ priority PRIO ]
+                        [ cost COST ]
+                        [ guard {on | off} ]
+                        [ hairpin {on | off} ]
+                        [ fastleave {on | off} ]
+                        [ root_block {on | off} ]
+                        [ learning {on | off} ]
+                        [ flood {on | off} ]
+                        [ proxy_arp {on | off} ]
+                        [ proxy_arp_wifi {on | off} ]
+                        [ mcast_router MULTICAST_ROUTER ]
+                        [ mcast_fast_leave {on | off} ]
+                        [ mcast_flood {on | off} ]
+                        [ bcast_flood {on | off} ]
+                        [ mcast_to_unicast {on | off} ]
+                        [ group_fwd_mask MASK ]
+                        [ neigh_suppress {on | off} ]
+                        [ neigh_vlan_suppress {on | off} ]
+                        [ vlan_tunnel {on | off} ]
+                        [ isolated {on | off} ]
+                        [ locked {on | off} ]
+                        [ mab {on | off} ]
+                        [ backup_port DEVICE ] [ nobackup_port ]
+                        [ backup_nhid NHID ]
+"
     }
 }
 
