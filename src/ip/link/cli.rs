@@ -12,6 +12,7 @@ use super::{
         batadv::IfaceBatAdv,
         bond::{IfaceBond, IfaceBondPort},
         bridge::{IfaceBridge, IfaceBridgePort},
+        can::IfaceCan,
         geneve::IfaceGeneve,
         gre::{IfaceGre, IfaceGre6, IfaceGreTap, IfaceGreTap6},
         gtp::IfaceGtp,
@@ -254,6 +255,7 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
                 "vxlan" => IfaceVxlan::print_help(),
                 "wwan" => IfaceWwan::print_help(),
                 "xfrm" => IfaceXfrm::print_help(),
+                "can" => IfaceCan::print_help(),
                 "sit" => IfaceSit::print_help(),
                 unknown => {
                     return Err(CliError::from(format!(
@@ -333,7 +335,7 @@ fn print_generic_help() -> &'static str {
 
         ip link help [ TYPE ]
 
-TYPE := { amt | bareudp | bond | bond_slave | bridge | bridge_slave |
+TYPE := { amt | bareudp | bond | bond_slave | bridge | bridge_slave | can |
           dsa | dummy | erspan | geneve | gre | gretap | gtp | hsr |
           ifb | ip6erspan | ip6gre | ip6gretap | ip6tnl |
           ipip | ipoib | ipvlan | ipvtap |

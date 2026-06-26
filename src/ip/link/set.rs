@@ -18,6 +18,7 @@ use super::{
         batadv::IfaceBatAdv,
         bond::{IfaceBond, IfaceBondPort},
         bridge::{IfaceBridge, IfaceBridgePort},
+        can::IfaceCan,
         gtp::IfaceGtp,
         hsr::IfaceHsr,
         parse::{parse_eui64, parse_i32, parse_on_off, parse_u32},
@@ -1000,6 +1001,11 @@ async fn build_type_link_info(
         }
         InfoKind::BatAdv => {
             let mut infos = IfaceBatAdv::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::Can => {
+            let mut infos = IfaceCan::build_entries(args)?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }
