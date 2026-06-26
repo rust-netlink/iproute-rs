@@ -5,6 +5,7 @@ pub(super) mod batadv;
 pub(super) mod bond;
 pub(super) mod bridge;
 pub(super) mod can;
+pub(super) mod dsa;
 pub(super) mod geneve;
 pub(super) mod gre;
 pub(super) mod gtp;

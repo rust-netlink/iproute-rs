@@ -955,9 +955,6 @@ fn resolve_controller_and_link_names(links: &mut [CliLinkInfo]) {
         .iter()
         .map(|l| (l.ifindex, l.ifname.to_string()))
         .collect();
-    let index_2_flags: HashMap<u32, LinkFlags> =
-        links.iter().map(|l| (l.ifindex, l.raw_flags)).collect();
-
     for link in links.iter_mut() {
         if let Some(ctrl_ifindex) = link.controller_ifindex
             && let Some(name) = index_2_name.get(&ctrl_ifindex)
@@ -968,24 +965,16 @@ fn resolve_controller_and_link_names(links: &mut [CliLinkInfo]) {
             // Keep link_index = 0 (tunnel interfaces show @NONE), skip
             // name resolution for zero index.
             if link_ifindex > 0 {
-                // iproute2 adds "M-DOWN" to flags when linked device is not UP
-                let link_up = index_2_flags
-                    .get(&link_ifindex)
-                    .map(|f| f.contains(LinkFlags::Up))
-                    .unwrap_or(false);
-                if !link_up && !link.flags.contains(&"M-DOWN".to_string()) {
-                    link.flags.push("M-DOWN".into());
-                }
-
-                // Only set link name if the link is from the current netns
-                if let Some(name) = index_2_name.get(&link_ifindex)
+                let name = if let Some(name) = index_2_name.get(&link_ifindex)
                     && link.link_netnsid.is_none()
                 {
-                    link.link = Some(name.to_string());
-                    // Clear link_index if we have a name
-                    // We want to serialize one or the other
-                    link.link_index = None;
-                }
+                    name.clone()
+                } else {
+                    format!("if{link_ifindex}")
+                };
+                link.link = Some(name);
+                // Clear link_index, we want to serialize "link" only
+                link.link_index = None;
             }
         }
 

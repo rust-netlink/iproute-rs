@@ -13,6 +13,7 @@ use super::{
         bond::{IfaceBond, IfaceBondPort},
         bridge::{IfaceBridge, IfaceBridgePort},
         can::IfaceCan,
+        dsa::IfaceDsa,
         geneve::IfaceGeneve,
         gre::{IfaceGre, IfaceGre6, IfaceGreTap, IfaceGreTap6},
         gtp::IfaceGtp,
@@ -256,6 +257,7 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
                 "wwan" => IfaceWwan::print_help(),
                 "xfrm" => IfaceXfrm::print_help(),
                 "can" => IfaceCan::print_help(),
+                "dsa" => IfaceDsa::print_help(),
                 "sit" => IfaceSit::print_help(),
                 unknown => {
                     return Err(CliError::from(format!(

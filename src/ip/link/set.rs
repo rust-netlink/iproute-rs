@@ -19,6 +19,7 @@ use super::{
         bond::{IfaceBond, IfaceBondPort},
         bridge::{IfaceBridge, IfaceBridgePort},
         can::IfaceCan,
+        dsa::IfaceDsa,
         gtp::IfaceGtp,
         hsr::IfaceHsr,
         parse::{parse_eui64, parse_i32, parse_on_off, parse_u32},
@@ -932,7 +933,7 @@ fn clean_extracted(infos: &mut Vec<LinkInfo>, kind: InfoKind) {
 }
 
 async fn build_type_link_info(
-    _handle: &rtnetlink::Handle,
+    handle: &rtnetlink::Handle,
     kind: InfoKind,
     args: &[String],
 ) -> Result<Vec<LinkInfo>, CliError> {
@@ -971,6 +972,11 @@ async fn build_type_link_info(
         }
         InfoKind::Hsr => {
             let mut infos = IfaceHsr::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::Dsa => {
+            let mut infos = IfaceDsa::build_entries(handle, args).await?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }

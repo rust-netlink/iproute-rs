@@ -126,6 +126,9 @@ impl LinkAddCommand {
             InfoKind::BareUdp => base_conf.apply(base_conf.apply_bareudp()?)?,
             InfoKind::BatAdv => base_conf.apply(base_conf.apply_batadv()?)?,
             InfoKind::Can => base_conf.apply(base_conf.apply_can()?)?,
+            InfoKind::Dsa => {
+                base_conf.apply(base_conf.apply_dsa(&handle).await?)?
+            }
             InfoKind::GreTun => {
                 base_conf.apply(base_conf.apply_gre(&handle).await?)?
             }
