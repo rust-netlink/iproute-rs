@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use futures_util::TryStreamExt;
 use iproute_rs::{CliError, parse_mac_str};
 use rtnetlink::{
-    LinkDummy, LinkIfb, LinkMessageBuilder, LinkNetdevsim, LinkNlmon, LinkTeam,
-    LinkVcan, LinkVirtWifi,
+    LinkDummy, LinkIfb, LinkMessageBuilder, LinkNetdevsim, LinkNlmon, LinkPfcp,
+    LinkTeam, LinkVcan, LinkVirtWifi,
     packet_route::link::{InfoKind, LinkAttribute, LinkMessage},
 };
 
@@ -140,6 +140,9 @@ impl LinkAddCommand {
             }
             InfoKind::Ip6ErSpan => {
                 base_conf.apply(base_conf.apply_ip6erspan(&handle).await?)?
+            }
+            InfoKind::Pfcp => {
+                base_conf.apply(LinkPfcp::new(&base_conf.name))?
             }
             t => {
                 return Err(CliError::from(format!(

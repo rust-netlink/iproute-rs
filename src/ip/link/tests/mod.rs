@@ -25,6 +25,7 @@ mod macsec;
 mod netdevsim;
 mod netkit;
 mod nlmon;
+mod pfcp;
 mod property;
 mod set;
 mod show;

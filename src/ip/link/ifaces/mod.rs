@@ -17,6 +17,7 @@ pub(super) mod mac_vlan;
 pub(super) mod macsec;
 pub(super) mod netkit;
 pub(super) mod parse;
+pub(super) mod pfcp;
 pub(super) mod simple;
 pub(super) mod team;
 pub(super) mod veth;

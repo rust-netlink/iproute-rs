@@ -27,6 +27,7 @@ use super::{
         mac_vlan::{IfaceMacVlan, IfaceMacVtap},
         macsec::IfaceMacSec,
         netkit::IfaceNetkit,
+        pfcp::IfacePfcp,
         simple::{
             IfaceDummy, IfaceNetdevsim, IfaceNlmon, IfaceVcan, IfaceVirtWifi,
         },
@@ -259,6 +260,7 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
                 "batadv" => IfaceBatAdv::print_help(),
                 "bond_slave" => IfaceBondPort::print_help(),
                 "vxlan" => IfaceVxlan::print_help(),
+                "pfcp" => IfacePfcp::print_help(),
                 "wwan" => IfaceWwan::print_help(),
                 "xfrm" => IfaceXfrm::print_help(),
                 "can" => IfaceCan::print_help(),

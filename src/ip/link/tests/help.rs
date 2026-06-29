@@ -42,6 +42,9 @@ test_link_help!(test_link_help_netkit, "netkit");
 test_link_help!(test_link_help_team, "team");
 test_link_help!(test_link_help_netdevsim, "netdevsim");
 test_link_help!(test_link_help_nlmon, "nlmon");
+// Due to bug of iproute2, it does not show correct pfpc help message, hence
+// we ignore test of it.
+// test_link_help!(test_link_help_pfcp, "pfcp");
 test_link_help!(test_link_help_vcan, "vcan");
 test_link_help!(test_link_help_veth, "veth");
 test_link_help!(test_link_help_vlan, "vlan");
