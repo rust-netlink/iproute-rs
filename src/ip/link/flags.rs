@@ -46,7 +46,7 @@ pub fn link_flags_to_string(mut flags: LinkFlags) -> Vec<String> {
                 ret.push("LOWER_UP".into());
                 flags.remove(flag)
             } else if flag == LinkFlags::Dormant {
-                ret.push("M-DOWN".into());
+                ret.push("DORMANT".into());
                 flags.remove(flag)
             } else {
                 ret.push(flag.to_string().to_uppercase());

@@ -955,6 +955,8 @@ fn resolve_controller_and_link_names(links: &mut [CliLinkInfo]) {
         .iter()
         .map(|l| (l.ifindex, l.ifname.to_string()))
         .collect();
+    let index_2_flags: HashMap<u32, LinkFlags> =
+        links.iter().map(|l| (l.ifindex, l.raw_flags)).collect();
     for link in links.iter_mut() {
         if let Some(ctrl_ifindex) = link.controller_ifindex
             && let Some(name) = index_2_name.get(&ctrl_ifindex)
@@ -976,6 +978,17 @@ fn resolve_controller_and_link_names(links: &mut [CliLinkInfo]) {
                 // Clear link_index, we want to serialize "link" only
                 link.link_index = None;
             }
+        }
+
+        // Compute M-DOWN: if linked interface is not UP, append "M-DOWN"
+        // to flags, matching iproute2 behavior (print_link_flags mdown param).
+        if let Some(ref link_name) = link.link
+            && let Some((&linked_ifindex, _)) =
+                index_2_name.iter().find(|(_, name)| *name == link_name)
+            && let Some(linked_flags) = index_2_flags.get(&linked_ifindex)
+            && !linked_flags.contains(LinkFlags::Up)
+        {
+            link.flags.push("M-DOWN".into());
         }
 
         // Resolve link ifindex (VxLAN, HSR, etc.) to interface name
