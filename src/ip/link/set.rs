@@ -953,6 +953,8 @@ async fn build_type_link_info(
         | InfoKind::GreTap
         | InfoKind::GreTun6
         | InfoKind::GreTap6
+        | InfoKind::ErSpan
+        | InfoKind::Ip6ErSpan
         | InfoKind::IpIp
         | InfoKind::Ip6Tnl => Ok(build_kind_only(kind)),
         InfoKind::Vlan => {

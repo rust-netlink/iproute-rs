@@ -9,6 +9,7 @@ mod bridge;
 mod color;
 mod delete;
 mod dummy;
+mod erspan;
 mod geneve;
 mod gre;
 mod gtp;

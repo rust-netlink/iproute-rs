@@ -136,6 +136,8 @@ pub(crate) enum CliLinkInfoData {
     GreTap(Box<CliLinkInfoDataGre>),
     GreTun6(Box<CliLinkInfoDataGre>),
     GreTap6(Box<CliLinkInfoDataGre>),
+    ErSpan(Box<CliLinkInfoDataGre>),
+    Ip6ErSpan(Box<CliLinkInfoDataGre>),
     Vrf(Box<CliLinkInfoDataVrf>),
     Wwan(Box<CliLinkInfoDataWwan>),
     Xfrm(Box<CliLinkInfoDataXfrm>),
@@ -194,6 +196,12 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
             InfoData::GreTap6(v) => {
                 Ok(Self::GreTap6(Box::new(v.as_slice().into())))
             }
+            InfoData::ErSpan(v) => {
+                Ok(Self::ErSpan(Box::new(v.as_slice().into())))
+            }
+            InfoData::Ip6ErSpan(v) => {
+                Ok(Self::Ip6ErSpan(Box::new(v.as_slice().into())))
+            }
             InfoData::Xfrm(v) => Ok(Self::Xfrm(Box::new(v.as_slice().into()))),
             InfoData::BareUdp(v) => {
                 Ok(Self::BareUdp(Box::new(v.as_slice().into())))
@@ -217,6 +225,8 @@ impl CliLinkInfoData {
             Self::GreTap(gre) => gre.resolve_link(index_2_name),
             Self::GreTun6(gre) => gre.resolve_link(index_2_name),
             Self::GreTap6(gre) => gre.resolve_link(index_2_name),
+            Self::ErSpan(gre) => gre.resolve_link(index_2_name),
+            Self::Ip6ErSpan(gre) => gre.resolve_link(index_2_name),
             _ => (),
         }
     }
@@ -247,6 +257,8 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::GreTap(v) => write!(f, "{v}"),
             CliLinkInfoData::GreTun6(v) => write!(f, "{v}"),
             CliLinkInfoData::GreTap6(v) => write!(f, "{v}"),
+            CliLinkInfoData::ErSpan(v) => write!(f, "{v}"),
+            CliLinkInfoData::Ip6ErSpan(v) => write!(f, "{v}"),
             CliLinkInfoData::Vrf(v) => write!(f, "{v}"),
             CliLinkInfoData::Wwan(v) => write!(f, "{v}"),
             CliLinkInfoData::Xfrm(v) => write!(f, "{v}"),

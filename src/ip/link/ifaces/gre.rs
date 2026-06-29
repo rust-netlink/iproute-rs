@@ -10,7 +10,7 @@ use iproute_rs::CliError;
 use rtnetlink::{
     LinkGre, LinkGre6, LinkMessageBuilder,
     packet_route::link::{
-        GreEncapFlags, GreEncapType, GreIOFlags, InfoGre, InfoGre6,
+        ErSpanDir, GreEncapFlags, GreEncapType, GreIOFlags, InfoGre, InfoGre6,
     },
 };
 use serde::Serialize;
@@ -54,6 +54,14 @@ pub(crate) struct CliLinkInfoDataGre {
     flow_label: Option<u32>,
     #[serde(skip)]
     is_ip6: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    erspan_index: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    erspan_ver: Option<u8>,
+    #[serde(skip)]
+    erspan_dir: Option<ErSpanDir>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    erspan_hwid: Option<u16>,
 }
 
 fn is_false(v: &bool) -> bool {
@@ -90,6 +98,10 @@ impl From<&[InfoGre]> for CliLinkInfoDataGre {
         let mut encap_dport = None;
         let encap_limit = None;
         let flow_label = None;
+        let mut erspan_index = None;
+        let mut erspan_ver = None;
+        let mut erspan_dir = None;
+        let mut erspan_hwid = None;
 
         for nla in info {
             match nla {
@@ -109,6 +121,10 @@ impl From<&[InfoGre]> for CliLinkInfoDataGre {
                 InfoGre::EncapFlags(v) => encap_flags = Some(*v),
                 InfoGre::SourcePort(v) => encap_sport = Some(*v),
                 InfoGre::DestinationPort(v) => encap_dport = Some(*v),
+                InfoGre::ErSpanIndex(v) => erspan_index = Some(*v),
+                InfoGre::ErSpanVer(v) => erspan_ver = Some(*v),
+                InfoGre::ErSpanDir(v) => erspan_dir = Some(*v),
+                InfoGre::ErSpanHwId(v) => erspan_hwid = Some(*v),
                 _ => (),
             }
         }
@@ -134,6 +150,10 @@ impl From<&[InfoGre]> for CliLinkInfoDataGre {
             encap_limit,
             flow_label,
             is_ip6: false,
+            erspan_index,
+            erspan_ver,
+            erspan_dir,
+            erspan_hwid,
         }
     }
 }
@@ -144,7 +164,7 @@ impl From<&[InfoGre6]> for CliLinkInfoDataGre {
         let mut remote = None;
         let mut local = None;
         let mut ttl = None;
-        let tos = None;
+        let mut tos = None;
         let pmtudisc = None;
         let mut collect_metadata = false;
         let mut iflags = GreIOFlags::empty();
@@ -158,6 +178,10 @@ impl From<&[InfoGre6]> for CliLinkInfoDataGre {
         let mut encap_dport = None;
         let mut encap_limit = None;
         let mut flow_label = None;
+        let mut erspan_index = None;
+        let mut erspan_ver = None;
+        let mut erspan_dir = None;
+        let mut erspan_hwid = None;
 
         for nla in info {
             match nla {
@@ -170,12 +194,17 @@ impl From<&[InfoGre6]> for CliLinkInfoDataGre {
                 InfoGre6::IKey(v) => ikey = Some(*v),
                 InfoGre6::OKey(v) => okey = Some(*v),
                 InfoGre6::FwMask(v) => fwmark = Some(*v),
+                InfoGre6::Tos(v) => tos = Some(*v),
                 InfoGre6::EncapType(v) => encap_type = Some(*v),
                 InfoGre6::EncapFlags(v) => encap_flags = Some(*v),
                 InfoGre6::SourcePort(v) => encap_sport = Some(*v),
                 InfoGre6::DestinationPort(v) => encap_dport = Some(*v),
                 InfoGre6::EncapLimit(v) => encap_limit = Some(*v),
                 InfoGre6::FlowLabel(v) => flow_label = Some(*v),
+                InfoGre6::ErSpanIndex(v) => erspan_index = Some(*v),
+                InfoGre6::ErSpanVer(v) => erspan_ver = Some(*v),
+                InfoGre6::ErSpanDir(v) => erspan_dir = Some(*v),
+                InfoGre6::ErSpanHwId(v) => erspan_hwid = Some(*v),
                 _ => (),
             }
         }
@@ -201,6 +230,10 @@ impl From<&[InfoGre6]> for CliLinkInfoDataGre {
             encap_limit,
             flow_label,
             is_ip6: true,
+            erspan_index,
+            erspan_ver,
+            erspan_dir,
+            erspan_hwid,
         }
     }
 }
@@ -286,7 +319,9 @@ impl std::fmt::Display for CliLinkInfoDataGre {
                 emit!("encaplimit {limit}");
             }
             if let Some(flow) = self.flow_label {
-                emit!("flowlabel 0x{flow:05x}");
+                let tclass = (flow >> 20) & 0xff;
+                emit!("tclass 0x{tclass:02x}");
+                emit!("flowlabel 0x{:05x}", flow & 0xfffff);
             }
         }
 
@@ -351,6 +386,28 @@ impl std::fmt::Display for CliLinkInfoDataGre {
             }
         }
 
+        if let Some(ver) = self.erspan_ver {
+            if ver == 1 {
+                if let Some(idx) = self.erspan_index {
+                    emit!("erspan_index {idx}");
+                }
+            }
+            emit!("erspan_ver {ver}");
+            if ver == 2 {
+                if let Some(dir) = self.erspan_dir {
+                    match dir {
+                        ErSpanDir::Ingress => emit!("erspan_dir ingress"),
+                        ErSpanDir::Egress => emit!("erspan_dir egress"),
+                        ErSpanDir::Other(v) => emit!("erspan_dir {v}"),
+                        _ => (),
+                    }
+                }
+                if let Some(hwid) = self.erspan_hwid {
+                    emit!("erspan_hwid 0x{hwid:x}");
+                }
+            }
+        }
+
         Ok(())
     }
 }
@@ -396,6 +453,17 @@ impl LinkBaseConf {
         Ok(builder)
     }
 
+    pub(crate) async fn apply_erspan(
+        &self,
+        handle: &rtnetlink::Handle,
+    ) -> Result<LinkMessageBuilder<LinkGre>, CliError> {
+        let mut builder = LinkGre::new_erspan(&self.name);
+        let flags = GreIOFlags::Key | GreIOFlags::Seq;
+        builder = builder.erspan_ver(1).iflags(flags).oflags(flags);
+        builder = build_gre_opts(builder, self, handle).await?;
+        Ok(builder)
+    }
+
     #[allow(dead_code)]
     pub(crate) async fn apply_gre6(
         &self,
@@ -412,6 +480,17 @@ impl LinkBaseConf {
         handle: &rtnetlink::Handle,
     ) -> Result<LinkMessageBuilder<LinkGre6>, CliError> {
         let mut builder = LinkGre6::new_gretap6(&self.name);
+        builder = build_gre6_opts(builder, self, handle).await?;
+        Ok(builder)
+    }
+
+    pub(crate) async fn apply_ip6erspan(
+        &self,
+        handle: &rtnetlink::Handle,
+    ) -> Result<LinkMessageBuilder<LinkGre6>, CliError> {
+        let mut builder = LinkGre6::new_ip6erspan(&self.name);
+        let flags = GreIOFlags::Key | GreIOFlags::Seq;
+        builder = builder.erspan_ver(1).iflags(flags).oflags(flags);
         builder = build_gre6_opts(builder, self, handle).await?;
         Ok(builder)
     }
@@ -610,6 +689,56 @@ async fn build_gre_opts(
                 builder = builder.fwmark(mark.to_be());
             }
             "ignore-df" | "noignore-df" => {}
+            "erspan" => {
+                let v = next_val()?;
+                let idx: u32 = v.parse().map_err(|_| {
+                    CliError::from(format!("invalid erspan index: {v}"))
+                })?;
+                if idx == 0 || idx & !((1 << 20) - 1) != 0 {
+                    return Err(CliError::from(
+                        "erspan index must be > 0 and <= 20-bit",
+                    ));
+                }
+                builder = builder.erspan_index(idx);
+            }
+            "erspan_ver" => {
+                let v = next_val()?;
+                let ver: u8 = v.parse().map_err(|_| {
+                    CliError::from(format!("invalid erspan version: {v}"))
+                })?;
+                if ver > 2 {
+                    return Err(CliError::from("erspan version must be 0/1/2"));
+                }
+                builder = builder.erspan_ver(ver);
+            }
+            "erspan_dir" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "ingress" => {
+                        builder = builder.erspan_dir(ErSpanDir::Ingress);
+                    }
+                    "egress" => {
+                        builder = builder.erspan_dir(ErSpanDir::Egress);
+                    }
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Invalid erspan direction: {v}"
+                        )));
+                    }
+                }
+            }
+            "erspan_hwid" => {
+                let v = next_val()?;
+                let hwid = if let Some(hex) = v.strip_prefix("0x") {
+                    u16::from_str_radix(hex, 16)
+                } else {
+                    v.parse()
+                };
+                let hwid = hwid.map_err(|_| {
+                    CliError::from(format!("invalid erspan hwid: {v}"))
+                })?;
+                builder = builder.erspan_hwid(hwid);
+            }
             _ => {
                 return Err(CliError::from(format!(
                     "Unknown gre argument: {key}"
@@ -768,6 +897,56 @@ async fn build_gre6_opts(
                     CliError::from(format!("invalid fwmark: {v}"))
                 })?;
                 builder = builder.fwmark(mark.to_be());
+            }
+            "erspan" => {
+                let v = next_val()?;
+                let idx: u32 = v.parse().map_err(|_| {
+                    CliError::from(format!("invalid erspan index: {v}"))
+                })?;
+                if idx == 0 || idx & !((1 << 20) - 1) != 0 {
+                    return Err(CliError::from(
+                        "erspan index must be > 0 and <= 20-bit",
+                    ));
+                }
+                builder = builder.erspan_index(idx);
+            }
+            "erspan_ver" => {
+                let v = next_val()?;
+                let ver: u8 = v.parse().map_err(|_| {
+                    CliError::from(format!("invalid erspan version: {v}"))
+                })?;
+                if ver > 2 {
+                    return Err(CliError::from("erspan version must be 0/1/2"));
+                }
+                builder = builder.erspan_ver(ver);
+            }
+            "erspan_dir" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "ingress" => {
+                        builder = builder.erspan_dir(ErSpanDir::Ingress);
+                    }
+                    "egress" => {
+                        builder = builder.erspan_dir(ErSpanDir::Egress);
+                    }
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Invalid erspan direction: {v}"
+                        )));
+                    }
+                }
+            }
+            "erspan_hwid" => {
+                let v = next_val()?;
+                let hwid = if let Some(hex) = v.strip_prefix("0x") {
+                    u16::from_str_radix(hex, 16)
+                } else {
+                    v.parse()
+                };
+                let hwid = hwid.map_err(|_| {
+                    CliError::from(format!("invalid erspan hwid: {v}"))
+                })?;
+                builder = builder.erspan_hwid(hwid);
             }
             _ => {
                 return Err(CliError::from(format!(
@@ -933,5 +1112,290 @@ Where:        ADDR          := IPV6_ADDRESS
         FLOWLABEL := { 0x0..0xfffff | inherit }
         MARK          := { 0x0..0xffffffff | inherit }
 "
+    }
+}
+
+pub(crate) struct IfaceErSpan;
+
+impl IfaceErSpan {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... erspan           [ remote ADDR ]
+                        [ local ADDR ]
+                        [ ttl TTL ]
+                        [ tos TOS ]
+                        [ [no]pmtudisc ]
+                        [ dev PHYS_DEV ]
+                        [ fwmark MARK ]
+                        [ external ]
+                        [ noencap ]
+                        [ encap { fou | gue | none } ]
+                        [ encap-sport PORT ]
+                        [ encap-dport PORT ]
+                        [ [no]encap-csum ]
+                        [ [no]encap-csum6 ]
+                        [ [no]encap-remcsum ]
+                        [ erspan_ver version ]
+                        [ erspan IDX ]
+                        [ erspan_dir { ingress | egress } ]
+                        [ erspan_hwid hwid ]
+
+Where:        ADDR := { IP_ADDRESS | any }
+        TOS  := { NUMBER | inherit }
+        TTL  := { 1..255 | inherit }
+        MARK := { 0x0..0xffffffff }
+"
+    }
+}
+
+pub(crate) struct IfaceIp6ErSpan;
+
+impl IfaceIp6ErSpan {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... ip6erspan        [ remote ADDR ]
+                        [ local ADDR ]
+                        [ hoplimit TTL ]
+                        [ encaplimit ELIM ]
+                        [ tclass TCLASS ]
+                        [ flowlabel FLOWLABEL ]
+                        [ dscp inherit ]
+                        [ dev PHYS_DEV ]
+                        [ fwmark MARK ]
+                        [ external ]
+                        [ noencap ]
+                        [ encap { fou | gue | none } ]
+                        [ encap-sport PORT ]
+                        [ encap-dport PORT ]
+                        [ [no]encap-csum ]
+                        [ [no]encap-csum6 ]
+                        [ [no]encap-remcsum ]
+                        [ erspan_ver version ]
+                        [ erspan IDX ]
+                        [ erspan_dir { ingress | egress } ]
+                        [ erspan_hwid hwid ]
+
+Where:        ADDR          := IPV6_ADDRESS
+        TTL          := { 0..255 } (default=64)
+        ELIM          := { none | 0..255 }(default=4)
+        TCLASS          := { 0x0..0xff | inherit }
+        FLOWLABEL := { 0x0..0xfffff | inherit }
+        MARK          := { 0x0..0xffffffff | inherit }
+"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_gre_data() -> CliLinkInfoDataGre {
+        CliLinkInfoDataGre {
+            link: None,
+            link_name: None,
+            remote: None,
+            local: None,
+            ttl: None,
+            tos: None,
+            pmtudisc: None,
+            collect_metadata: false,
+            iflags: GreIOFlags::empty(),
+            oflags: GreIOFlags::empty(),
+            ikey: None,
+            okey: None,
+            fwmark: None,
+            encap_type: None,
+            encap_flags: None,
+            encap_sport: None,
+            encap_dport: None,
+            encap_limit: None,
+            flow_label: None,
+            is_ip6: false,
+            erspan_index: None,
+            erspan_ver: None,
+            erspan_dir: None,
+            erspan_hwid: None,
+        }
+    }
+
+    fn format_gre(data: CliLinkInfoDataGre) -> String {
+        format!("{data}")
+    }
+
+    mod display {
+        use super::*;
+
+        #[test]
+        fn test_erspan_v1_with_index() {
+            let data = CliLinkInfoDataGre {
+                erspan_ver: Some(1),
+                erspan_index: Some(123),
+                ..make_gre_data()
+            };
+            let out = format_gre(data);
+            assert!(out.contains("erspan_ver 1"), "output: {out}");
+            assert!(out.contains("erspan_index 123"), "output: {out}");
+        }
+
+        #[test]
+        fn test_erspan_v2_ingress() {
+            let data = CliLinkInfoDataGre {
+                erspan_ver: Some(2),
+                erspan_dir: Some(ErSpanDir::Ingress),
+                erspan_hwid: Some(0x1a),
+                ..make_gre_data()
+            };
+            let out = format_gre(data);
+            assert!(out.contains("erspan_ver 2"), "output: {out}");
+            assert!(out.contains("erspan_dir ingress"), "output: {out}");
+            assert!(out.contains("erspan_hwid 0x1a"), "output: {out}");
+        }
+
+        #[test]
+        fn test_erspan_v2_egress() {
+            let data = CliLinkInfoDataGre {
+                erspan_ver: Some(2),
+                erspan_dir: Some(ErSpanDir::Egress),
+                erspan_hwid: Some(0xff),
+                ..make_gre_data()
+            };
+            let out = format_gre(data);
+            assert!(out.contains("erspan_ver 2"), "output: {out}");
+            assert!(out.contains("erspan_dir egress"), "output: {out}");
+            assert!(out.contains("erspan_hwid 0xff"), "output: {out}");
+        }
+
+        #[test]
+        fn test_erspan_v2_no_dir_no_hwid() {
+            let data = CliLinkInfoDataGre {
+                erspan_ver: Some(2),
+                ..make_gre_data()
+            };
+            let out = format_gre(data);
+            assert!(out.contains("erspan_ver 2"), "output: {out}");
+            assert!(!out.contains("erspan_dir"), "output: {out}");
+            assert!(!out.contains("erspan_hwid"), "output: {out}");
+        }
+
+        #[test]
+        fn test_erspan_v1_no_index() {
+            let data = CliLinkInfoDataGre {
+                erspan_ver: Some(1),
+                ..make_gre_data()
+            };
+            let out = format_gre(data);
+            assert!(out.contains("erspan_ver 1"), "output: {out}");
+            assert!(!out.contains("erspan_index"), "output: {out}");
+        }
+
+        #[test]
+        fn test_gre_no_erspan_fields() {
+            let data = make_gre_data();
+            let out = format_gre(data);
+            assert!(!out.contains("erspan"), "output: {out}");
+        }
+
+        #[test]
+        fn test_erspan_v2_ip6() {
+            let data = CliLinkInfoDataGre {
+                is_ip6: true,
+                erspan_ver: Some(2),
+                erspan_dir: Some(ErSpanDir::Ingress),
+                erspan_hwid: Some(0x2b),
+                ..make_gre_data()
+            };
+            let out = format_gre(data);
+            assert!(out.contains("erspan_ver 2"), "output: {out}");
+            assert!(out.contains("erspan_dir ingress"), "output: {out}");
+            assert!(out.contains("erspan_hwid 0x2b"), "output: {out}");
+            assert!(out.contains("hoplimit"), "output: {out}");
+        }
+    }
+
+    mod parse_info_gre {
+        use std::net::Ipv4Addr;
+
+        use super::*;
+
+        #[test]
+        fn test_parse_erspan_v1() {
+            let nlas = vec![
+                InfoGre::Remote(Ipv4Addr::new(10, 0, 0, 1)),
+                InfoGre::Local(Ipv4Addr::new(192, 168, 1, 1)),
+                InfoGre::Ttl(64),
+                InfoGre::ErSpanVer(1),
+                InfoGre::ErSpanIndex(123),
+            ];
+            let data = CliLinkInfoDataGre::from(nlas.as_slice());
+            assert_eq!(data.erspan_ver, Some(1));
+            assert_eq!(data.erspan_index, Some(123));
+        }
+
+        #[test]
+        fn test_parse_erspan_v2() {
+            let nlas = vec![
+                InfoGre::Remote(Ipv4Addr::new(10, 0, 0, 1)),
+                InfoGre::ErSpanVer(2),
+                InfoGre::ErSpanDir(ErSpanDir::Ingress),
+                InfoGre::ErSpanHwId(0x1a),
+            ];
+            let data = CliLinkInfoDataGre::from(nlas.as_slice());
+            assert_eq!(data.erspan_ver, Some(2));
+            assert_eq!(data.erspan_dir, Some(ErSpanDir::Ingress));
+            assert_eq!(data.erspan_hwid, Some(0x1a));
+        }
+
+        #[test]
+        fn test_parse_erspan_missing_all() {
+            let nlas = vec![InfoGre::Remote(Ipv4Addr::new(10, 0, 0, 1))];
+            let data = CliLinkInfoDataGre::from(nlas.as_slice());
+            assert!(data.erspan_ver.is_none());
+            assert!(data.erspan_index.is_none());
+            assert!(data.erspan_dir.is_none());
+            assert!(data.erspan_hwid.is_none());
+        }
+    }
+
+    mod parse_info_gre6 {
+        use std::net::Ipv6Addr;
+
+        use super::*;
+
+        #[test]
+        fn test_parse_ip6erspan_v1() {
+            let nlas = vec![
+                InfoGre6::Remote(Ipv6Addr::LOCALHOST),
+                InfoGre6::ErSpanVer(1),
+                InfoGre6::ErSpanIndex(456),
+            ];
+            let data = CliLinkInfoDataGre::from(nlas.as_slice());
+            assert_eq!(data.erspan_ver, Some(1));
+            assert_eq!(data.erspan_index, Some(456));
+            assert!(data.is_ip6);
+        }
+
+        #[test]
+        fn test_parse_ip6erspan_v2() {
+            let nlas = vec![
+                InfoGre6::Remote(Ipv6Addr::LOCALHOST),
+                InfoGre6::ErSpanVer(2),
+                InfoGre6::ErSpanDir(ErSpanDir::Egress),
+                InfoGre6::ErSpanHwId(0xff),
+            ];
+            let data = CliLinkInfoDataGre::from(nlas.as_slice());
+            assert_eq!(data.erspan_ver, Some(2));
+            assert_eq!(data.erspan_dir, Some(ErSpanDir::Egress));
+            assert_eq!(data.erspan_hwid, Some(0xff));
+        }
+
+        #[test]
+        fn test_parse_ip6erspan_missing_all() {
+            let nlas = vec![InfoGre6::Remote(Ipv6Addr::LOCALHOST)];
+            let data = CliLinkInfoDataGre::from(nlas.as_slice());
+            assert!(data.erspan_ver.is_none());
+            assert!(data.erspan_index.is_none());
+            assert!(data.erspan_dir.is_none());
+            assert!(data.erspan_hwid.is_none());
+        }
     }
 }

@@ -135,6 +135,12 @@ impl LinkAddCommand {
             InfoKind::GreTap => {
                 base_conf.apply(base_conf.apply_gretap(&handle).await?)?
             }
+            InfoKind::ErSpan => {
+                base_conf.apply(base_conf.apply_erspan(&handle).await?)?
+            }
+            InfoKind::Ip6ErSpan => {
+                base_conf.apply(base_conf.apply_ip6erspan(&handle).await?)?
+            }
             t => {
                 return Err(CliError::from(format!(
                     "Unsupported device type: {t}"
