@@ -22,11 +22,8 @@ impl From<&[InfoDsa]> for CliLinkInfoDataDsa {
     fn from(info: &[InfoDsa]) -> Self {
         let mut conduit = String::new();
         for nla in info {
-            match nla {
-                InfoDsa::Conduit(v) => {
-                    conduit = v.to_string();
-                }
-                _ => {}
+            if let InfoDsa::Conduit(v) = nla {
+                conduit = v.to_string();
             }
         }
         Self { conduit }

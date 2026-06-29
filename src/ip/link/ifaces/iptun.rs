@@ -299,10 +299,10 @@ impl std::fmt::Display for CliLinkInfoDataIpIp {
 
         const SIT_ISATAP: u16 = 0x0001;
 
-        if let Some(flags) = self.sit_flags {
-            if flags & SIT_ISATAP != 0 {
-                emit!("isatap");
-            }
+        if let Some(flags) = self.sit_flags
+            && flags & SIT_ISATAP != 0
+        {
+            emit!("isatap");
         }
 
         if let Some(prefix) = self.ipv6_rd_prefix
@@ -996,26 +996,6 @@ impl LinkBaseConf {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_dsfield_hex() {
-        assert_eq!(parse_dsfield("0x1e").unwrap(), 0x1e);
-    }
-
-    #[test]
-    fn parse_dsfield_decimal() {
-        assert_eq!(parse_dsfield("30").unwrap(), 30);
-    }
-
-    #[test]
-    fn parse_dsfield_invalid() {
-        assert!(parse_dsfield("xyz").is_err());
-    }
-}
-
 fn parse_addr_with_prefix<T: FromStr>(s: &str) -> Result<(T, u16), CliError>
 where
     T::Err: std::fmt::Display,
@@ -1135,5 +1115,25 @@ Where:        ADDR := { IP_ADDRESS | any }
         TTL  := { 1..255 | inherit }
         MARK := { 0x0..0xffffffff }
 "
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_dsfield_hex() {
+        assert_eq!(parse_dsfield("0x1e").unwrap(), 0x1e);
+    }
+
+    #[test]
+    fn parse_dsfield_decimal() {
+        assert_eq!(parse_dsfield("30").unwrap(), 30);
+    }
+
+    #[test]
+    fn parse_dsfield_invalid() {
+        assert!(parse_dsfield("xyz").is_err());
     }
 }

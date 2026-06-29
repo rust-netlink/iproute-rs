@@ -387,10 +387,10 @@ impl std::fmt::Display for CliLinkInfoDataGre {
         }
 
         if let Some(ver) = self.erspan_ver {
-            if ver == 1 {
-                if let Some(idx) = self.erspan_index {
-                    emit!("erspan_index {idx}");
-                }
+            if ver == 1
+                && let Some(idx) = self.erspan_index
+            {
+                emit!("erspan_index {idx}");
             }
             emit!("erspan_ver {ver}");
             if ver == 2 {

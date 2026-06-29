@@ -19,11 +19,8 @@ impl From<&[InfoWwan]> for CliLinkInfoDataWwan {
     fn from(info: &[InfoWwan]) -> Self {
         let mut linkid = 0;
         for nla in info {
-            match nla {
-                InfoWwan::LinkId(v) => {
-                    linkid = *v;
-                }
-                _ => {}
+            if let InfoWwan::LinkId(v) = nla {
+                linkid = *v;
             }
         }
         Self { linkid }

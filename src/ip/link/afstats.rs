@@ -334,10 +334,11 @@ pub(crate) async fn handle_afstats(
             .map(|(idx, _)| *idx)
     });
 
-    if config.filter_dev.is_some() && filter_dev_ifindex.is_none() {
+    if let Some(dev_filter) = config.filter_dev.as_ref()
+        && filter_dev_ifindex.is_none()
+    {
         return Err(CliError::from(format!(
-            "Device \"{}\" does not exist.",
-            config.filter_dev.unwrap()
+            "Device \"{dev_filter}\" does not exist."
         )));
     }
 
@@ -370,9 +371,10 @@ pub(crate) async fn handle_afstats(
 
         let mpls = stats.attributes.iter().find_map(|attr| {
             if let StatsAttribute::AfSpec(afspec) = attr {
-                stats::parse_mpls_from_afspec(afspec)
-                    .as_ref()
-                    .map(build_mpls_json)
+                afspec.0.iter().find_map(|stat| match stat {
+                    stats::AfSpecStat::Mpls(m) => Some(build_mpls_json(m)),
+                    _ => None,
+                })
             } else {
                 None
             }
