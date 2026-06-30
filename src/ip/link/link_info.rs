@@ -23,6 +23,7 @@ use super::ifaces::{
     veth::CliLinkInfoDataVeth,
     vlan::CliLinkInfoDataVlan,
     vrf::{CliLinkInfoDataVrf, CliLinkInfoDataVrfPort},
+    vti::CliLinkInfoDataVti,
     vxlan::CliLinkInfoDataVxlan,
     wwan::CliLinkInfoDataWwan,
     xfrm::CliLinkInfoDataXfrm,
@@ -146,6 +147,7 @@ pub(crate) enum CliLinkInfoData {
     Wwan(Box<CliLinkInfoDataWwan>),
     Xfrm(Box<CliLinkInfoDataXfrm>),
     RmNet(Box<CliLinkInfoDataRmNet>),
+    Vti(Box<CliLinkInfoDataVti>),
 }
 
 impl TryFrom<&InfoData> for CliLinkInfoData {
@@ -217,6 +219,7 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
             InfoData::Wwan(v) => Ok(Self::Wwan(Box::new(v.as_slice().into()))),
             InfoData::Can(v) => Ok(Self::Can(Box::new(v.as_slice().into()))),
             InfoData::Dsa(v) => Ok(Self::Dsa(Box::new(v.as_slice().into()))),
+            InfoData::Vti(v) => Ok(Self::Vti(Box::new(v.as_slice().into()))),
             _ => Err(()),
         }
     }
@@ -235,6 +238,7 @@ impl CliLinkInfoData {
             Self::GreTap6(gre) => gre.resolve_link(index_2_name),
             Self::ErSpan(gre) => gre.resolve_link(index_2_name),
             Self::Ip6ErSpan(gre) => gre.resolve_link(index_2_name),
+            Self::Vti(vti) => vti.resolve_link(index_2_name),
             _ => (),
         }
     }
@@ -270,6 +274,7 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::Vrf(v) => write!(f, "{v}"),
             CliLinkInfoData::Wwan(v) => write!(f, "{v}"),
             CliLinkInfoData::Xfrm(v) => write!(f, "{v}"),
+            CliLinkInfoData::Vti(v) => write!(f, "{v}"),
             CliLinkInfoData::RmNet(v) => write!(f, "{v}"),
         }
     }

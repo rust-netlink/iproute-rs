@@ -36,6 +36,7 @@ use super::{
         veth::IfaceVeth,
         vlan::IfaceVlan,
         vrf::IfaceVrf,
+        vti::{IfaceVti, IfaceVti6},
         vxcan::IfaceVxcan,
         vxlan::IfaceVxlan,
         wwan::IfaceWwan,
@@ -266,6 +267,8 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
                 "rmnet" => IfaceRmNet::print_help(),
                 "wwan" => IfaceWwan::print_help(),
                 "xfrm" => IfaceXfrm::print_help(),
+                "vti" => IfaceVti::print_help(),
+                "vti6" => IfaceVti6::print_help(),
                 "can" => IfaceCan::print_help(),
                 "dsa" => IfaceDsa::print_help(),
                 "sit" => IfaceSit::print_help(),
@@ -353,7 +356,7 @@ TYPE := { amt | bareudp | bond | bond_slave | bridge | bridge_slave | can |
           ipip | ipoib | ipvlan | ipvtap |
           macsec | macvlan | macvtap | netdevsim |
           netkit | nlmon | pfcp | rmnet | sit | team | team_slave |
-          vcan | veth | vlan | vrf | vti | vxcan | vxlan | wwan |
+          vcan | veth | vlan | vrf | vti | vti6 | vxcan | vxlan | wwan |
           xfrm | virt_wifi }
 "
 }

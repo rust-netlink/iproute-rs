@@ -144,6 +144,12 @@ impl LinkAddCommand {
             InfoKind::Pfcp => {
                 base_conf.apply(LinkPfcp::new(&base_conf.name))?
             }
+            InfoKind::Vti => {
+                base_conf.apply(base_conf.apply_vti(&handle).await?)?
+            }
+            InfoKind::Vti6 => {
+                base_conf.apply(base_conf.apply_vti6(&handle).await?)?
+            }
             InfoKind::RmNet => {
                 if base_conf.link.is_none() {
                     return Err(CliError::from(

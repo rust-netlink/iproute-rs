@@ -24,6 +24,7 @@ pub(super) mod team;
 pub(super) mod veth;
 pub(super) mod vlan;
 pub(super) mod vrf;
+pub(super) mod vti;
 pub(super) mod vxcan;
 pub(super) mod vxlan;
 pub(super) mod wwan;
