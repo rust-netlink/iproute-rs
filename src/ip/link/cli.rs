@@ -32,7 +32,7 @@ use super::{
         simple::{
             IfaceDummy, IfaceNetdevsim, IfaceNlmon, IfaceVcan, IfaceVirtWifi,
         },
-        team::IfaceTeam,
+        team::{IfaceTeam, IfaceTeamPort},
         veth::IfaceVeth,
         vlan::IfaceVlan,
         vrf::IfaceVrf,
@@ -234,6 +234,7 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
                 "vcan" => IfaceVcan::print_help(),
                 "netdevsim" => IfaceNetdevsim::print_help(),
                 "team" => IfaceTeam::print_help(),
+                "team_slave" => IfaceTeamPort::print_help(),
                 "virt_wifi" => IfaceVirtWifi::print_help(),
                 "bond" => IfaceBond::print_help(),
                 "bridge" => IfaceBridge::print_help(),

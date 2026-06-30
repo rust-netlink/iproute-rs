@@ -24,6 +24,7 @@ use super::{
         hsr::IfaceHsr,
         parse::{parse_eui64, parse_i32, parse_on_off, parse_u32},
         rmnet::IfaceRmNet,
+        team::IfaceTeamPort,
         vlan::IfaceVlan,
         vrf::IfaceVrf,
         wwan::IfaceWwan,
@@ -1028,6 +1029,9 @@ async fn build_type_link_info(
         }
         InfoKind::Other(s) if s == "bridge_slave" => {
             IfaceBridgePort::build_entries(args)
+        }
+        InfoKind::Other(s) if s == "team_slave" => {
+            IfaceTeamPort::build_entries(args)
         }
         _ => Err(CliError::from(format!("Unsupported device type: {kind}"))),
     }

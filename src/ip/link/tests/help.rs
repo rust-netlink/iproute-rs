@@ -40,6 +40,7 @@ test_link_help!(test_link_help_macvlan, "macvlan");
 test_link_help!(test_link_help_macvtap, "macvtap");
 test_link_help!(test_link_help_netkit, "netkit");
 test_link_help!(test_link_help_team, "team");
+test_link_help!(test_link_help_team_slave, "team_slave");
 test_link_help!(test_link_help_netdevsim, "netdevsim");
 test_link_help!(test_link_help_nlmon, "nlmon");
 // Due to bug of iproute2, it does not show correct pfpc help message, hence

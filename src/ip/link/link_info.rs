@@ -27,7 +27,10 @@ use super::ifaces::{
     wwan::CliLinkInfoDataWwan,
     xfrm::CliLinkInfoDataXfrm,
 };
-use crate::link::ifaces::bond::{CliLinkInfoDataBond, CliLinkInfoDataBondPort};
+use crate::link::ifaces::{
+    bond::{CliLinkInfoDataBond, CliLinkInfoDataBondPort},
+    team::CliLinkInfoDataTeamPort,
+};
 
 #[derive(Serialize)]
 pub(super) struct CliLinkInfo {
@@ -279,6 +282,7 @@ pub(crate) enum CliLinkInfoPortData {
     BridgePort(CliLinkInfoDataBridgePort),
     BondPort(CliLinkInfoDataBondPort),
     VrfPort(CliLinkInfoDataVrfPort),
+    TeamPort(CliLinkInfoDataTeamPort),
 }
 
 impl std::fmt::Display for CliLinkInfoPortData {
@@ -287,6 +291,7 @@ impl std::fmt::Display for CliLinkInfoPortData {
             CliLinkInfoPortData::BridgePort(v) => write!(f, "{v}"),
             CliLinkInfoPortData::BondPort(v) => write!(f, "{v}"),
             CliLinkInfoPortData::VrfPort(v) => write!(f, "{v}"),
+            CliLinkInfoPortData::TeamPort(v) => write!(f, "{v}"),
         }
     }
 }
@@ -303,6 +308,9 @@ impl TryFrom<&InfoPortData> for CliLinkInfoPortData {
                 Ok(Self::BondPort(v.as_slice().into()))
             }
             InfoPortData::VrfPort(v) => Ok(Self::VrfPort(v.as_slice().into())),
+            InfoPortData::TeamPort(v) => {
+                Ok(Self::TeamPort(v.as_slice().into()))
+            }
             _ => Err(()),
         }
     }
