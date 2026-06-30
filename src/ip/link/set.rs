@@ -23,6 +23,7 @@ use super::{
         gtp::IfaceGtp,
         hsr::IfaceHsr,
         parse::{parse_eui64, parse_i32, parse_on_off, parse_u32},
+        rmnet::IfaceRmNet,
         vlan::IfaceVlan,
         vrf::IfaceVrf,
         wwan::IfaceWwan,
@@ -997,6 +998,11 @@ async fn build_type_link_info(
         InfoKind::IpVtap => Ok(build_kind_only(InfoKind::IpVtap)),
         InfoKind::MacVlan => Ok(build_kind_only(InfoKind::MacVlan)),
         InfoKind::MacVtap => Ok(build_kind_only(InfoKind::MacVtap)),
+        InfoKind::RmNet => {
+            let mut infos = IfaceRmNet::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
         InfoKind::Wwan => {
             let mut infos = IfaceWwan::build_entries(args)?;
             clean_extracted(&mut infos, kind);

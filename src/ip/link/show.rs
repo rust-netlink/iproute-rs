@@ -468,6 +468,7 @@ fn normalize_link_type(link_type: &str) -> String {
     match link_type {
         "ipgre" => "gre".to_string(),
         "ip6gre" => "ip6gre".to_string(),
+        "rawip" => "[519]".to_string(),
         _ => link_type.to_string(),
     }
 }

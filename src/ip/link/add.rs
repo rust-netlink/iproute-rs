@@ -144,6 +144,14 @@ impl LinkAddCommand {
             InfoKind::Pfcp => {
                 base_conf.apply(LinkPfcp::new(&base_conf.name))?
             }
+            InfoKind::RmNet => {
+                if base_conf.link.is_none() {
+                    return Err(CliError::from(
+                        "rmnet: missing required \"link\" argument",
+                    ));
+                }
+                base_conf.apply(base_conf.apply_rmnet(&handle).await?)?
+            }
             t => {
                 return Err(CliError::from(format!(
                     "Unsupported device type: {t}"

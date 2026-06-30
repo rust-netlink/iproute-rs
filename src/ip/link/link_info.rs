@@ -19,6 +19,7 @@ use super::ifaces::{
     mac_vlan::{CliLinkInfoDataMacVlan, CliLinkInfoDataMacVtap},
     macsec::CliLinkInfoDataMacSec,
     netkit::CliLinkInfoDataNetkit,
+    rmnet::CliLinkInfoDataRmNet,
     veth::CliLinkInfoDataVeth,
     vlan::CliLinkInfoDataVlan,
     vrf::{CliLinkInfoDataVrf, CliLinkInfoDataVrfPort},
@@ -141,6 +142,7 @@ pub(crate) enum CliLinkInfoData {
     Vrf(Box<CliLinkInfoDataVrf>),
     Wwan(Box<CliLinkInfoDataWwan>),
     Xfrm(Box<CliLinkInfoDataXfrm>),
+    RmNet(Box<CliLinkInfoDataRmNet>),
 }
 
 impl TryFrom<&InfoData> for CliLinkInfoData {
@@ -203,6 +205,9 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
                 Ok(Self::Ip6ErSpan(Box::new(v.as_slice().into())))
             }
             InfoData::Xfrm(v) => Ok(Self::Xfrm(Box::new(v.as_slice().into()))),
+            InfoData::RmNet(v) => {
+                Ok(Self::RmNet(Box::new(v.as_slice().into())))
+            }
             InfoData::BareUdp(v) => {
                 Ok(Self::BareUdp(Box::new(v.as_slice().into())))
             }
@@ -262,6 +267,7 @@ impl std::fmt::Display for CliLinkInfoData {
             CliLinkInfoData::Vrf(v) => write!(f, "{v}"),
             CliLinkInfoData::Wwan(v) => write!(f, "{v}"),
             CliLinkInfoData::Xfrm(v) => write!(f, "{v}"),
+            CliLinkInfoData::RmNet(v) => write!(f, "{v}"),
         }
     }
 }

@@ -28,6 +28,7 @@ use super::{
         macsec::IfaceMacSec,
         netkit::IfaceNetkit,
         pfcp::IfacePfcp,
+        rmnet::IfaceRmNet,
         simple::{
             IfaceDummy, IfaceNetdevsim, IfaceNlmon, IfaceVcan, IfaceVirtWifi,
         },
@@ -261,6 +262,7 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
                 "bond_slave" => IfaceBondPort::print_help(),
                 "vxlan" => IfaceVxlan::print_help(),
                 "pfcp" => IfacePfcp::print_help(),
+                "rmnet" => IfaceRmNet::print_help(),
                 "wwan" => IfaceWwan::print_help(),
                 "xfrm" => IfaceXfrm::print_help(),
                 "can" => IfaceCan::print_help(),

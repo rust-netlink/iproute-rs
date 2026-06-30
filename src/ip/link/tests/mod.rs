@@ -27,6 +27,7 @@ mod netkit;
 mod nlmon;
 mod pfcp;
 mod property;
+mod rmnet;
 mod set;
 mod show;
 mod sit;
