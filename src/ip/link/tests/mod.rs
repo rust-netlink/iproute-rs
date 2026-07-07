@@ -16,6 +16,7 @@ mod gtp;
 mod help;
 mod hsr;
 mod ifb;
+mod ip6gre;
 mod ip6tnl;
 mod ipip;
 mod ipvlan;

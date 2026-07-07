@@ -467,7 +467,7 @@ impl CliLinkInfo {
 fn normalize_link_type(link_type: &str) -> String {
     match link_type {
         "ipgre" => "gre".to_string(),
-        "ip6gre" => "ip6gre".to_string(),
+        "ip6gre" => "gre6".to_string(),
         "rawip" => "[519]".to_string(),
         _ => link_type.to_string(),
     }
@@ -478,31 +478,47 @@ pub(crate) async fn parse_nl_msg_to_iface(
     include_details: bool,
 ) -> Result<CliLinkInfo, CliError> {
     let raw_flags = nl_msg.header.flags;
+    let link_layer_type_raw = nl_msg.header.link_layer_type;
     let mut ret = CliLinkInfo {
         ifindex: nl_msg.header.index,
         raw_flags,
         flags: link_flags_to_string(raw_flags),
         link_type: normalize_link_type(
-            &nl_msg.header.link_layer_type.to_string().to_lowercase(),
+            &link_layer_type_raw.to_string().to_lowercase(),
         ),
         is_point_2_point: raw_flags.contains(LinkFlags::Pointopoint),
         vfinfo_list: None,
         ..Default::default()
     };
 
+    // Always parse link info to get the correct info_kind for tunnel interfaces
+    let link_info: Option<crate::link::link_info::CliLinkInfo> =
+        nl_msg.attributes.iter().find_map(|attr| {
+            if let LinkAttribute::LinkInfo(info) = attr {
+                info.as_slice().try_into().ok()
+            } else {
+                None
+            }
+        });
+
     ret.details =
         include_details.then(|| CliLinkInfoDetail::new(&nl_msg.attributes));
 
     let link_layer_type = nl_msg.header.link_layer_type;
-    if let Some(ref details) = ret.details
-        && let Some(ref linkinfo) = details.linkinfo
+
+    // For some tunnel interfaces, use the info_kind as the link_type
+    // This ensures consistency with iproute2 behavior
+    // Note: ip6gre uses ARPHRD-based name "gre6"
+    //       gretap/erspan use ARPHRD-based name "ether" (ARPHRD_ETHER)
+    if let Some(ref linkinfo) = link_info
         && !linkinfo.info_kind.is_empty()
-        && matches!(
-            link_layer_type,
-            LinkLayerType::Tunnel | LinkLayerType::Sit | LinkLayerType::Ip6gre
-        )
     {
-        ret.link_type.clone_from(&linkinfo.info_kind);
+        let kind = &linkinfo.info_kind;
+        if matches!(link_layer_type, LinkLayerType::Tunnel | LinkLayerType::Sit)
+            || *kind == "gre"
+        {
+            ret.link_type.clone_from(kind);
+        }
     }
 
     let mut temp_permaddr = String::new();

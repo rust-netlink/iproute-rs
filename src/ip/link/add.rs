@@ -135,6 +135,12 @@ impl LinkAddCommand {
             InfoKind::GreTap => {
                 base_conf.apply(base_conf.apply_gretap(&handle).await?)?
             }
+            InfoKind::GreTun6 => {
+                base_conf.apply(base_conf.apply_gre6(&handle).await?)?
+            }
+            InfoKind::GreTap6 => {
+                base_conf.apply(base_conf.apply_gretap6(&handle).await?)?
+            }
             InfoKind::ErSpan => {
                 base_conf.apply(base_conf.apply_erspan(&handle).await?)?
             }

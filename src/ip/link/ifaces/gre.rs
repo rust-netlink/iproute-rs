@@ -160,7 +160,7 @@ impl From<&[InfoGre]> for CliLinkInfoDataGre {
 
 impl From<&[InfoGre6]> for CliLinkInfoDataGre {
     fn from(info: &[InfoGre6]) -> Self {
-        let link = None;
+        let mut link = None;
         let mut remote = None;
         let mut local = None;
         let mut ttl = None;
@@ -185,6 +185,7 @@ impl From<&[InfoGre6]> for CliLinkInfoDataGre {
 
         for nla in info {
             match nla {
+                InfoGre6::Link(v) => link = Some(*v),
                 InfoGre6::Remote(v) => remote = Some(IpAddr::V6(*v)),
                 InfoGre6::Local(v) => local = Some(IpAddr::V6(*v)),
                 InfoGre6::Ttl(v) => ttl = Some(*v),
@@ -464,7 +465,6 @@ impl LinkBaseConf {
         Ok(builder)
     }
 
-    #[allow(dead_code)]
     pub(crate) async fn apply_gre6(
         &self,
         handle: &rtnetlink::Handle,
@@ -474,7 +474,6 @@ impl LinkBaseConf {
         Ok(builder)
     }
 
-    #[allow(dead_code)]
     pub(crate) async fn apply_gretap6(
         &self,
         handle: &rtnetlink::Handle,
@@ -595,10 +594,19 @@ async fn build_gre_opts(
                 };
                 builder = builder.okey(key).oflags(GreIOFlags::Key);
             }
-            "seq" | "iseq" => {
+            "seq" => {
+                builder =
+                    builder.iflags(GreIOFlags::Seq).oflags(GreIOFlags::Seq);
+            }
+            "iseq" => {
                 builder = builder.iflags(GreIOFlags::Seq);
             }
-            "noseq" | "noiseq" => {
+            "noseq" => {
+                builder = builder
+                    .iflags(GreIOFlags::empty())
+                    .oflags(GreIOFlags::empty());
+            }
+            "noiseq" => {
                 builder = builder.iflags(GreIOFlags::empty());
             }
             "oseq" => {
@@ -607,10 +615,20 @@ async fn build_gre_opts(
             "nooseq" => {
                 builder = builder.oflags(GreIOFlags::empty());
             }
-            "csum" | "icsum" => {
+            "csum" => {
+                builder = builder
+                    .iflags(GreIOFlags::Checksum)
+                    .oflags(GreIOFlags::Checksum);
+            }
+            "icsum" => {
                 builder = builder.iflags(GreIOFlags::Checksum);
             }
-            "nocsum" | "noicsum" => {
+            "nocsum" => {
+                builder = builder
+                    .iflags(GreIOFlags::empty())
+                    .oflags(GreIOFlags::empty());
+            }
+            "noicsum" => {
                 builder = builder.iflags(GreIOFlags::empty());
             }
             "ocsum" => {
@@ -754,7 +772,6 @@ async fn build_gre_opts(
     Ok(builder)
 }
 
-#[allow(dead_code)]
 async fn build_gre6_opts(
     mut builder: LinkMessageBuilder<LinkGre6>,
     conf: &LinkBaseConf,
@@ -783,7 +800,7 @@ async fn build_gre6_opts(
             "dev" => {
                 let v = next_val()?;
                 let ifindex = conf.get_ifindex_by_name(handle, v).await?;
-                builder = builder.link(ifindex);
+                builder = builder.dev(ifindex);
             }
             "ttl" | "hoplimit" | "hlim" => {
                 let v = next_val()?;
@@ -801,24 +818,55 @@ async fn build_gre6_opts(
             }
             "encaplimit" => {
                 let v = next_val()?;
-                let limit: u8 = v.parse().map_err(|_| {
-                    CliError::from(format!("invalid encaplimit: {v}"))
-                })?;
-                builder = builder.encap_limit(limit);
+                match v.as_str() {
+                    "none" => {}
+                    _ => {
+                        let limit: u8 = v.parse().map_err(|_| {
+                            CliError::from(format!("invalid encaplimit: {v}"))
+                        })?;
+                        builder = builder.encap_limit(limit);
+                    }
+                }
+            }
+            "tclass" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "inherit" => {}
+                    _ => {
+                        let tclass = parse_dsfield(v)?;
+                        builder = builder.flowlabel((tclass as u32) << 20);
+                    }
+                }
             }
             "flowlabel" | "fl" => {
                 let v = next_val()?;
-                let uval = if let Some(hex) = v.strip_prefix("0x") {
-                    u32::from_str_radix(hex, 16)
-                } else {
-                    v.parse()
-                };
-                let uval = uval.map_err(|_| {
-                    CliError::from(format!("invalid flowlabel: {v}"))
-                })?;
-                builder = builder.flowlabel(uval);
+                match v.as_str() {
+                    "inherit" => {}
+                    _ => {
+                        let uval = if let Some(hex) = v.strip_prefix("0x") {
+                            u32::from_str_radix(hex, 16)
+                        } else {
+                            v.parse()
+                        };
+                        let uval = uval.map_err(|_| {
+                            CliError::from(format!("invalid flowlabel: {v}"))
+                        })?;
+                        builder = builder.flowlabel(uval & 0xfffff);
+                    }
+                }
             }
-            "key" | "ikey" => {
+            "key" => {
+                let v = next_val()?;
+                let key: u32 = v
+                    .parse()
+                    .map_err(|_| CliError::from(format!("invalid key: {v}")))?;
+                builder = builder
+                    .ikey(key)
+                    .iflags(GreIOFlags::Key)
+                    .okey(key)
+                    .oflags(GreIOFlags::Key);
+            }
+            "ikey" => {
                 let v = next_val()?;
                 let key: u32 = v.parse().map_err(|_| {
                     CliError::from(format!("invalid ikey: {v}"))
@@ -832,8 +880,67 @@ async fn build_gre6_opts(
                 })?;
                 builder = builder.okey(key).oflags(GreIOFlags::Key);
             }
+            "nokey" => {
+                builder = builder
+                    .ikey(0)
+                    .iflags(GreIOFlags::empty())
+                    .okey(0)
+                    .oflags(GreIOFlags::empty());
+            }
+            "noikey" => {
+                builder = builder.ikey(0).iflags(GreIOFlags::empty());
+            }
+            "nookey" => {
+                builder = builder.okey(0).oflags(GreIOFlags::empty());
+            }
+            "seq" => {
+                builder =
+                    builder.iflags(GreIOFlags::Seq).oflags(GreIOFlags::Seq);
+            }
+            "iseq" => {
+                builder = builder.iflags(GreIOFlags::Seq);
+            }
+            "noseq" => {
+                builder = builder
+                    .iflags(GreIOFlags::empty())
+                    .oflags(GreIOFlags::empty());
+            }
+            "noiseq" => {
+                builder = builder.iflags(GreIOFlags::empty());
+            }
+            "oseq" => {
+                builder = builder.oflags(GreIOFlags::Seq);
+            }
+            "nooseq" => {
+                builder = builder.oflags(GreIOFlags::empty());
+            }
+            "csum" => {
+                builder = builder
+                    .iflags(GreIOFlags::Checksum)
+                    .oflags(GreIOFlags::Checksum);
+            }
+            "icsum" => {
+                builder = builder.iflags(GreIOFlags::Checksum);
+            }
+            "nocsum" => {
+                builder = builder
+                    .iflags(GreIOFlags::empty())
+                    .oflags(GreIOFlags::empty());
+            }
+            "noicsum" => {
+                builder = builder.iflags(GreIOFlags::empty());
+            }
+            "ocsum" => {
+                builder = builder.oflags(GreIOFlags::Checksum);
+            }
+            "noocsum" => {
+                builder = builder.oflags(GreIOFlags::empty());
+            }
             "external" => {
                 metadata = true;
+            }
+            "noencap" => {
+                builder = builder.encap_type(GreEncapType::None);
             }
             "encap" => {
                 let v = next_val()?;
@@ -888,15 +995,20 @@ async fn build_gre6_opts(
             }
             "fwmark" => {
                 let v = next_val()?;
-                let mark = if let Some(hex) = v.strip_prefix("0x") {
-                    u32::from_str_radix(hex, 16)
-                } else {
-                    v.parse()
-                };
-                let mark = mark.map_err(|_| {
-                    CliError::from(format!("invalid fwmark: {v}"))
-                })?;
-                builder = builder.fwmark(mark.to_be());
+                match v.as_str() {
+                    "inherit" => {}
+                    _ => {
+                        let mark = if let Some(hex) = v.strip_prefix("0x") {
+                            u32::from_str_radix(hex, 16)
+                        } else {
+                            v.parse()
+                        };
+                        let mark = mark.map_err(|_| {
+                            CliError::from(format!("invalid fwmark: {v}"))
+                        })?;
+                        builder = builder.fwmark(mark);
+                    }
+                }
             }
             "erspan" => {
                 let v = next_val()?;
