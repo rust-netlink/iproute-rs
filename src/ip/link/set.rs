@@ -27,6 +27,7 @@ use super::{
         team::IfaceTeamPort,
         vlan::IfaceVlan,
         vrf::IfaceVrf,
+        vxlan::IfaceVxlan,
         wwan::IfaceWwan,
     },
     xdp::{XdpConfig, build_xdp_attrs, parse_xdp_args},
@@ -1021,6 +1022,11 @@ async fn build_type_link_info(
         }
         InfoKind::Can => {
             let mut infos = IfaceCan::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::Vxlan => {
+            let mut infos = IfaceVxlan::build_entries(args)?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }

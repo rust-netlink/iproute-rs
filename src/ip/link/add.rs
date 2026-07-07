@@ -158,6 +158,9 @@ impl LinkAddCommand {
                 }
                 base_conf.apply(base_conf.apply_rmnet(&handle).await?)?
             }
+            InfoKind::Vxlan => {
+                base_conf.apply(base_conf.apply_vxlan(&handle).await?)?
+            }
             t => {
                 return Err(CliError::from(format!(
                     "Unsupported device type: {t}"
