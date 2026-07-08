@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use super::{add::handle_add, show::handle_show};
+use super::{
+    add::{handle_add, handle_modify, AddressModifyOp},
+    show::handle_show,
+};
 use crate::{CliError, link::CliLinkInfo};
 
 pub(crate) struct AddressCommand;
@@ -51,8 +54,26 @@ impl AddressCommand {
             )
             .subcommand(
                 clap::Command::new("change")
+                    .about("change device attributes")
+                    .alias("chg")
                     .alias("set")
-                    .about("change device attributes"),
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
+            )
+            .subcommand(
+                clap::Command::new("replace")
+                    .alias("repl")
+                    .alias("repla")
+                    .alias("replac")
+                    .about("replace existing address")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
             )
     }
 
@@ -66,6 +87,22 @@ impl AddressCommand {
                 .map(|o| o.to_string())
                 .collect();
             handle_add(&opts).await?;
+            Ok(vec![])
+        } else if let Some(matches) = matches.subcommand_matches("change") {
+            let opts: Vec<String> = matches
+                .get_many::<String>("options")
+                .unwrap_or_default()
+                .map(|o| o.to_string())
+                .collect();
+            handle_modify(&opts, AddressModifyOp::Change).await?;
+            Ok(vec![])
+        } else if let Some(matches) = matches.subcommand_matches("replace") {
+            let opts: Vec<String> = matches
+                .get_many::<String>("options")
+                .unwrap_or_default()
+                .map(|o| o.to_string())
+                .collect();
+            handle_modify(&opts, AddressModifyOp::Replace).await?;
             Ok(vec![])
         } else if let Some(matches) = matches.subcommand_matches("show") {
             let opts: Vec<&str> = matches

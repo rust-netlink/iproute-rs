@@ -2,16 +2,35 @@
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+use futures_util::stream::StreamExt;
 use futures_util::TryStreamExt;
+use rtnetlink::packet_core::{
+    NetlinkMessage, NetlinkPayload, NLM_F_ACK, NLM_F_CREATE, NLM_F_EXCL,
+    NLM_F_REPLACE, NLM_F_REQUEST,
+};
 use rtnetlink::packet_route::address::{
     AddressAttribute, AddressFlags, AddressMessage, AddressProtocol,
     AddressScope, CacheInfo,
 };
+use rtnetlink::packet_route::RouteNetlinkMessage;
 
 use crate::CliError;
 
+pub(crate) enum AddressModifyOp {
+    Add,
+    Change,
+    Replace,
+}
+
 pub(crate) async fn handle_add(opts: &[String]) -> Result<(), CliError> {
-    let (connection, handle, _) = rtnetlink::new_connection()?;
+    handle_modify(opts, AddressModifyOp::Add).await
+}
+
+pub(crate) async fn handle_modify(
+    opts: &[String],
+    op: AddressModifyOp,
+) -> Result<(), CliError> {
+    let (connection, mut handle, _) = rtnetlink::new_connection()?;
     tokio::spawn(connection);
 
     let mut dev: Option<String> = None;
@@ -204,12 +223,30 @@ pub(crate) async fn handle_add(opts: &[String]) -> Result<(), CliError> {
     let index = link.header.index;
     msg.header.index = index;
 
-    // Send the request
-    let mut req = handle.address().add(index, local, prefix_len);
-    *req.message_mut() = msg;
-    req.execute()
-        .await
-        .map_err(|e| CliError::from(format!("{e}")))
+    let mut nl_msg =
+        NetlinkMessage::from(RouteNetlinkMessage::NewAddress(msg));
+    nl_msg.header.flags = match op {
+        AddressModifyOp::Add => {
+            NLM_F_REQUEST | NLM_F_ACK | NLM_F_EXCL | NLM_F_CREATE
+        }
+        AddressModifyOp::Change => NLM_F_REQUEST | NLM_F_ACK | NLM_F_REPLACE,
+        AddressModifyOp::Replace => {
+            NLM_F_REQUEST | NLM_F_ACK | NLM_F_REPLACE | NLM_F_CREATE
+        }
+    };
+
+    let mut response = handle.request(nl_msg).map_err(|e| {
+        CliError::from(format!("{e}"))
+    })?;
+    while let Some(msg) = response.next().await {
+        if let NetlinkPayload::Error(err) = msg.payload {
+            return Err(CliError::from(format!(
+                "Received a netlink error message {err}"
+            )));
+        }
+    }
+
+    Ok(())
 }
 
 fn parse_prefix(s: &str) -> Result<(IpAddr, Option<u8>), CliError> {
