@@ -19,6 +19,8 @@ pub(crate) struct CliAddressInfo {
     index: u32,
     family: String,
     local: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    peer: Option<String>,
     prefixlen: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
     broadcast: Option<String>,
@@ -112,6 +114,15 @@ impl std::fmt::Display for CliAddressInfo {
             "{}",
             self.local
         )?;
+        if let Some(peer) = &self.peer {
+            write!(f, " peer ")?;
+            write_with_color!(
+                f,
+                CliColor::address_color(&self.family),
+                "{}",
+                peer
+            )?;
+        }
         write!(f, "/{}", self.prefixlen)?;
         if let Some(m) = self.metric {
             write!(f, " metric {m}")?;
@@ -224,6 +235,7 @@ pub(crate) fn parse_nl_msg_to_address(
     let index = nl_msg.header.index;
     let family = nl_msg.header.family.to_string();
     let mut local = String::new();
+    let mut address_attr = String::new();
     let prefixlen = nl_msg.header.prefix_len;
     let mut broadcast = None;
     let mut anycast = None;
@@ -240,9 +252,7 @@ pub(crate) fn parse_nl_msg_to_address(
     for nla in nl_msg.attributes {
         match nla {
             AddressAttribute::Local(a) => local = a.to_string(),
-            AddressAttribute::Address(a) if local.is_empty() => {
-                local = a.to_string()
-            }
+            AddressAttribute::Address(a) => address_attr = a.to_string(),
             AddressAttribute::Broadcast(a) => broadcast = Some(a.to_string()),
             AddressAttribute::Anycast(a) => anycast = Some(a.to_string()),
             AddressAttribute::Multicast(a) => multicast = Some(a.to_string()),
@@ -258,10 +268,24 @@ pub(crate) fn parse_nl_msg_to_address(
         }
     }
 
+    // If no IFA_LOCAL, use IFA_ADDRESS as local
+    if local.is_empty() {
+        local = address_attr;
+        address_attr = String::new();
+    }
+
+    // Set peer only when IFA_ADDRESS differs from IFA_LOCAL
+    let peer = if !address_attr.is_empty() && address_attr != local {
+        Some(address_attr)
+    } else {
+        None
+    };
+
     let cli_addr_info = CliAddressInfo {
         index,
         family,
         local,
+        peer,
         prefixlen,
         broadcast,
         anycast,
