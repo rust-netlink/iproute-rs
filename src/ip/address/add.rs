@@ -61,6 +61,21 @@ pub(crate) async fn handle_delete(opts: &[String]) -> Result<(), CliError> {
     tokio::spawn(connection);
 
     let config = parse_config(opts)?;
+
+    // Warn about wildcard deletion for IPv4 without explicit prefix length
+    if config.family == rtnetlink::packet_route::AddressFamily::Inet
+        && !config.prefix_len_specified
+    {
+        eprintln!(
+            "Warning: Executing wildcard deletion to stay compatible with old \
+             scripts.\n\t         Explicitly specify the prefix length \
+             ({}/{}) to avoid this warning.\n\t         This special \
+             behaviour is likely to disappear in further releases,\n\t         \
+             fix your scripts!",
+            config.local, config.prefix_len
+        );
+    }
+
     let mut msg = build_address_message(&config)?;
 
     let index = resolve_ifindex(&handle, &config.dev).await?;
@@ -232,6 +247,9 @@ fn parse_config(opts: &[String]) -> Result<AddressAddConfig, CliError> {
         .or(peer_prefix_len)
         .unwrap_or_else(|| default_prefix_len(&local));
 
+    let prefix_len_specified =
+        local_prefix_len.is_some() || peer_prefix_len.is_some();
+
     if family != rtnetlink::packet_route::AddressFamily::Inet6 {
         for (name, mask) in V6ONLY_FLAGS {
             if flags.contains(*mask) {
@@ -252,6 +270,7 @@ fn parse_config(opts: &[String]) -> Result<AddressAddConfig, CliError> {
         dev,
         local,
         prefix_len,
+        prefix_len_specified,
         family,
         peer,
         broadcast,
@@ -344,6 +363,7 @@ struct AddressAddConfig {
     dev: String,
     local: IpAddr,
     prefix_len: u8,
+    prefix_len_specified: bool,
     family: rtnetlink::packet_route::AddressFamily,
     peer: Option<IpAddr>,
     broadcast: Option<BroadcastSpec>,
