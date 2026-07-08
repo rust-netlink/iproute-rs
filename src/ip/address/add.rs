@@ -243,6 +243,11 @@ fn parse_config(opts: &[String]) -> Result<AddressAddConfig, CliError> {
         }
     }
 
+    // Validate autojoin requires multicast address
+    if flags.contains(AddressFlags::Mcautojoin) && !is_multicast(&local) {
+        return Err(CliError::from("autojoin needs multicast address"));
+    }
+
     Ok(AddressAddConfig {
         dev,
         local,
@@ -310,6 +315,21 @@ fn default_prefix_len(addr: &IpAddr) -> u8 {
     match addr {
         IpAddr::V4(_) => 32,
         IpAddr::V6(_) => 128,
+    }
+}
+
+fn is_multicast(addr: &IpAddr) -> bool {
+    match addr {
+        IpAddr::V4(v4) => {
+            // IPv4 multicast: 224.0.0.0/4 (224.0.0.0 - 239.255.255.255)
+            let octets = v4.octets();
+            (octets[0] & 0xf0) == 224
+        }
+        IpAddr::V6(v6) => {
+            // IPv6 multicast: ff00::/8
+            let segments = v6.segments();
+            (segments[0] & 0xff00) == 0xff00
+        }
     }
 }
 
