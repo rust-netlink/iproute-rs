@@ -196,6 +196,18 @@ pub(crate) async fn handle_modify(
         .or(peer_prefix_len)
         .unwrap_or_else(|| default_prefix_len(&local));
 
+    // Filter v6only flags for non-IPv6 addresses (matching iproute2 behavior)
+    if family != rtnetlink::packet_route::AddressFamily::Inet6 {
+        for (name, mask) in V6ONLY_FLAGS {
+            if flags.contains(*mask) {
+                eprintln!(
+                    "Warning: {name} option can be set only for IPv6 addresses"
+                );
+                flags.remove(*mask);
+            }
+        }
+    }
+
     // Build the address message
     let config = AddressAddConfig {
         local,
@@ -295,6 +307,13 @@ struct AddressAddConfig {
     proto: Option<AddressProtocol>,
     flags: AddressFlags,
 }
+
+const V6ONLY_FLAGS: &[(&str, AddressFlags)] = &[
+    ("nodad", AddressFlags::Nodad),
+    ("optimistic", AddressFlags::Optimistic),
+    ("home", AddressFlags::Homeaddress),
+    ("mngtmpaddr", AddressFlags::Managetempaddr),
+];
 
 fn compute_auto_broadcast(
     addr: &IpAddr,
