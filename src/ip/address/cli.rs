@@ -222,7 +222,8 @@ impl AddressCommand {
                 .unwrap_or_default()
                 .map(|o| o.to_string())
                 .collect();
-            handle_flush(&opts).await?;
+            let max_loops = matches.get_one::<u32>("LOOPS").copied();
+            handle_flush(&opts, max_loops).await?;
             Ok(vec![])
         } else if let Some(matches) = matches.subcommand_matches("show") {
             let opts: Vec<&str> = matches

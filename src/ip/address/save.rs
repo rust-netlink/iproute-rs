@@ -189,14 +189,17 @@ pub(crate) async fn handle_showdump() -> Result<(), CliError> {
     Ok(())
 }
 
-pub(crate) async fn handle_flush(opts: &[String]) -> Result<(), CliError> {
+pub(crate) async fn handle_flush(
+    opts: &[String],
+    max_loops: Option<u32>,
+) -> Result<(), CliError> {
     let opts_refs: Vec<&str> = opts.iter().map(String::as_str).collect();
     let (filter, _link_opts) = AddressShowFilter::parse(&opts_refs)?;
 
     let (connection, mut handle, _) = rtnetlink::new_connection()?;
     tokio::spawn(connection);
 
-    let max_rounds: u32 = 10;
+    let max_rounds = max_loops.unwrap_or(10);
     let mut round = 0u32;
 
     loop {

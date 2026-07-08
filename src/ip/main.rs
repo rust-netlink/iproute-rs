@@ -129,6 +129,74 @@ async fn main() -> Result<(), CliError> {
                 .value_parser(["inet", "inet6", "bridge", "mpls", "link"])
                 .global(true),
         )
+        .arg(
+            clap::Arg::new("ONELINE")
+                .short('o')
+                .long("oneline")
+                .help("Output each record on a single line")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            clap::Arg::new("BRIEF")
+                .long("brief")
+                .visible_alias("br")
+                .help("Brief output")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            clap::Arg::new("RESOLVE")
+                .short('r')
+                .long("resolve")
+                .help("Resolve hostnames")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            clap::Arg::new("LOOPS")
+                .short('l')
+                .long("loops")
+                .help("Maximum number of flush attempts")
+                .value_parser(clap::value_parser!(u32))
+                .global(true),
+        )
+        .arg(
+            clap::Arg::new("NETNS")
+                .short('n')
+                .long("netns")
+                .help("Network namespace to use")
+                .global(true),
+        )
+        .arg(
+            clap::Arg::new("PRETTY")
+                .long("pretty")
+                .help("Pretty print JSON")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            clap::Arg::new("HUMAN")
+                .long("human")
+                .help("Human readable output")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            clap::Arg::new("NUMERIC")
+                .long("Numeric")
+                .help("Print numeric values")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            clap::Arg::new("ALL")
+                .short('a')
+                .long("all")
+                .help("Apply to all network namespaces")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        )
         .subcommand_required(true)
         .subcommand(LinkCommand::gen_command())
         .subcommand(AddressCommand::gen_command())
