@@ -63,9 +63,10 @@ pub(crate) async fn handle_delete(opts: &[String]) -> Result<(), CliError> {
     let mut config = parse_config(opts)?;
 
     // Warn about wildcard deletion for IPv4 without explicit prefix length
-    let wildcard_delete = config.family == rtnetlink::packet_route::AddressFamily::Inet
+    let wildcard_delete = config.family
+        == rtnetlink::packet_route::AddressFamily::Inet
         && !config.prefix_len_specified;
-    
+
     if wildcard_delete {
         eprintln!(
             "Warning: Executing wildcard deletion to stay compatible with old \

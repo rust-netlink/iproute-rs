@@ -47,7 +47,7 @@ pub(crate) async fn handle_save(opts: &[String]) -> Result<(), CliError> {
 
     let mut addresses = addr_get.execute();
     while let Some(msg) = addresses.try_next().await? {
-        let addr_info = parse_nl_msg_to_address(msg.clone())?;
+        let addr_info = parse_nl_msg_to_address(msg.clone(), false)?;
         if !filter.matches(&addr_info, &msg) {
             continue;
         }
@@ -198,7 +198,7 @@ pub(crate) async fn handle_showdump() -> Result<(), CliError> {
             continue;
         };
 
-        let addr_info = parse_nl_msg_to_address(msg)?;
+        let addr_info = parse_nl_msg_to_address(msg, false)?;
         println!("{}", addr_info.gen_string());
     }
 
@@ -236,7 +236,7 @@ pub(crate) async fn handle_flush(
         let mut addresses = addr_get.execute();
         let mut flushed_in_round = 0u32;
         while let Some(address) = addresses.try_next().await? {
-            let addr_info = parse_nl_msg_to_address(address.clone())?;
+            let addr_info = parse_nl_msg_to_address(address.clone(), false)?;
             if !filter.matches(&addr_info, &address) {
                 continue;
             }

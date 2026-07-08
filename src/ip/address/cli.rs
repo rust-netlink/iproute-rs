@@ -245,11 +245,17 @@ impl AddressCommand {
                 &opts,
                 matches.get_count("DETAILS") > 0,
                 preferred_family,
+                matches.get_flag("BRIEF"),
             )
             .await
         } else {
-            handle_show(&[], matches.get_count("DETAILS") > 0, preferred_family)
-                .await
+            handle_show(
+                &[],
+                matches.get_count("DETAILS") > 0,
+                preferred_family,
+                matches.get_flag("BRIEF"),
+            )
+            .await
         }
     }
 }

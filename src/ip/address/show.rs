@@ -17,6 +17,8 @@ use crate::{CliError, link::CliLinkInfo};
 pub(crate) struct CliAddressInfo {
     #[serde(skip)]
     index: u32,
+    #[serde(skip)]
+    brief: bool,
     family: String,
     local: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -107,7 +109,10 @@ const ADDRESS_FLAG_DATA: &[AddressFlagData] = &[
 
 impl std::fmt::Display for CliAddressInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} ", self.family)?;
+        // In brief mode, skip family prefix
+        if !self.brief {
+            write!(f, "{} ", self.family)?;
+        }
         write_with_color!(
             f,
             CliColor::address_color(&self.family),
@@ -127,6 +132,12 @@ impl std::fmt::Display for CliAddressInfo {
         if let Some(m) = self.metric {
             write!(f, " metric {m}")?;
         }
+
+        // In brief mode, skip everything else
+        if self.brief {
+            return Ok(());
+        }
+
         if let Some(broadcast) = &self.broadcast {
             write!(f, " brd ")?;
             write_with_color!(
@@ -234,6 +245,7 @@ fn get_address_flags(
 
 pub(crate) fn parse_nl_msg_to_address(
     nl_msg: AddressMessage,
+    brief: bool,
 ) -> Result<CliAddressInfo, CliError> {
     let index = nl_msg.header.index;
     let family = nl_msg.header.family.to_string();
@@ -286,6 +298,7 @@ pub(crate) fn parse_nl_msg_to_address(
 
     let cli_addr_info = CliAddressInfo {
         index,
+        brief,
         family,
         local,
         peer,
@@ -684,6 +697,7 @@ pub(crate) async fn handle_show(
     opts: &[&str],
     include_details: bool,
     preferred_family: Option<AddressFamily>,
+    brief: bool,
 ) -> Result<Vec<CliLinkInfo>, CliError> {
     let (addr_filter, link_opts) = AddressShowFilter::parse(opts)?;
     let link_opts_refs: Vec<&str> =
@@ -725,7 +739,7 @@ pub(crate) async fn handle_show(
         {
             continue;
         }
-        let addr_info = parse_nl_msg_to_address(msg.clone())?;
+        let addr_info = parse_nl_msg_to_address(msg.clone(), brief)?;
         if addr_filter.matches(&addr_info, msg) {
             addresses_infos.push(addr_info);
         }
@@ -737,6 +751,7 @@ pub(crate) async fn handle_show(
             .into_iter()
             .map(|mut link_info| {
                 link_info.show_only_addr_details();
+                link_info.set_brief(brief);
                 link_info
             })
             .map(|link_info| (link_info.get_ifindex(), link_info))

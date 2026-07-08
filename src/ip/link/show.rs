@@ -18,6 +18,8 @@ use crate::link::detail::CliLinkInfoDetail;
 
 #[derive(Serialize, Default)]
 pub(crate) struct CliLinkInfo {
+    #[serde(skip)]
+    brief: bool,
     ifindex: u32,
     #[serde(skip)]
     raw_flags: LinkFlags,
@@ -165,10 +167,49 @@ impl CliLinkInfo {
         self.remove_link_mode();
         self.remove_inet6_addr_gen_mode();
     }
+
+    pub fn set_brief(&mut self, brief: bool) {
+        self.brief = brief;
+    }
 }
 
 impl std::fmt::Display for CliLinkInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.brief {
+            // Brief mode: interface name (16 chars), state (14 chars), then
+            // addresses
+            write!(f, "{:<16} ", self.ifname)?;
+
+            // State with color and padding (14 chars + 1 space = 15 total)
+            if self.operstate == "UP" {
+                write_with_color!(
+                    f,
+                    CliColor::StateUp,
+                    "{:<15}",
+                    self.operstate
+                )?;
+            } else if self.operstate == "DOWN" {
+                write_with_color!(
+                    f,
+                    CliColor::StateDown,
+                    "{:<15}",
+                    self.operstate
+                )?;
+            } else {
+                write!(f, "{:<15}", self.operstate)?;
+            }
+
+            // Addresses on the same line (no MAC address in brief mode for ip
+            // address)
+            if let Some(addr_info) = &self.addr_info {
+                for addr in addr_info {
+                    write!(f, "{} ", addr)?;
+                }
+            }
+            // Don't add extra newline - the formatter will add one
+            return Ok(());
+        }
+
         write!(f, "{}: ", self.ifindex)?;
         let link = if self.link_index.is_some() || self.link.is_some() {
             let display_name = if let Some(link_name) = &self.link {
@@ -256,8 +297,16 @@ impl std::fmt::Display for CliLinkInfo {
         }
 
         if let Some(addr_info) = &self.addr_info {
-            for addr in addr_info {
-                write!(f, "\n    {}", addr)?;
+            if self.brief {
+                // In brief mode, print all addresses on the same line
+                for addr in addr_info {
+                    write!(f, " {}", addr)?;
+                }
+                write!(f, "\n")?;
+            } else {
+                for addr in addr_info {
+                    write!(f, "\n    {}", addr)?;
+                }
             }
         }
 

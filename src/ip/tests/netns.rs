@@ -6,6 +6,7 @@ use std::{
 };
 
 pub struct CmdOutput {
+    #[allow(dead_code)]
     pub stdout: String,
     pub stderr: String,
 }
@@ -147,10 +148,7 @@ impl NetnsGuard {
             .expect("Failed to convert command output to String")
     }
 
-    pub fn ip_rs_exec_cmd_with_stderr(
-        &self,
-        args: &[&str],
-    ) -> CmdOutput {
+    pub fn ip_rs_exec_cmd_with_stderr(&self, args: &[&str]) -> CmdOutput {
         let mut cur_exec_path =
             std::env::current_exe().expect("No current exec path");
         cur_exec_path.pop();

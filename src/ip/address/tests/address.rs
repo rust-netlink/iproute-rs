@@ -451,3 +451,17 @@ fn test_address_deprecated_lifetime_display() {
         );
     });
 }
+
+#[test]
+fn test_address_show_brief() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["--br", "address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_show_brief_alias() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["--brief", "address", "show", DUMMY_NAME]);
+    });
+}

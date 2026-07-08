@@ -2,4 +2,4 @@
 
 mod netns;
 
-pub(crate) use self::netns::{CmdOutput, NetnsGuard, with_netns};
+pub(crate) use self::netns::{NetnsGuard, with_netns};
