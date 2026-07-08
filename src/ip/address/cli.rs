@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::show::handle_show;
+use super::{add::handle_add, show::handle_show};
 use crate::{CliError, link::CliLinkInfo};
 
 pub(crate) struct AddressCommand;
@@ -36,11 +36,15 @@ impl AddressCommand {
                     ),
             )
             .subcommand(
-                clap::Command::new("add").about("add address to link").arg(
-                    clap::Arg::new("options")
-                        .action(clap::ArgAction::Append)
-                        .trailing_var_arg(true),
-                ),
+                clap::Command::new("add")
+                    .about("add address to link")
+                    .alias("a")
+                    .alias("ad")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
             )
             .subcommand(
                 clap::Command::new("delete").about("delete address from link"),
@@ -55,8 +59,14 @@ impl AddressCommand {
     pub(crate) async fn handle(
         matches: &clap::ArgMatches,
     ) -> Result<Vec<CliLinkInfo>, CliError> {
-        if let Some(_matches) = matches.subcommand_matches("add") {
-            todo!()
+        if let Some(matches) = matches.subcommand_matches("add") {
+            let opts: Vec<String> = matches
+                .get_many::<String>("options")
+                .unwrap_or_default()
+                .map(|o| o.to_string())
+                .collect();
+            handle_add(&opts).await?;
+            Ok(vec![])
         } else if let Some(matches) = matches.subcommand_matches("show") {
             let opts: Vec<&str> = matches
                 .get_many::<String>("options")

@@ -71,6 +71,20 @@ where
     });
 }
 
+fn with_dummy_iface_empty<T>(test: T)
+where
+    T: FnOnce(&NetnsGuard),
+{
+    with_netns(|ns| {
+        ns.exec_cmd(&["ip", "link", "add", DUMMY_NAME, "type", "dummy"]);
+        ns.exec_cmd(&["ip", "link", "set", DUMMY_NAME, "up"]);
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        test(ns);
+    });
+}
+
 #[test]
 fn test_address_show() {
     with_dummy_iface(|ns| {
@@ -123,6 +137,206 @@ fn test_address_alias_address_s() {
             &["address", "show", "lo"],
             &["address", "s", "lo"],
         );
+    });
+}
+
+#[test]
+fn test_address_add_simple_ipv4() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "add",
+            "10.0.0.1/24",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_add_ipv4_with_label() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "add",
+            "10.0.0.1/24",
+            "dev",
+            DUMMY_NAME,
+            "label",
+            "test-label",
+        ]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_add_simple_ipv6() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "add",
+            "2001:db8::1/64",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_add_ipv4_with_all_options() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "add",
+            "10.0.0.1/24",
+            "dev",
+            DUMMY_NAME,
+            "valid_lft",
+            "21384",
+            "preferred_lft",
+            "21384",
+            "scope",
+            "global",
+            "mngtmpaddr",
+            "proto",
+            "kernel_ra",
+        ]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_add_ipv6_with_all_options() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "add",
+            "2001:db8::1/64",
+            "dev",
+            DUMMY_NAME,
+            "valid_lft",
+            "21384",
+            "preferred_lft",
+            "21384",
+            "scope",
+            "global",
+            "mngtmpaddr",
+            "proto",
+            "kernel_ra",
+        ]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_add_home_flag() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "add",
+            "2001:db8::1/64",
+            "dev",
+            DUMMY_NAME,
+            "scope",
+            "global",
+            "home",
+            "proto",
+            "kernel_ra",
+        ]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_add_noprefixroute_flag() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "add",
+            "10.0.0.1/24",
+            "dev",
+            DUMMY_NAME,
+            "noprefixroute",
+        ]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_add_with_scope_link() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "add",
+            "169.254.0.1/16",
+            "dev",
+            DUMMY_NAME,
+            "scope",
+            "link",
+        ]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_mixed_add_ip_rs_and_system() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "add",
+            "10.0.0.1/24",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        ns.exec_cmd(&["ip", "addr", "add", "10.0.0.2/24", "dev", DUMMY_NAME]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_add_alias_addr_a() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&["addr", "a", "10.0.0.1/24", "dev", DUMMY_NAME]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_add_alias_a_a() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&["a", "a", "10.0.0.2/24", "dev", DUMMY_NAME]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_add_alias_addr_ad() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&["addr", "ad", "10.0.0.3/24", "dev", DUMMY_NAME]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_add_alias_a_ad() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&["a", "ad", "2001:db8::1/64", "dev", DUMMY_NAME]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
 
