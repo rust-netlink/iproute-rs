@@ -15,6 +15,7 @@ use super::ifaces::{
     gre::CliLinkInfoDataGre,
     gtp::CliLinkInfoDataGtp,
     hsr::CliLinkInfoDataHsr,
+    ipoib::CliLinkInfoDataIpoib,
     iptun::CliLinkInfoDataIpIp,
     ipvlan::{CliLinkInfoDataIpVlan, CliLinkInfoDataIpVtap},
     mac_vlan::{CliLinkInfoDataMacVlan, CliLinkInfoDataMacVtap},
@@ -124,6 +125,7 @@ pub(crate) enum CliLinkInfoData {
     BareUdp(Box<CliLinkInfoDataBareudp>),
     Can(Box<CliLinkInfoDataCan>),
     Dsa(Box<CliLinkInfoDataDsa>),
+    Ipoib(Box<CliLinkInfoDataIpoib>),
     Netkit(Box<CliLinkInfoDataNetkit>),
     Vlan(Box<CliLinkInfoDataVlan>),
     Veth(Box<CliLinkInfoDataVeth>),
@@ -158,6 +160,9 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
     fn try_from(info_data: &InfoData) -> Result<CliLinkInfoData, ()> {
         match info_data {
             InfoData::Amt(v) => Ok(Self::Amt(Box::new(v.as_slice().into()))),
+            InfoData::Ipoib(v) => {
+                Ok(Self::Ipoib(Box::new(v.as_slice().into())))
+            }
             InfoData::Bridge(v) => {
                 Ok(Self::Bridge(Box::new(v.as_slice().into())))
             }
@@ -252,6 +257,7 @@ impl std::fmt::Display for CliLinkInfoData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CliLinkInfoData::Amt(v) => write!(f, "{v}"),
+            CliLinkInfoData::Ipoib(v) => write!(f, "{v}"),
             CliLinkInfoData::BareUdp(v) => write!(f, "{v}"),
             CliLinkInfoData::Can(v) => write!(f, "{v}"),
             CliLinkInfoData::Dsa(v) => write!(f, "{v}"),

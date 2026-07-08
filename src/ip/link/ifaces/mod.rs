@@ -12,6 +12,7 @@ pub(super) mod gre;
 pub(super) mod gtp;
 pub(super) mod hsr;
 pub(super) mod ifb;
+pub(super) mod ipoib;
 pub(super) mod iptun;
 pub(super) mod ipvlan;
 pub(super) mod mac_vlan;

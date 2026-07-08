@@ -22,6 +22,7 @@ macro_rules! test_link_help {
 
 test_link_help!(test_link_help_sit, "sit");
 test_link_help!(test_link_help_amt, "amt");
+test_link_help!(test_link_help_ipoib, "ipoib");
 test_link_help!(test_link_help_bond, "bond");
 test_link_help!(test_link_help_bridge, "bridge");
 test_link_help!(test_link_help_dummy, "dummy");

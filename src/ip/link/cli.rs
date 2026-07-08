@@ -23,6 +23,7 @@ use super::{
         gtp::IfaceGtp,
         hsr::IfaceHsr,
         ifb::IfaceIfb,
+        ipoib::IfaceIpoib,
         iptun::{IfaceIp6Tnl, IfaceIpIp, IfaceSit},
         ipvlan::{IfaceIpVlan, IfaceIpVtap},
         mac_vlan::{IfaceMacVlan, IfaceMacVtap},
@@ -230,6 +231,7 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
         if let Some(type_name) = args.first() {
             match *type_name {
                 "amt" => IfaceAmt::print_help(),
+                "ipoib" => IfaceIpoib::print_help(),
                 "vlan" => IfaceVlan::print_help(),
                 "veth" => IfaceVeth::print_help(),
                 "vxcan" => IfaceVxcan::print_help(),

@@ -47,6 +47,7 @@ impl LinkAddCommand {
             InfoKind::Amt => {
                 base_conf.apply(base_conf.apply_amt(&handle).await?)?
             }
+            InfoKind::Ipoib => base_conf.apply(base_conf.apply_ipoib()?)?,
             InfoKind::Dummy => {
                 base_conf.apply(LinkDummy::new(&base_conf.name))?
             }

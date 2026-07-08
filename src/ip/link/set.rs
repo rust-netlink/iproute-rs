@@ -23,6 +23,7 @@ use super::{
         dsa::IfaceDsa,
         gtp::IfaceGtp,
         hsr::IfaceHsr,
+        ipoib::IfaceIpoib,
         parse::{parse_eui64, parse_i32, parse_on_off, parse_u32},
         rmnet::IfaceRmNet,
         team::IfaceTeamPort,
@@ -944,6 +945,11 @@ async fn build_type_link_info(
     match kind {
         InfoKind::Amt => {
             let mut infos = IfaceAmt::build_entries(Some(handle), args).await?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::Ipoib => {
+            let mut infos = IfaceIpoib::build_entries(args)?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }
