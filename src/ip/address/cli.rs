@@ -92,7 +92,12 @@ impl AddressCommand {
             .subcommand(
                 clap::Command::new("save")
                     .alias("sav")
-                    .about("save protocol address to stdout"),
+                    .about("save protocol address to stdout")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
             )
             .subcommand(
                 clap::Command::new("restore")
@@ -167,8 +172,13 @@ impl AddressCommand {
                 .collect();
             handle_delete(&opts).await?;
             Ok(vec![])
-        } else if matches.subcommand_matches("save").is_some() {
-            handle_save().await?;
+        } else if let Some(matches) = matches.subcommand_matches("save") {
+            let opts: Vec<String> = matches
+                .get_many::<String>("options")
+                .unwrap_or_default()
+                .map(|o| o.to_string())
+                .collect();
+            handle_save(&opts).await?;
             Ok(vec![])
         } else if matches.subcommand_matches("restore").is_some() {
             handle_restore().await?;

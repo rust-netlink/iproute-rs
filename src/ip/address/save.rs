@@ -16,10 +16,13 @@ use crate::CliError;
 
 const IPADD_DUMP_MAGIC: u32 = 0x47361222;
 
-pub(crate) async fn handle_save() -> Result<(), CliError> {
+pub(crate) async fn handle_save(opts: &[String]) -> Result<(), CliError> {
     if std::io::stdout().is_terminal() {
         return Err(CliError::from("Not sending a binary stream to stdout"));
     }
+
+    let opts_refs: Vec<&str> = opts.iter().map(String::as_str).collect();
+    let (filter, _link_opts) = AddressShowFilter::parse(&opts_refs)?;
 
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
@@ -33,8 +36,21 @@ pub(crate) async fn handle_save() -> Result<(), CliError> {
     let (connection, handle, _) = rtnetlink::new_connection()?;
     tokio::spawn(connection);
 
-    let mut addresses = handle.address().get().execute();
+    let mut addr_get = handle.address().get();
+    if let Some(ref name) = filter.dev_name {
+        let mut links = handle.link().get().match_name(name.clone()).execute();
+        let link = links.try_next().await?.ok_or_else(|| {
+            CliError::from(format!("Device \"{name}\" does not exist"))
+        })?;
+        addr_get = addr_get.set_link_index_filter(link.header.index);
+    }
+
+    let mut addresses = addr_get.execute();
     while let Some(msg) = addresses.try_next().await? {
+        let addr_info = parse_nl_msg_to_address(msg.clone())?;
+        if !filter.matches(&addr_info, &msg) {
+            continue;
+        }
         let mut nl_msg =
             NetlinkMessage::from(RouteNetlinkMessage::NewAddress(msg));
         nl_msg.finalize();

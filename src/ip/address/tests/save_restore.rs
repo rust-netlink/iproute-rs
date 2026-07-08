@@ -111,3 +111,29 @@ fn test_address_save_showdump_roundtrip() {
         );
     });
 }
+
+#[test]
+fn test_address_save_with_dev_filter() {
+    with_dummy_iface(|ns| {
+        let bytes =
+            ns.ip_rs_exec_cmd_raw(&["address", "save", "dev", DUMMY_NAME]);
+        assert!(
+            bytes.len() > 36,
+            "save output with dev filter too short: {} bytes",
+            bytes.len()
+        );
+    });
+}
+
+#[test]
+fn test_address_save_with_scope_filter() {
+    with_dummy_iface(|ns| {
+        let bytes =
+            ns.ip_rs_exec_cmd_raw(&["address", "save", "scope", "global"]);
+        assert!(
+            bytes.len() > 36,
+            "save output with scope filter too short: {} bytes",
+            bytes.len()
+        );
+    });
+}
