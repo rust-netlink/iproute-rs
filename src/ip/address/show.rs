@@ -306,15 +306,17 @@ impl AddressShowFilter {
                     })?;
                     proto = Some(parse_protocol_value(val)?);
                 }
-                "permanent" | "dynamic" => {
+                "permanent" => {
+                    flags_set |= AddressFlags::Permanent;
+                }
+                "dynamic" => {
                     flags_not_set |= AddressFlags::Permanent;
-                    if *arg == "permanent" {
-                        flags_set |= AddressFlags::Permanent;
-                        flags_not_set.remove(AddressFlags::Permanent);
-                    }
                 }
                 "secondary" | "temporary" => {
                     flags_set |= AddressFlags::Secondary;
+                }
+                "primary" => {
+                    flags_not_set |= AddressFlags::Secondary;
                 }
                 "nodad" => flags_set |= AddressFlags::Nodad,
                 "optimistic" => flags_set |= AddressFlags::Optimistic,
@@ -340,11 +342,17 @@ impl AddressShowFilter {
                     // If starts with "-", it's a negated flag
                     if let Some(flag_name) = arg.strip_prefix('-') {
                         match flag_name {
-                            "permanent" | "dynamic" => {
+                            "permanent" => {
                                 flags_not_set |= AddressFlags::Permanent;
+                            }
+                            "dynamic" => {
+                                flags_set |= AddressFlags::Permanent;
                             }
                             "secondary" | "temporary" => {
                                 flags_not_set |= AddressFlags::Secondary;
+                            }
+                            "primary" => {
+                                flags_set |= AddressFlags::Secondary;
                             }
                             "nodad" => flags_not_set |= AddressFlags::Nodad,
                             "optimistic" => {
