@@ -313,6 +313,47 @@ pub(crate) struct AddressShowFilter {
     pub(crate) flags_not_set: AddressFlags,
 }
 
+/// Simple fnmatch-like pattern matching supporting * and ?
+fn fnmatch_simple(pattern: &str, text: &str) -> bool {
+    let pattern_chars: Vec<char> = pattern.chars().collect();
+    let text_chars: Vec<char> = text.chars().collect();
+
+    fn match_helper(pattern: &[char], text: &[char]) -> bool {
+        let mut pi = 0;
+        let mut ti = 0;
+
+        while pi < pattern.len() || ti < text.len() {
+            if pi < pattern.len() && pattern[pi] == '*' {
+                pi += 1;
+                // Try matching rest of pattern at every position
+                for i in ti..=text.len() {
+                    if match_helper(&pattern[pi..], &text[i..]) {
+                        return true;
+                    }
+                }
+                return false;
+            } else if pi < pattern.len() && pattern[pi] == '?' {
+                pi += 1;
+                if ti >= text.len() {
+                    return false;
+                }
+                ti += 1;
+            } else if pi < pattern.len()
+                && ti < text.len()
+                && pattern[pi] == text[ti]
+            {
+                pi += 1;
+                ti += 1;
+            } else {
+                return false;
+            }
+        }
+        true
+    }
+
+    match_helper(&pattern_chars, &text_chars)
+}
+
 impl AddressShowFilter {
     pub(crate) fn parse(
         opts: &[&str],
@@ -491,7 +532,7 @@ impl AddressShowFilter {
         }
 
         if let Some(ref label_pat) = self.label
-            && !addr.label.contains(label_pat.as_str())
+            && !fnmatch_simple(label_pat.as_str(), &addr.label)
         {
             return false;
         }
