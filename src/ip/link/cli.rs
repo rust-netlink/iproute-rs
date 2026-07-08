@@ -32,7 +32,8 @@ use super::{
         pfcp::IfacePfcp,
         rmnet::IfaceRmNet,
         simple::{
-            IfaceDummy, IfaceNetdevsim, IfaceNlmon, IfaceVcan, IfaceVirtWifi,
+            IfaceDummy, IfaceNetdevsim, IfaceNlmon, IfaceTun, IfaceVcan,
+            IfaceVirtWifi,
         },
         team::{IfaceTeam, IfaceTeamPort},
         veth::IfaceVeth,
@@ -231,6 +232,7 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
         if let Some(type_name) = args.first() {
             match *type_name {
                 "amt" => IfaceAmt::print_help(),
+                "tun" => IfaceTun::print_help(),
                 "ipoib" => IfaceIpoib::print_help(),
                 "vlan" => IfaceVlan::print_help(),
                 "veth" => IfaceVeth::print_help(),
@@ -362,7 +364,7 @@ TYPE := { amt | bareudp | bond | bond_slave | bridge | bridge_slave | can |
           ipip | ipoib | ipvlan | ipvtap |
           macsec | macvlan | macvtap | netdevsim |
           netkit | nlmon | pfcp | rmnet | sit | team | team_slave |
-          vcan | veth | vlan | vrf | vti | vti6 | vxcan | vxlan | wwan |
+          tun | vcan | veth | vlan | vrf | vti | vxcan | vxlan | wwan |
           xfrm | virt_wifi }
 "
 }

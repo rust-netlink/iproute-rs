@@ -953,7 +953,8 @@ async fn build_type_link_info(
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }
-        InfoKind::Dummy
+        InfoKind::Tun
+        | InfoKind::Dummy
         | InfoKind::Nlmon
         | InfoKind::Team
         | InfoKind::Vcan

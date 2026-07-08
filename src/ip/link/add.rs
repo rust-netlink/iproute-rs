@@ -6,7 +6,7 @@ use futures_util::TryStreamExt;
 use iproute_rs::{CliError, parse_mac_str};
 use rtnetlink::{
     LinkDummy, LinkIfb, LinkMessageBuilder, LinkNetdevsim, LinkNlmon, LinkPfcp,
-    LinkTeam, LinkVcan, LinkVirtWifi, LinkWireguard,
+    LinkTeam, LinkTun, LinkVcan, LinkVirtWifi, LinkWireguard,
     packet_route::link::{InfoKind, LinkAttribute, LinkMessage},
 };
 
@@ -57,6 +57,7 @@ impl LinkAddCommand {
             InfoKind::Nlmon => {
                 base_conf.apply(LinkNlmon::new(&base_conf.name))?
             }
+            InfoKind::Tun => base_conf.apply(LinkTun::new(&base_conf.name))?,
             InfoKind::Veth => base_conf.apply(base_conf.apply_veth()?)?,
             InfoKind::Vcan => {
                 base_conf.apply(LinkVcan::new(&base_conf.name))?

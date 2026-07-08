@@ -49,3 +49,13 @@ impl IfaceVirtWifi {
 "
     }
 }
+
+pub(crate) struct IfaceTun;
+
+impl IfaceTun {
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... tun
+"
+    }
+}
