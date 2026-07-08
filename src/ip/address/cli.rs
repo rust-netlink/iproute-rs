@@ -22,6 +22,7 @@ impl AddressCommand {
             .alias("ad")
             .alias("a")
             .subcommand_required(false)
+            .disable_help_subcommand(true)
             .subcommand(
                 clap::Command::new("show")
                     .about("show links' addresses")
@@ -114,6 +115,18 @@ impl AddressCommand {
                             .trailing_var_arg(true),
                     ),
             )
+            .subcommand(
+                clap::Command::new("help")
+                    .about("print help message")
+                    .alias("h")
+                    .alias("he")
+                    .alias("hel")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
+            )
     }
 
     pub(crate) async fn handle(
@@ -156,6 +169,36 @@ impl AddressCommand {
             Ok(vec![])
         } else if matches.subcommand_matches("restore").is_some() {
             handle_restore().await?;
+            Ok(vec![])
+        } else if matches.subcommand_matches("help").is_some() {
+            let msg = concat!(
+                "Usage: ip address {add|change|replace} IFADDR dev IFNAME [ LIFETIME ]\n",
+                "                                                      [ CONFFLAG-LIST ]\n",
+                "       ip address del IFADDR dev IFNAME [mngtmpaddr]\n",
+                "       ip address {save|flush} [ dev IFNAME ] [ scope SCOPE-ID ] [ to PREFIX ]\n",
+                "                            [ FLAG-LIST ] [ label LABEL ] [ { up | down } ]\n",
+                "       ip address [ show [ dev IFNAME ] [ scope SCOPE-ID ] [ master DEVICE ]\n",
+                "                         [ nomaster ]\n",
+                "                         [ type TYPE ] [ to PREFIX ] [ FLAG-LIST ]\n",
+                "                         [ label LABEL ] [ { up | down } ] [ vrf NAME ]\n",
+                "                         [ proto ADDRPROTO ] ]\n",
+                "       ip address {showdump|restore}\n",
+                "IFADDR := PREFIX | ADDR peer PREFIX\n",
+                "          [ broadcast ADDR ] [ anycast ADDR ]\n",
+                "          [ label IFNAME ] [ scope SCOPE-ID ] [ metric METRIC ]\n",
+                "          [ proto ADDRPROTO ]\n",
+                "SCOPE-ID := [ host | link | global | NUMBER ]\n",
+                "FLAG-LIST := [ FLAG-LIST ] FLAG\n",
+                "FLAG  := [ permanent | dynamic | secondary | primary |\n",
+                "           [-]tentative | [-]deprecated | [-]dadfailed | temporary |\n",
+                "           CONFFLAG-LIST ]\n",
+                "CONFFLAG-LIST := [ CONFFLAG-LIST ] CONFFLAG\n",
+                "CONFFLAG  := [ home | nodad | mngtmpaddr | noprefixroute | autojoin ]\n",
+                "LIFETIME := [ valid_lft LFT ] [ preferred_lft LFT ]\n",
+                "LFT := forever | SECONDS\n",
+                "ADDRPROTO := [ NAME | NUMBER ]\n",
+            );
+            eprint!("{}", msg);
             Ok(vec![])
         } else if matches.subcommand_matches("showdump").is_some() {
             handle_showdump().await?;
