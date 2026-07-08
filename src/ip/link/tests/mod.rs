@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod add_opts;
 mod afstats;
 mod alias;
 mod amt;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::{collections::HashMap, os::unix::io::AsRawFd};
 
 use futures_util::TryStreamExt;
 use iproute_rs::{CliError, parse_mac_str};
@@ -194,6 +194,14 @@ pub(crate) struct LinkBaseConf {
     pub(crate) parentdev_name: Option<String>,
     pub(crate) name: String,
     pub(crate) address: Option<String>,
+    pub(crate) broadcast: Option<String>,
+    pub(crate) txqueuelen: Option<u32>,
+    pub(crate) mtu: Option<u32>,
+    pub(crate) index: Option<i32>,
+    pub(crate) numtxqueues: Option<u32>,
+    pub(crate) numrxqueues: Option<u32>,
+    pub(crate) netns_pid: Option<u32>,
+    pub(crate) netns_file: Option<std::fs::File>,
     pub(crate) iface_type: InfoKind,
     pub(crate) iface_specific: Vec<String>,
 }
@@ -205,6 +213,36 @@ impl LinkBaseConf {
     ) -> Result<LinkMessage, CliError> {
         if let Some(v) = self.address.as_deref() {
             builder = builder.address(parse_mac_str(v)?)
+        }
+        if let Some(v) = self.broadcast.as_deref() {
+            builder = builder.broadcast(parse_mac_str(v)?)
+        }
+        if let Some(v) = self.txqueuelen {
+            builder = builder.txqueuelen(v);
+        }
+        if let Some(v) = self.mtu {
+            builder = builder.mtu(v);
+        }
+        if let Some(v) = self.index {
+            builder =
+                builder.append_extra_attribute(LinkAttribute::NewIfIndex(v));
+        }
+        if let Some(v) = self.numtxqueues {
+            builder =
+                builder.append_extra_attribute(LinkAttribute::NumTxQueues(v));
+        }
+        if let Some(v) = self.numrxqueues {
+            builder =
+                builder.append_extra_attribute(LinkAttribute::NumRxQueues(v));
+        }
+        if let Some(v) = self.netns_pid {
+            builder =
+                builder.append_extra_attribute(LinkAttribute::NetNsPid(v));
+        }
+        if let Some(ref file) = self.netns_file {
+            builder = builder.append_extra_attribute(LinkAttribute::NetNsFd(
+                file.as_raw_fd(),
+            ));
         }
         if let Some(v) = self.parentdev_name.as_deref() {
             builder = builder.append_extra_attribute(
@@ -262,9 +300,83 @@ impl LinkBaseConf {
 
             let address =
                 base_args_dict.remove("address").map(|s| s.to_string());
+            let broadcast = base_args_dict
+                .remove("broadcast")
+                .or_else(|| base_args_dict.remove("brd"))
+                .map(|s| s.to_string());
+            let txqueuelen = base_args_dict
+                .remove("txqueuelen")
+                .or_else(|| base_args_dict.remove("qlen"))
+                .or_else(|| base_args_dict.remove("txqlen"))
+                .map(|s| {
+                    s.parse::<u32>().map_err(|_| {
+                        CliError::from(format!(
+                            "Invalid \"txqueuelen\" value: {s}"
+                        ))
+                    })
+                })
+                .transpose()?;
+            let mtu = base_args_dict
+                .remove("mtu")
+                .map(|s| {
+                    s.parse::<u32>().map_err(|_| {
+                        CliError::from(format!("Invalid \"mtu\" value: {s}"))
+                    })
+                })
+                .transpose()?;
+            let index = base_args_dict
+                .remove("index")
+                .map(|s| {
+                    let v = s.parse::<i32>().map_err(|_| {
+                        CliError::from(format!("Invalid \"index\" value: {s}"))
+                    })?;
+                    if v <= 0 {
+                        return Err(CliError::from(format!(
+                            "Invalid \"index\" value: {s}"
+                        )));
+                    }
+                    Ok(v)
+                })
+                .transpose()?;
+            let numtxqueues = base_args_dict
+                .remove("numtxqueues")
+                .map(|s| {
+                    s.parse::<u32>().map_err(|_| {
+                        CliError::from(format!(
+                            "Invalid \"numtxqueues\" value: {s}"
+                        ))
+                    })
+                })
+                .transpose()?;
+            let numrxqueues = base_args_dict
+                .remove("numrxqueues")
+                .map(|s| {
+                    s.parse::<u32>().map_err(|_| {
+                        CliError::from(format!(
+                            "Invalid \"numrxqueues\" value: {s}"
+                        ))
+                    })
+                })
+                .transpose()?;
             let link = base_args_dict.remove("link").map(|s| s.to_string());
             let parentdev_name =
                 base_args_dict.remove("parentdev").map(|s| s.to_string());
+
+            let mut netns_pid = None;
+            let mut netns_file = None;
+            if let Some(ns_val) = base_args_dict.remove("netns") {
+                if let Ok(pid) = ns_val.parse::<u32>() {
+                    netns_pid = Some(pid);
+                } else if let Ok(file) =
+                    std::fs::File::open(format!("/run/netns/{ns_val}"))
+                {
+                    netns_file = Some(file);
+                } else {
+                    return Err(CliError::from(format!(
+                        "Cannot find network namespace \"{ns_val}\""
+                    )));
+                }
+            }
 
             let iface_specific = if args.len() > type_index + 1 {
                 args[type_index + 2..].to_vec()
@@ -274,6 +386,14 @@ impl LinkBaseConf {
             Ok(Self {
                 name,
                 address,
+                broadcast,
+                txqueuelen,
+                mtu,
+                index,
+                numtxqueues,
+                numrxqueues,
+                netns_pid,
+                netns_file,
                 link,
                 parentdev_name,
                 iface_type,
@@ -403,5 +523,117 @@ mod tests {
             conf.iface_specific,
             vec!["role", "ggsn", "hsize", "2048", "restart_count", "5"]
         );
+    }
+
+    #[test]
+    fn parse_with_mtu() {
+        let conf = LinkBaseConf::parse(args(&[
+            "eth0", "mtu", "1500", "type", "dummy",
+        ]))
+        .unwrap();
+        assert_eq!(conf.mtu, Some(1500));
+    }
+
+    #[test]
+    fn parse_with_txqueuelen_aliases() {
+        let conf = LinkBaseConf::parse(args(&[
+            "eth0",
+            "txqueuelen",
+            "500",
+            "type",
+            "dummy",
+        ]))
+        .unwrap();
+        assert_eq!(conf.txqueuelen, Some(500));
+
+        let conf = LinkBaseConf::parse(args(&[
+            "eth0", "qlen", "600", "type", "dummy",
+        ]))
+        .unwrap();
+        assert_eq!(conf.txqueuelen, Some(600));
+
+        let conf = LinkBaseConf::parse(args(&[
+            "eth0", "txqlen", "700", "type", "dummy",
+        ]))
+        .unwrap();
+        assert_eq!(conf.txqueuelen, Some(700));
+    }
+
+    #[test]
+    fn parse_with_broadcast() {
+        let conf = LinkBaseConf::parse(args(&[
+            "eth0",
+            "broadcast",
+            "ff:ff:ff:ff:ff:ff",
+            "type",
+            "dummy",
+        ]))
+        .unwrap();
+        assert_eq!(conf.broadcast.as_deref(), Some("ff:ff:ff:ff:ff:ff"));
+
+        let conf = LinkBaseConf::parse(args(&[
+            "eth0",
+            "brd",
+            "00:00:00:00:00:00",
+            "type",
+            "dummy",
+        ]))
+        .unwrap();
+        assert_eq!(conf.broadcast.as_deref(), Some("00:00:00:00:00:00"));
+    }
+
+    #[test]
+    fn parse_with_numtxqueues_numrxqueues() {
+        let conf = LinkBaseConf::parse(args(&[
+            "eth0",
+            "numtxqueues",
+            "8",
+            "numrxqueues",
+            "4",
+            "type",
+            "dummy",
+        ]))
+        .unwrap();
+        assert_eq!(conf.numtxqueues, Some(8));
+        assert_eq!(conf.numrxqueues, Some(4));
+    }
+
+    #[test]
+    fn parse_with_index() {
+        let conf = LinkBaseConf::parse(args(&[
+            "eth0", "index", "100", "type", "dummy",
+        ]))
+        .unwrap();
+        assert_eq!(conf.index, Some(100));
+    }
+
+    #[test]
+    fn parse_invalid_index_zero() {
+        let err =
+            LinkBaseConf::parse(args(&["eth0", "index", "0", "type", "dummy"]))
+                .unwrap_err();
+        assert!(err.msg.contains("index"));
+    }
+
+    #[test]
+    fn parse_with_netns_by_pid() {
+        let conf =
+            LinkBaseConf::parse(args(&["eth0", "netns", "1", "type", "dummy"]))
+                .unwrap();
+        assert_eq!(conf.netns_pid, Some(1));
+        assert!(conf.netns_file.is_none());
+    }
+
+    #[test]
+    fn parse_with_netns_by_name_nonexistent() {
+        let err = LinkBaseConf::parse(args(&[
+            "eth0",
+            "netns",
+            "nonexistent-ns-name",
+            "type",
+            "dummy",
+        ]))
+        .unwrap_err();
+        assert!(err.msg.contains("net"));
     }
 }
