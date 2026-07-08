@@ -8,7 +8,7 @@ use rtnetlink::{
     packet_core::{
         NLM_F_ACK, NLM_F_CREATE, NLM_F_REQUEST, NetlinkMessage, NetlinkPayload,
     },
-    packet_route::RouteNetlinkMessage,
+    packet_route::{RouteNetlinkMessage, address::AddressFlags},
 };
 
 use super::show::{AddressShowFilter, parse_nl_msg_to_address};
@@ -278,6 +278,14 @@ pub(crate) async fn handle_flush(
         eprintln!(
             "*** Round {round}, deleting {flushed_in_round} addresses ***"
         );
+
+        // If flushing primary addresses only, stop after one round to avoid
+        // flushing secondaries that were promoted to primaries
+        if filter.flags_not_set.contains(AddressFlags::Secondary)
+            && !filter.flags_set.contains(AddressFlags::Secondary)
+        {
+            break;
+        }
     }
 
     if round > 0 {
