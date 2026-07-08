@@ -88,7 +88,8 @@ async fn main() -> Result<(), CliError> {
         .arg(
             clap::Arg::new("STATISTICS")
                 .short('s')
-                .help("Show object statistics")
+                .long("stats")
+                .help("Show statistics")
                 .action(clap::ArgAction::SetTrue)
                 .global(true),
         )
