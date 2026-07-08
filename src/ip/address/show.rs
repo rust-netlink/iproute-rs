@@ -278,19 +278,21 @@ pub(crate) fn parse_nl_msg_to_address(
     Ok(cli_addr_info)
 }
 
-struct AddressShowFilter {
-    dev_name: Option<String>,
-    scope: Option<u8>,
-    to_prefix: Option<IpAddr>,
-    to_prefix_len: Option<u8>,
-    label: Option<String>,
-    proto: Option<u8>,
-    flags_set: AddressFlags,
-    flags_not_set: AddressFlags,
+pub(crate) struct AddressShowFilter {
+    pub(crate) dev_name: Option<String>,
+    pub(crate) scope: Option<u8>,
+    pub(crate) to_prefix: Option<IpAddr>,
+    pub(crate) to_prefix_len: Option<u8>,
+    pub(crate) label: Option<String>,
+    pub(crate) proto: Option<u8>,
+    pub(crate) flags_set: AddressFlags,
+    pub(crate) flags_not_set: AddressFlags,
 }
 
 impl AddressShowFilter {
-    fn parse(opts: &[&str]) -> Result<(Self, Vec<String>), CliError> {
+    pub(crate) fn parse(
+        opts: &[&str],
+    ) -> Result<(Self, Vec<String>), CliError> {
         let mut dev_name: Option<String> = None;
         let mut scope: Option<u8> = None;
         let mut to_prefix: Option<IpAddr> = None;
@@ -452,7 +454,11 @@ impl AddressShowFilter {
         ))
     }
 
-    fn matches(&self, addr: &CliAddressInfo, msg: &AddressMessage) -> bool {
+    pub(crate) fn matches(
+        &self,
+        addr: &CliAddressInfo,
+        msg: &AddressMessage,
+    ) -> bool {
         if let Some(s) = self.scope {
             let scope_val: u8 = msg.header.scope.into();
             if scope_val != s {
@@ -516,7 +522,7 @@ impl AddressShowFilter {
     }
 }
 
-fn get_addr_flags_from_msg(msg: &AddressMessage) -> AddressFlags {
+pub(crate) fn get_addr_flags_from_msg(msg: &AddressMessage) -> AddressFlags {
     let mut flags =
         AddressFlags::from_bits_retain(msg.header.flags.bits().into());
     for nla in &msg.attributes {
@@ -527,7 +533,7 @@ fn get_addr_flags_from_msg(msg: &AddressMessage) -> AddressFlags {
     flags
 }
 
-fn parse_scope_value(s: &str) -> Result<u8, CliError> {
+pub(crate) fn parse_scope_value(s: &str) -> Result<u8, CliError> {
     match s {
         "global" | "universe" => Ok(0),
         "site" => Ok(200),
@@ -541,7 +547,7 @@ fn parse_scope_value(s: &str) -> Result<u8, CliError> {
     }
 }
 
-fn parse_prefix(s: &str) -> Result<(IpAddr, Option<u8>), CliError> {
+pub(crate) fn parse_prefix(s: &str) -> Result<(IpAddr, Option<u8>), CliError> {
     if let Some((addr_str, plen_str)) = s.split_once('/') {
         let addr: IpAddr = addr_str.parse().map_err(|_| {
             CliError::from(format!("invalid address: {addr_str}"))
@@ -558,7 +564,7 @@ fn parse_prefix(s: &str) -> Result<(IpAddr, Option<u8>), CliError> {
     }
 }
 
-fn parse_protocol_value(s: &str) -> Result<u8, CliError> {
+pub(crate) fn parse_protocol_value(s: &str) -> Result<u8, CliError> {
     match s {
         "kernel_lo" => Ok(1),
         "kernel_ra" => Ok(2),

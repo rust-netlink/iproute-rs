@@ -11,7 +11,7 @@ use rtnetlink::{
     packet_route::RouteNetlinkMessage,
 };
 
-use super::show::parse_nl_msg_to_address;
+use super::show::{AddressShowFilter, parse_nl_msg_to_address};
 use crate::CliError;
 
 const IPADD_DUMP_MAGIC: u32 = 0x47361222;
@@ -190,24 +190,8 @@ pub(crate) async fn handle_showdump() -> Result<(), CliError> {
 }
 
 pub(crate) async fn handle_flush(opts: &[String]) -> Result<(), CliError> {
-    let mut dev: Option<String> = None;
-    let mut iter = opts.iter();
-    while let Some(key) = iter.next() {
-        match key.as_str() {
-            "dev" => {
-                dev = Some(
-                    iter.next()
-                        .ok_or_else(|| {
-                            CliError::from("\"dev\" argument requires a value")
-                        })?
-                        .clone(),
-                );
-            }
-            _ => {
-                return Err(CliError::from(format!("unknown argument: {key}")));
-            }
-        }
-    }
+    let opts_refs: Vec<&str> = opts.iter().map(String::as_str).collect();
+    let (filter, _link_opts) = AddressShowFilter::parse(&opts_refs)?;
 
     let (connection, mut handle, _) = rtnetlink::new_connection()?;
     tokio::spawn(connection);
@@ -221,7 +205,7 @@ pub(crate) async fn handle_flush(opts: &[String]) -> Result<(), CliError> {
         }
 
         let mut addr_get = handle.address().get();
-        if let Some(ref name) = dev {
+        if let Some(ref name) = filter.dev_name {
             let mut links =
                 handle.link().get().match_name(name.clone()).execute();
             let link = links.try_next().await?.ok_or_else(|| {
@@ -233,6 +217,11 @@ pub(crate) async fn handle_flush(opts: &[String]) -> Result<(), CliError> {
         let mut addresses = addr_get.execute();
         let mut flushed_in_round = 0u32;
         while let Some(address) = addresses.try_next().await? {
+            let addr_info = parse_nl_msg_to_address(address.clone())?;
+            if !filter.matches(&addr_info, &address) {
+                continue;
+            }
+
             let mut nl_msg =
                 NetlinkMessage::from(RouteNetlinkMessage::DelAddress(address));
             nl_msg.header.flags = NLM_F_REQUEST | NLM_F_ACK;
