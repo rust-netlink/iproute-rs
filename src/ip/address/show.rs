@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::{collections::HashMap, net::IpAddr};
 
 use futures_util::TryStreamExt;
 use indexmap::IndexMap;
@@ -39,7 +39,6 @@ struct AddressFlagData {
     mask: AddressFlags,
 }
 
-// equal to iproute2 `struct ifa_flag_data_t` in `ipaddress.c`
 const ADDRESS_FLAG_DATA: &[AddressFlagData] = &[
     AddressFlagData {
         name: "secondary",
@@ -73,6 +72,9 @@ const ADDRESS_FLAG_DATA: &[AddressFlagData] = &[
         name: "tentative",
         mask: AddressFlags::Tentative,
     },
+    // iproute2 never prints "permanent". When Permanent is not set,
+    // it prints "dynamic" instead. The entry must be before mngtmpaddr
+    // to match iproute2's flag display order.
     AddressFlagData {
         name: "permanent",
         mask: AddressFlags::Permanent,
@@ -116,13 +118,10 @@ impl std::fmt::Display for CliAddressInfo {
         }
         write!(f, " scope {} ", self.scope)?;
         self.write_flags(f)?;
-
         if !self.protocol.is_empty() {
             write!(f, "proto {} ", self.protocol)?;
         }
-
         write!(f, "{}", self.label)?;
-
         write!(
             f,
             "\n       valid_lft {} preferred_lft {}",
@@ -190,10 +189,7 @@ fn get_address_flags(
         }
         flags.remove(flag_data.mask);
     }
-    // iproute2 shows unknown flags in hex format, to support so
-    // the IndexMap<String, bool> need to be changed to IndexMap<String, String>
-    // which is overskill for this unknown flags. Let's just log a debug info
-    // and wait bug report.
+
     if !flags.is_empty() {
         log::debug!("Unknown address flags: {:02x}", flags.bits());
     }
@@ -218,31 +214,19 @@ pub(crate) fn parse_nl_msg_to_address(
 
     for nla in nl_msg.attributes {
         match nla {
-            AddressAttribute::Local(a) => {
-                local = a.to_string();
-            }
+            AddressAttribute::Local(a) => local = a.to_string(),
             AddressAttribute::Address(a) if local.is_empty() => {
-                local = a.to_string();
+                local = a.to_string()
             }
-            AddressAttribute::Broadcast(a) => {
-                broadcast = Some(a.to_string());
-            }
-            AddressAttribute::Label(s) => {
-                label = s;
-            }
+            AddressAttribute::Broadcast(a) => broadcast = Some(a.to_string()),
+            AddressAttribute::Label(s) => label = s,
             AddressAttribute::CacheInfo(c) => {
                 valid_life_time = c.ifa_valid;
                 preferred_life_time = c.ifa_preferred;
             }
-            AddressAttribute::Flags(f) => {
-                flags = f;
-            }
-            AddressAttribute::Protocol(p) => {
-                protocol = p.to_string();
-            }
-            _ => {
-                // println!("Remains {:?}", nla);
-            }
+            AddressAttribute::Flags(f) => flags = f,
+            AddressAttribute::Protocol(p) => protocol = p.to_string(),
+            _ => {}
         }
     }
 
@@ -263,38 +247,339 @@ pub(crate) fn parse_nl_msg_to_address(
     Ok(cli_addr_info)
 }
 
+struct AddressShowFilter {
+    dev_name: Option<String>,
+    scope: Option<u8>,
+    to_prefix: Option<IpAddr>,
+    to_prefix_len: Option<u8>,
+    label: Option<String>,
+    proto: Option<u8>,
+    flags_set: AddressFlags,
+    flags_not_set: AddressFlags,
+}
+
+impl AddressShowFilter {
+    fn parse(opts: &[&str]) -> Result<(Self, Vec<String>), CliError> {
+        let mut dev_name: Option<String> = None;
+        let mut scope: Option<u8> = None;
+        let mut to_prefix: Option<IpAddr> = None;
+        let mut to_prefix_len: Option<u8> = None;
+        let mut label: Option<String> = None;
+        let mut proto: Option<u8> = None;
+        let mut flags_set = AddressFlags::empty();
+        let mut flags_not_set = AddressFlags::empty();
+        let mut link_opts: Vec<String> = Vec::new();
+        let mut positional_dev: Option<String> = None;
+
+        let mut iter = opts.iter().peekable();
+        while let Some(arg) = iter.next() {
+            match *arg {
+                "dev" => {
+                    let val = iter.next().ok_or_else(|| {
+                        CliError::from("\"dev\" requires a value")
+                    })?;
+                    dev_name = Some(val.to_string());
+                }
+                "scope" => {
+                    let val = iter.next().ok_or_else(|| {
+                        CliError::from("\"scope\" requires a value")
+                    })?;
+                    scope = Some(parse_scope_value(val)?);
+                }
+                "to" => {
+                    let val = iter.next().ok_or_else(|| {
+                        CliError::from("\"to\" requires a value")
+                    })?;
+                    let (addr, plen) = parse_prefix(val)?;
+                    to_prefix = Some(addr);
+                    to_prefix_len = plen;
+                }
+                "label" => {
+                    let val = iter.next().ok_or_else(|| {
+                        CliError::from("\"label\" requires a value")
+                    })?;
+                    label = Some(val.to_string());
+                }
+                "proto" => {
+                    let val = iter.next().ok_or_else(|| {
+                        CliError::from("\"proto\" requires a value")
+                    })?;
+                    proto = Some(parse_protocol_value(val)?);
+                }
+                "permanent" | "dynamic" => {
+                    flags_not_set |= AddressFlags::Permanent;
+                    if *arg == "permanent" {
+                        flags_set |= AddressFlags::Permanent;
+                        flags_not_set.remove(AddressFlags::Permanent);
+                    }
+                }
+                "secondary" | "temporary" => {
+                    flags_set |= AddressFlags::Secondary;
+                }
+                "nodad" => flags_set |= AddressFlags::Nodad,
+                "optimistic" => flags_set |= AddressFlags::Optimistic,
+                "dadfailed" => flags_set |= AddressFlags::Dadfailed,
+                "home" => flags_set |= AddressFlags::Homeaddress,
+                "deprecated" => flags_set |= AddressFlags::Deprecated,
+                "tentative" => flags_set |= AddressFlags::Tentative,
+                "mngtmpaddr" => flags_set |= AddressFlags::Managetempaddr,
+                "noprefixroute" => flags_set |= AddressFlags::Noprefixroute,
+                "autojoin" => flags_set |= AddressFlags::Mcautojoin,
+                "stable-privacy" => flags_set |= AddressFlags::StablePrivacy,
+                "up" | "down" | "master" | "vrf" | "type" | "group"
+                | "nomaster" | "novf" | "name" => {
+                    // Link-level options: pass through
+                    link_opts.push(arg.to_string());
+                    if let Some(val) = iter.peek() {
+                        if !val.starts_with('-') {
+                            link_opts.push(iter.next().unwrap().to_string());
+                        }
+                    }
+                }
+                _ => {
+                    // If starts with "-", it's a negated flag
+                    if let Some(flag_name) = arg.strip_prefix('-') {
+                        match flag_name {
+                            "permanent" | "dynamic" => {
+                                flags_not_set |= AddressFlags::Permanent;
+                            }
+                            "secondary" | "temporary" => {
+                                flags_not_set |= AddressFlags::Secondary;
+                            }
+                            "nodad" => flags_not_set |= AddressFlags::Nodad,
+                            "optimistic" => {
+                                flags_not_set |= AddressFlags::Optimistic
+                            }
+                            "dadfailed" => {
+                                flags_not_set |= AddressFlags::Dadfailed
+                            }
+                            "home" => {
+                                flags_not_set |= AddressFlags::Homeaddress
+                            }
+                            "deprecated" => {
+                                flags_not_set |= AddressFlags::Deprecated
+                            }
+                            "tentative" => {
+                                flags_not_set |= AddressFlags::Tentative
+                            }
+                            "mngtmpaddr" => {
+                                flags_not_set |= AddressFlags::Managetempaddr
+                            }
+                            "noprefixroute" => {
+                                flags_not_set |= AddressFlags::Noprefixroute
+                            }
+                            "autojoin" => {
+                                flags_not_set |= AddressFlags::Mcautojoin
+                            }
+                            "stable-privacy" => {
+                                flags_not_set |= AddressFlags::StablePrivacy
+                            }
+                            _ => {
+                                if positional_dev.is_none() {
+                                    positional_dev = Some(arg.to_string());
+                                } else {
+                                    link_opts.push(arg.to_string());
+                                }
+                            }
+                        }
+                    } else if positional_dev.is_none() {
+                        positional_dev = Some(arg.to_string());
+                    } else {
+                        link_opts.push(arg.to_string());
+                    }
+                }
+            }
+        }
+
+        let dev = dev_name.clone().or(positional_dev);
+
+        // Forward device name to link-level opts
+        if let Some(ref d) = dev {
+            link_opts.push(d.clone());
+        }
+
+        Ok((
+            AddressShowFilter {
+                dev_name: dev,
+                scope,
+                to_prefix,
+                to_prefix_len,
+                label,
+                proto,
+                flags_set,
+                flags_not_set,
+            },
+            link_opts,
+        ))
+    }
+
+    fn matches(&self, addr: &CliAddressInfo, msg: &AddressMessage) -> bool {
+        if let Some(s) = self.scope {
+            let scope_val: u8 = msg.header.scope.into();
+            if scope_val != s {
+                return false;
+            }
+        }
+
+        if let Some(ref label_pat) = self.label {
+            if !addr.label.contains(label_pat.as_str()) {
+                return false;
+            }
+        }
+
+        if let Some(p) = self.proto {
+            let addr_proto = msg
+                .attributes
+                .iter()
+                .find_map(|a| {
+                    if let AddressAttribute::Protocol(ap) = a {
+                        Some(u8::from(*ap))
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(0);
+            if addr_proto != p {
+                return false;
+            }
+        }
+
+        if let Some(ref target) = self.to_prefix {
+            let addr_ip: IpAddr = match addr.local.parse() {
+                Ok(ip) => ip,
+                Err(_) => return false,
+            };
+            if addr_ip != *target {
+                return false;
+            }
+            if let Some(plen) = self.to_prefix_len
+                && addr.prefixlen != plen
+            {
+                return false;
+            }
+        }
+
+        if !self.flags_set.is_empty() {
+            let addr_flags = get_addr_flags_from_msg(msg);
+            if !addr_flags.contains(self.flags_set) {
+                return false;
+            }
+        }
+
+        if !self.flags_not_set.is_empty() {
+            let addr_flags = get_addr_flags_from_msg(msg);
+            if addr_flags.intersects(self.flags_not_set) {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+fn get_addr_flags_from_msg(msg: &AddressMessage) -> AddressFlags {
+    let mut flags =
+        AddressFlags::from_bits_retain(msg.header.flags.bits().into());
+    for nla in &msg.attributes {
+        if let AddressAttribute::Flags(f) = nla {
+            flags = *f;
+        }
+    }
+    flags
+}
+
+fn parse_scope_value(s: &str) -> Result<u8, CliError> {
+    match s {
+        "global" | "universe" => Ok(0),
+        "site" => Ok(200),
+        "link" => Ok(253),
+        "host" => Ok(254),
+        "nowhere" => Ok(255),
+        "all" => Ok(255), // special: match any
+        _ => s
+            .parse::<u8>()
+            .map_err(|_| CliError::from(format!("invalid scope: {s}"))),
+    }
+}
+
+fn parse_prefix(s: &str) -> Result<(IpAddr, Option<u8>), CliError> {
+    if let Some((addr_str, plen_str)) = s.split_once('/') {
+        let addr: IpAddr = addr_str.parse().map_err(|_| {
+            CliError::from(format!("invalid address: {addr_str}"))
+        })?;
+        let plen = plen_str.parse::<u8>().map_err(|_| {
+            CliError::from(format!("invalid prefix length: {plen_str}"))
+        })?;
+        Ok((addr, Some(plen)))
+    } else {
+        let addr: IpAddr = s
+            .parse()
+            .map_err(|_| CliError::from(format!("invalid address: {s}")))?;
+        Ok((addr, None))
+    }
+}
+
+fn parse_protocol_value(s: &str) -> Result<u8, CliError> {
+    match s {
+        "kernel_lo" => Ok(1),
+        "kernel_ra" => Ok(2),
+        "kernel_ll" => Ok(3),
+        _ => s
+            .parse::<u8>()
+            .map_err(|_| CliError::from(format!("invalid protocol: {s}"))),
+    }
+}
+
 pub(crate) async fn handle_show(
     opts: &[&str],
     include_details: bool,
 ) -> Result<Vec<CliLinkInfo>, CliError> {
-    let (connection, handle, _) = rtnetlink::new_connection()?;
+    let (addr_filter, link_opts) = AddressShowFilter::parse(opts)?;
+    let link_opts_refs: Vec<&str> =
+        link_opts.iter().map(String::as_str).collect();
 
+    let (connection, handle, _) = rtnetlink::new_connection()?;
     tokio::spawn(connection);
 
     let mut address_get_handle = handle.address().get();
 
-    if let Some(iface_name) = opts.first() {
-        let link_get_handle =
-            handle.link().get().match_name(iface_name.to_string());
-        let link =
-            link_get_handle.execute().try_next().await?.ok_or_else(|| {
-                CliError::from(
-                    format!("Device \"{iface_name}\" does not exist.").as_str(),
-                )
-            })?;
+    if let Some(ref iface_name) = addr_filter.dev_name {
+        let mut links =
+            handle.link().get().match_name(iface_name.clone()).execute();
+        let link = links.try_next().await?.ok_or_else(|| {
+            CliError::from(
+                format!("Device \"{iface_name}\" does not exist.").as_str(),
+            )
+        })?;
         address_get_handle =
             address_get_handle.set_link_index_filter(link.header.index);
     }
 
+    if let Some(ref addr) = addr_filter.to_prefix {
+        address_get_handle = address_get_handle.set_address_filter(*addr);
+    }
+
+    if let Some(plen) = addr_filter.to_prefix_len {
+        address_get_handle = address_get_handle.set_prefix_length_filter(plen);
+    }
+
     let mut addresses = address_get_handle.execute();
     let mut addresses_infos: Vec<CliAddressInfo> = Vec::new();
+    let mut address_msgs: Vec<AddressMessage> = Vec::new();
 
     while let Some(nl_msg) = addresses.try_next().await? {
-        addresses_infos.push(parse_nl_msg_to_address(nl_msg)?);
+        address_msgs.push(nl_msg);
+    }
+
+    for msg in &address_msgs {
+        let addr_info = parse_nl_msg_to_address(msg.clone())?;
+        if addr_filter.matches(&addr_info, msg) {
+            addresses_infos.push(addr_info);
+        }
     }
 
     let mut links_info: HashMap<u32, _> =
-        crate::link::handle_show(opts, include_details)
+        crate::link::handle_show(&link_opts_refs, include_details)
             .await?
             .into_iter()
             .map(|mut link_info| {

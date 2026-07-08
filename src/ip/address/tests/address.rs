@@ -170,6 +170,20 @@ fn test_address_add_alias_addr_ad() {
 }
 
 #[test]
+fn test_address_show_type_filter() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["address", "show", "type", "dummy"]);
+    });
+}
+
+#[test]
+fn test_address_show_dev_keyword() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["address", "show", "dev", DUMMY_NAME]);
+    });
+}
+
+#[test]
 fn test_address_mixed_add_ip_rs_and_system() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
