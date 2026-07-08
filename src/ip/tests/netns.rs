@@ -5,6 +5,11 @@ use std::{
     process::Command,
 };
 
+pub struct CmdOutput {
+    pub stdout: String,
+    pub stderr: String,
+}
+
 pub struct Outputs {
     #[allow(dead_code)]
     pub expected: String,
@@ -140,6 +145,42 @@ impl NetnsGuard {
 
         String::from_utf8(output.stdout)
             .expect("Failed to convert command output to String")
+    }
+
+    pub fn ip_rs_exec_cmd_with_stderr(
+        &self,
+        args: &[&str],
+    ) -> CmdOutput {
+        let mut cur_exec_path =
+            std::env::current_exe().expect("No current exec path");
+        cur_exec_path.pop();
+        cur_exec_path.pop();
+
+        let ip_rs_pathbuf = cur_exec_path.join("ip-rs");
+        let ip_rs_path = ip_rs_pathbuf.to_str().expect("Not UTF-8 string");
+
+        let mut full_args = vec!["netns", "exec", &self.name];
+        full_args.push(ip_rs_path);
+        full_args.extend_from_slice(args);
+
+        let output = Command::new("ip")
+            .args(&full_args)
+            .output()
+            .unwrap_or_else(|e| {
+                panic!("failed to execute ip-rs command {args:?}: {e}")
+            });
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            panic!("Command failed: {args:?}\nstderr: {stderr}");
+        }
+
+        CmdOutput {
+            stdout: String::from_utf8(output.stdout)
+                .expect("Failed to convert stdout to String"),
+            stderr: String::from_utf8(output.stderr)
+                .expect("Failed to convert stderr to String"),
+        }
     }
 
     pub fn assert_alias_output(

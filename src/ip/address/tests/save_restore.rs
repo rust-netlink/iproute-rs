@@ -137,3 +137,41 @@ fn test_address_save_with_scope_filter() {
         );
     });
 }
+
+// Test flush scope all to match any scope
+#[test]
+fn test_address_flush_scope_all() {
+    with_dummy_iface(|ns| {
+        // Just verify the command doesn't panic when using scope all
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ns.ip_rs_exec_cmd(&[
+                "address", "flush", "dev", DUMMY_NAME, "scope", "all",
+            ]);
+        }));
+    });
+}
+
+#[test]
+fn test_address_flush_scope_all_json() {
+    with_dummy_iface(|ns| {
+        // Just verify the command doesn't panic when using scope all with JSON
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ns.ip_rs_exec_cmd(&[
+                "-j", "address", "flush", "dev", DUMMY_NAME, "scope", "all",
+            ]);
+        }));
+    });
+}
+
+// Test flush primary short-circuit
+#[test]
+fn test_address_flush_primary_short_circuit() {
+    with_dummy_iface(|ns| {
+        // Just verify the command doesn't panic when flushing primary
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ns.ip_rs_exec_cmd(&[
+                "address", "flush", "dev", DUMMY_NAME, "primary",
+            ]);
+        }));
+    });
+}

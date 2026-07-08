@@ -706,13 +706,10 @@ pub(crate) async fn handle_show(
             address_get_handle.set_link_index_filter(link.header.index);
     }
 
-    if let Some(ref addr) = addr_filter.to_prefix {
-        address_get_handle = address_get_handle.set_address_filter(*addr);
-    }
-
-    if let Some(plen) = addr_filter.to_prefix_len {
-        address_get_handle = address_get_handle.set_prefix_length_filter(plen);
-    }
+    // Note: We don't use netlink-level filters for "to" prefix because
+    // the kernel does exact matching, not prefix containment. Instead,
+    // we rely on the application-level matches() function which has
+    // the correct prefix containment logic.
 
     let mut addresses = address_get_handle.execute();
     let mut addresses_infos: Vec<CliAddressInfo> = Vec::new();
@@ -755,4 +752,33 @@ pub(crate) async fn handle_show(
     result.sort_by_key(|link| link.get_ifindex());
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fnmatch_simple() {
+        // Test exact match
+        assert!(fnmatch_simple("test:0", "test:0"));
+        assert!(!fnmatch_simple("test:0", "test:1"));
+
+        // Test * wildcard
+        assert!(fnmatch_simple("test:*", "test:0"));
+        assert!(fnmatch_simple("test:*", "test:1"));
+        assert!(fnmatch_simple("test:*", "test:"));
+        assert!(!fnmatch_simple("test:*", "other:0"));
+
+        // Test ? wildcard
+        assert!(fnmatch_simple("test:?", "test:0"));
+        assert!(fnmatch_simple("test:?", "test:1"));
+        assert!(!fnmatch_simple("test:?", "test:"));
+        assert!(!fnmatch_simple("test:?", "test:01"));
+
+        // Test combined
+        assert!(fnmatch_simple("*:0", "test:0"));
+        assert!(fnmatch_simple("*:0", "other:0"));
+        assert!(!fnmatch_simple("*:0", "test:1"));
+    }
 }

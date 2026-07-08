@@ -60,12 +60,13 @@ pub(crate) async fn handle_delete(opts: &[String]) -> Result<(), CliError> {
     let (connection, handle, _) = rtnetlink::new_connection()?;
     tokio::spawn(connection);
 
-    let config = parse_config(opts)?;
+    let mut config = parse_config(opts)?;
 
     // Warn about wildcard deletion for IPv4 without explicit prefix length
-    if config.family == rtnetlink::packet_route::AddressFamily::Inet
-        && !config.prefix_len_specified
-    {
+    let wildcard_delete = config.family == rtnetlink::packet_route::AddressFamily::Inet
+        && !config.prefix_len_specified;
+    
+    if wildcard_delete {
         eprintln!(
             "Warning: Executing wildcard deletion to stay compatible with old \
              scripts.\n\t         Explicitly specify the prefix length \
@@ -74,9 +75,11 @@ pub(crate) async fn handle_delete(opts: &[String]) -> Result<(), CliError> {
              fix your scripts!",
             config.local, config.prefix_len
         );
+        // Set prefix_len to 0 for wildcard deletion
+        config.prefix_len = 0;
     }
 
-    let mut msg = build_address_message(&config)?;
+    let mut msg = build_address_delete_message(&config, wildcard_delete)?;
 
     let index = resolve_ifindex(&handle, &config.dev).await?;
     msg.header.index = index;
@@ -421,6 +424,27 @@ fn default_scope(addr: &std::net::IpAddr) -> AddressScope {
     AddressScope::Universe
 }
 
+fn build_address_delete_message(
+    cfg: &AddressAddConfig,
+    wildcard_delete: bool,
+) -> Result<AddressMessage, CliError> {
+    let mut msg = AddressMessage::default();
+    msg.header.family = cfg.family;
+    msg.header.prefix_len = cfg.prefix_len;
+    msg.header.scope = cfg.scope.unwrap_or_else(|| default_scope(&cfg.local));
+
+    // For wildcard deletion, only set IFA_LOCAL, not IFA_ADDRESS
+    if wildcard_delete {
+        msg.attributes.push(AddressAttribute::Local(cfg.local));
+    } else {
+        msg.attributes.push(AddressAttribute::Local(cfg.local));
+        let address_attr = cfg.peer.unwrap_or(cfg.local);
+        msg.attributes.push(AddressAttribute::Address(address_attr));
+    }
+
+    Ok(msg)
+}
+
 fn build_address_message(
     cfg: &AddressAddConfig,
 ) -> Result<AddressMessage, CliError> {
@@ -604,6 +628,39 @@ fn parse_flag(name: &str) -> Result<AddressFlags, CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_default_scope_loopback() {
+        let addr: IpAddr = "127.0.0.1".parse().unwrap();
+        assert_eq!(default_scope(&addr), AddressScope::Host);
+
+        let addr: IpAddr = "127.0.0.2".parse().unwrap();
+        assert_eq!(default_scope(&addr), AddressScope::Host);
+
+        let addr: IpAddr = "127.255.255.255".parse().unwrap();
+        assert_eq!(default_scope(&addr), AddressScope::Host);
+    }
+
+    #[test]
+    fn test_default_scope_non_loopback() {
+        let addr: IpAddr = "192.168.1.1".parse().unwrap();
+        assert_eq!(default_scope(&addr), AddressScope::Universe);
+
+        let addr: IpAddr = "10.0.0.1".parse().unwrap();
+        assert_eq!(default_scope(&addr), AddressScope::Universe);
+
+        let addr: IpAddr = "8.8.8.8".parse().unwrap();
+        assert_eq!(default_scope(&addr), AddressScope::Universe);
+    }
+
+    #[test]
+    fn test_default_scope_ipv6() {
+        let addr: IpAddr = "::1".parse().unwrap();
+        assert_eq!(default_scope(&addr), AddressScope::Universe);
+
+        let addr: IpAddr = "2001:db8::1".parse().unwrap();
+        assert_eq!(default_scope(&addr), AddressScope::Universe);
+    }
 
     #[test]
     fn parse_scope_values() {
