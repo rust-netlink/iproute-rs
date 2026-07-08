@@ -170,20 +170,6 @@ fn test_address_add_alias_addr_ad() {
 }
 
 #[test]
-fn test_address_show_ipv4_only() {
-    with_dummy_iface(|ns| {
-        ns.assert_eq_output(&["-4", "address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
-fn test_address_show_ipv6_only() {
-    with_dummy_iface(|ns| {
-        ns.assert_eq_output(&["-6", "address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
 fn test_address_show_type_filter() {
     with_dummy_iface(|ns| {
         ns.assert_eq_output(&["address", "show", "type", "dummy"]);

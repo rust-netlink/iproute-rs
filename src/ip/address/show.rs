@@ -113,6 +113,9 @@ impl std::fmt::Display for CliAddressInfo {
             self.local
         )?;
         write!(f, "/{}", self.prefixlen)?;
+        if let Some(m) = self.metric {
+            write!(f, " metric {m}")?;
+        }
         if let Some(broadcast) = &self.broadcast {
             write!(f, " brd ")?;
             write_with_color!(
@@ -141,9 +144,6 @@ impl std::fmt::Display for CliAddressInfo {
             write!(f, "proto {} ", self.protocol)?;
         }
         write!(f, "{}", self.label)?;
-        if let Some(m) = self.metric {
-            write!(f, " metric {m}")?;
-        }
         write!(
             f,
             "\n       valid_lft {} preferred_lft {}",
