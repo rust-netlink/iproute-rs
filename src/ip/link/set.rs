@@ -14,6 +14,7 @@ use rtnetlink::packet_route::link::{
 
 use super::{
     ifaces::{
+        amt::IfaceAmt,
         bareudp::IfaceBareudp,
         batadv::IfaceBatAdv,
         bond::{IfaceBond, IfaceBondPort},
@@ -941,6 +942,11 @@ async fn build_type_link_info(
     args: &[String],
 ) -> Result<Vec<LinkInfo>, CliError> {
     match kind {
+        InfoKind::Amt => {
+            let mut infos = IfaceAmt::build_entries(Some(handle), args).await?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
         InfoKind::Dummy
         | InfoKind::Nlmon
         | InfoKind::Team

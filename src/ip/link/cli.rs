@@ -8,6 +8,7 @@ use super::{
     afstats::{AfstatsOutput, handle_afstats},
     delete::LinkDeleteCommand,
     ifaces::{
+        amt::IfaceAmt,
         bareudp::IfaceBareudp,
         batadv::IfaceBatAdv,
         bond::{IfaceBond, IfaceBondPort},
@@ -228,6 +229,7 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
         "{}",
         if let Some(type_name) = args.first() {
             match *type_name {
+                "amt" => IfaceAmt::print_help(),
                 "vlan" => IfaceVlan::print_help(),
                 "veth" => IfaceVeth::print_help(),
                 "vxcan" => IfaceVxcan::print_help(),

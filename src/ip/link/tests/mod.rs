@@ -2,6 +2,7 @@
 
 mod afstats;
 mod alias;
+mod amt;
 mod bareudp;
 mod batadv;
 mod bond;

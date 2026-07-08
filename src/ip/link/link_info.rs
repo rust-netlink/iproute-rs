@@ -6,6 +6,7 @@ use rtnetlink::packet_route::link::{InfoData, InfoPortData, LinkInfo};
 use serde::Serialize;
 
 use super::ifaces::{
+    amt::CliLinkInfoDataAmt,
     bareudp::CliLinkInfoDataBareudp,
     bridge::{CliLinkInfoDataBridge, CliLinkInfoDataBridgePort},
     can::CliLinkInfoDataCan,
@@ -119,6 +120,7 @@ impl std::fmt::Display for CliLinkInfo {
 #[derive(Serialize)]
 #[serde(untagged)]
 pub(crate) enum CliLinkInfoData {
+    Amt(Box<CliLinkInfoDataAmt>),
     BareUdp(Box<CliLinkInfoDataBareudp>),
     Can(Box<CliLinkInfoDataCan>),
     Dsa(Box<CliLinkInfoDataDsa>),
@@ -155,6 +157,7 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
 
     fn try_from(info_data: &InfoData) -> Result<CliLinkInfoData, ()> {
         match info_data {
+            InfoData::Amt(v) => Ok(Self::Amt(Box::new(v.as_slice().into()))),
             InfoData::Bridge(v) => {
                 Ok(Self::Bridge(Box::new(v.as_slice().into())))
             }
@@ -228,6 +231,7 @@ impl TryFrom<&InfoData> for CliLinkInfoData {
 impl CliLinkInfoData {
     pub(crate) fn resolve_link(&mut self, index_2_name: &HashMap<u32, String>) {
         match self {
+            Self::Amt(amt) => amt.resolve_link(index_2_name),
             Self::Dsa(dsa) => dsa.resolve_link(index_2_name),
             Self::Vxlan(vxlan) => vxlan.resolve_link(index_2_name),
             Self::Hsr(hsr) => hsr.resolve_link(index_2_name),
@@ -247,6 +251,7 @@ impl CliLinkInfoData {
 impl std::fmt::Display for CliLinkInfoData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            CliLinkInfoData::Amt(v) => write!(f, "{v}"),
             CliLinkInfoData::BareUdp(v) => write!(f, "{v}"),
             CliLinkInfoData::Can(v) => write!(f, "{v}"),
             CliLinkInfoData::Dsa(v) => write!(f, "{v}"),

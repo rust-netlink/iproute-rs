@@ -44,6 +44,9 @@ impl LinkAddCommand {
         tokio::spawn(connection);
 
         let nl_msg = match base_conf.iface_type {
+            InfoKind::Amt => {
+                base_conf.apply(base_conf.apply_amt(&handle).await?)?
+            }
             InfoKind::Dummy => {
                 base_conf.apply(LinkDummy::new(&base_conf.name))?
             }
