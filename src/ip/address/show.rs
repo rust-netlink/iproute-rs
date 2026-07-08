@@ -308,6 +308,7 @@ pub(crate) fn parse_nl_msg_to_address(
 pub(crate) struct AddressShowFilter {
     pub(crate) dev_name: Option<String>,
     pub(crate) scope: Option<u8>,
+    pub(crate) scope_mask: u8,
     pub(crate) to_prefix: Option<IpAddr>,
     pub(crate) to_prefix_len: Option<u8>,
     pub(crate) label: Option<String>,
@@ -363,6 +364,7 @@ impl AddressShowFilter {
     ) -> Result<(Self, Vec<String>), CliError> {
         let mut dev_name: Option<String> = None;
         let mut scope: Option<u8> = None;
+        let mut scope_mask: u8 = 0xff;
         let mut to_prefix: Option<IpAddr> = None;
         let mut to_prefix_len: Option<u8> = None;
         let mut label: Option<String> = None;
@@ -385,7 +387,9 @@ impl AddressShowFilter {
                     let val = iter.next().ok_or_else(|| {
                         CliError::from("\"scope\" requires a value")
                     })?;
-                    scope = Some(parse_scope_value(val)?);
+                    let (scope_val, mask) = parse_scope_value(val)?;
+                    scope = Some(scope_val);
+                    scope_mask = mask;
                 }
                 "to" => {
                     let val = iter.next().ok_or_else(|| {
@@ -511,6 +515,7 @@ impl AddressShowFilter {
             AddressShowFilter {
                 dev_name: dev,
                 scope,
+                scope_mask,
                 to_prefix,
                 to_prefix_len,
                 label,
@@ -529,7 +534,7 @@ impl AddressShowFilter {
     ) -> bool {
         if let Some(s) = self.scope {
             let scope_val: u8 = msg.header.scope.into();
-            if scope_val != s {
+            if (scope_val ^ s) & self.scope_mask != 0 {
                 return false;
             }
         }
@@ -630,17 +635,20 @@ pub(crate) fn get_addr_flags_from_msg(msg: &AddressMessage) -> AddressFlags {
     flags
 }
 
-pub(crate) fn parse_scope_value(s: &str) -> Result<u8, CliError> {
+pub(crate) fn parse_scope_value(s: &str) -> Result<(u8, u8), CliError> {
     match s {
-        "global" | "universe" => Ok(0),
-        "site" => Ok(200),
-        "link" => Ok(253),
-        "host" => Ok(254),
-        "nowhere" => Ok(255),
-        "all" => Ok(255), // special: match any
-        _ => s
-            .parse::<u8>()
-            .map_err(|_| CliError::from(format!("invalid scope: {s}"))),
+        "global" | "universe" => Ok((0, 0xff)),
+        "site" => Ok((200, 0xff)),
+        "link" => Ok((253, 0xff)),
+        "host" => Ok((254, 0xff)),
+        "nowhere" => Ok((255, 0xff)),
+        "all" => Ok((255, 0)), // special: match any scope
+        _ => {
+            let v = s
+                .parse::<u8>()
+                .map_err(|_| CliError::from(format!("invalid scope: {s}")))?;
+            Ok((v, 0xff))
+        }
     }
 }
 
