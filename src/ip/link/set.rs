@@ -39,7 +39,7 @@ use super::{
         rmnet::IfaceRmNet,
         team::IfaceTeamPort,
         vlan::IfaceVlan,
-        vrf::IfaceVrf,
+        vrf::{IfaceVrf, IfaceVrfPort},
         vti::{IfaceVti, IfaceVti6},
         vxlan::IfaceVxlan,
         wwan::IfaceWwan,
@@ -1371,6 +1371,9 @@ async fn build_type_link_info(
         }
         InfoKind::Other(s) if s == "team_slave" => {
             IfaceTeamPort::build_entries(args)
+        }
+        InfoKind::Other(s) if s == "vrf_slave" => {
+            IfaceVrfPort::build_entries(args)
         }
         _ => Err(CliError::from(format!("Unsupported device type: {kind}"))),
     }

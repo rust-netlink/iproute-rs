@@ -3,7 +3,9 @@
 use iproute_rs::CliError;
 use rtnetlink::{
     LinkMessageBuilder, LinkVrf,
-    packet_route::link::{InfoKind, InfoVrf, LinkInfo},
+    packet_route::link::{
+        InfoKind, InfoPortData, InfoPortKind, InfoVrf, LinkInfo,
+    },
 };
 use serde::Serialize;
 
@@ -134,5 +136,46 @@ impl IfaceVrf {
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... vrf table TABLEID
 "
+    }
+}
+
+pub(crate) struct IfaceVrfPort;
+
+impl IfaceVrfPort {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let mut table = None;
+        let mut iter = args.iter();
+        while let Some(key) = iter.next() {
+            match key.as_str() {
+                "table" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "vrf_slave table requires a value",
+                        ));
+                    };
+                    table = Some(parse_u32(v, "vrf_slave table")?);
+                }
+                _ => {
+                    return Err(CliError::from(format!(
+                        "vrf_slave: unknown option \"{key}\"",
+                    )));
+                }
+            }
+        }
+
+        let mut port_data = Vec::new();
+        if let Some(id) = table {
+            port_data.push(InfoVrf::TableId(id));
+        }
+        Ok(vec![
+            LinkInfo::PortKind(InfoPortKind::Vrf),
+            LinkInfo::PortData(InfoPortData::VrfPort(port_data)),
+        ])
+    }
+
+    pub(crate) fn print_help() -> &'static str {
+        "Usage: ... vrf_slave [ table TABLEID ]\n"
     }
 }
