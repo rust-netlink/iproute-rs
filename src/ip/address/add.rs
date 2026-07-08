@@ -2,17 +2,20 @@
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use futures_util::stream::StreamExt;
-use futures_util::TryStreamExt;
-use rtnetlink::packet_core::{
-    NetlinkMessage, NetlinkPayload, NLM_F_ACK, NLM_F_CREATE, NLM_F_EXCL,
-    NLM_F_REPLACE, NLM_F_REQUEST,
+use futures_util::{TryStreamExt, stream::StreamExt};
+use rtnetlink::{
+    packet_core::{
+        NLM_F_ACK, NLM_F_CREATE, NLM_F_EXCL, NLM_F_REPLACE, NLM_F_REQUEST,
+        NetlinkMessage, NetlinkPayload,
+    },
+    packet_route::{
+        RouteNetlinkMessage,
+        address::{
+            AddressAttribute, AddressFlags, AddressMessage, AddressProtocol,
+            AddressScope, CacheInfo,
+        },
+    },
 };
-use rtnetlink::packet_route::address::{
-    AddressAttribute, AddressFlags, AddressMessage, AddressProtocol,
-    AddressScope, CacheInfo,
-};
-use rtnetlink::packet_route::RouteNetlinkMessage;
 
 use crate::CliError;
 
@@ -30,9 +33,45 @@ pub(crate) async fn handle_modify(
     opts: &[String],
     op: AddressModifyOp,
 ) -> Result<(), CliError> {
-    let (connection, mut handle, _) = rtnetlink::new_connection()?;
+    let (connection, handle, _) = rtnetlink::new_connection()?;
     tokio::spawn(connection);
 
+    let config = parse_config(opts)?;
+    let mut msg = build_address_message(&config)?;
+
+    let index = resolve_ifindex(&handle, &config.dev).await?;
+    msg.header.index = index;
+
+    let mut nl_msg = NetlinkMessage::from(RouteNetlinkMessage::NewAddress(msg));
+    nl_msg.header.flags = match op {
+        AddressModifyOp::Add => {
+            NLM_F_REQUEST | NLM_F_ACK | NLM_F_EXCL | NLM_F_CREATE
+        }
+        AddressModifyOp::Change => NLM_F_REQUEST | NLM_F_ACK | NLM_F_REPLACE,
+        AddressModifyOp::Replace => {
+            NLM_F_REQUEST | NLM_F_ACK | NLM_F_REPLACE | NLM_F_CREATE
+        }
+    };
+
+    send_and_check(handle, nl_msg).await
+}
+
+pub(crate) async fn handle_delete(opts: &[String]) -> Result<(), CliError> {
+    let (connection, handle, _) = rtnetlink::new_connection()?;
+    tokio::spawn(connection);
+
+    let config = parse_config(opts)?;
+    let mut msg = build_address_message(&config)?;
+
+    let index = resolve_ifindex(&handle, &config.dev).await?;
+    msg.header.index = index;
+
+    let nl_msg = NetlinkMessage::from(RouteNetlinkMessage::DelAddress(msg));
+
+    send_and_check(handle, nl_msg).await
+}
+
+fn parse_config(opts: &[String]) -> Result<AddressAddConfig, CliError> {
     let mut dev: Option<String> = None;
     let mut local: Option<IpAddr> = None;
     let mut local_prefix_len: Option<u8> = None;
@@ -163,8 +202,6 @@ pub(crate) async fn handle_modify(
                 local_prefix_len = plen;
             }
             _ => {
-                // iproute2 falls through to the else clause:
-                // if not any known keyword, treat as the local address
                 if local_parsed {
                     return Err(CliError::from(format!(
                         "unknown argument: {key}"
@@ -191,12 +228,10 @@ pub(crate) async fn handle_modify(
         rtnetlink::packet_route::AddressFamily::Inet6
     };
 
-    // Determine prefix length
     let prefix_len = local_prefix_len
         .or(peer_prefix_len)
         .unwrap_or_else(|| default_prefix_len(&local));
 
-    // Filter v6only flags for non-IPv6 addresses (matching iproute2 behavior)
     if family != rtnetlink::packet_route::AddressFamily::Inet6 {
         for (name, mask) in V6ONLY_FLAGS {
             if flags.contains(*mask) {
@@ -208,8 +243,8 @@ pub(crate) async fn handle_modify(
         }
     }
 
-    // Build the address message
-    let config = AddressAddConfig {
+    Ok(AddressAddConfig {
+        dev,
         local,
         prefix_len,
         family,
@@ -223,33 +258,27 @@ pub(crate) async fn handle_modify(
         preferred_lft,
         proto,
         flags,
-    };
-    let mut msg = build_address_message(&config)?;
+    })
+}
 
-    // Look up the interface index
-    let mut links = handle.link().get().match_name(dev.clone()).execute();
+async fn resolve_ifindex(
+    handle: &rtnetlink::Handle,
+    name: &str,
+) -> Result<u32, CliError> {
+    let mut links = handle.link().get().match_name(name.to_string()).execute();
     let link = links.try_next().await?.ok_or_else(|| {
-        CliError::from(format!("Device \"{dev}\" does not exist"))
+        CliError::from(format!("Device \"{name}\" does not exist"))
     })?;
+    Ok(link.header.index)
+}
 
-    let index = link.header.index;
-    msg.header.index = index;
-
-    let mut nl_msg =
-        NetlinkMessage::from(RouteNetlinkMessage::NewAddress(msg));
-    nl_msg.header.flags = match op {
-        AddressModifyOp::Add => {
-            NLM_F_REQUEST | NLM_F_ACK | NLM_F_EXCL | NLM_F_CREATE
-        }
-        AddressModifyOp::Change => NLM_F_REQUEST | NLM_F_ACK | NLM_F_REPLACE,
-        AddressModifyOp::Replace => {
-            NLM_F_REQUEST | NLM_F_ACK | NLM_F_REPLACE | NLM_F_CREATE
-        }
-    };
-
-    let mut response = handle.request(nl_msg).map_err(|e| {
-        CliError::from(format!("{e}"))
-    })?;
+async fn send_and_check(
+    mut handle: rtnetlink::Handle,
+    nl_msg: NetlinkMessage<RouteNetlinkMessage>,
+) -> Result<(), CliError> {
+    let mut response = handle
+        .request(nl_msg)
+        .map_err(|e| CliError::from(format!("{e}")))?;
     while let Some(msg) = response.next().await {
         if let NetlinkPayload::Error(err) = msg.payload {
             return Err(CliError::from(format!(
@@ -257,7 +286,6 @@ pub(crate) async fn handle_modify(
             )));
         }
     }
-
     Ok(())
 }
 
@@ -293,6 +321,7 @@ enum BroadcastSpec {
 }
 
 struct AddressAddConfig {
+    dev: String,
     local: IpAddr,
     prefix_len: u8,
     family: rtnetlink::packet_route::AddressFamily,

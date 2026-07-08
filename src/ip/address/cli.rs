@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    add::{handle_add, handle_modify, AddressModifyOp},
+    add::{AddressModifyOp, handle_add, handle_delete, handle_modify},
     show::handle_show,
 };
 use crate::{CliError, link::CliLinkInfo};
@@ -50,7 +50,17 @@ impl AddressCommand {
                     ),
             )
             .subcommand(
-                clap::Command::new("delete").about("delete address from link"),
+                clap::Command::new("delete")
+                    .about("delete address from link")
+                    .alias("delet")
+                    .alias("dele")
+                    .alias("del")
+                    .alias("d")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
             )
             .subcommand(
                 clap::Command::new("change")
@@ -103,6 +113,14 @@ impl AddressCommand {
                 .map(|o| o.to_string())
                 .collect();
             handle_modify(&opts, AddressModifyOp::Replace).await?;
+            Ok(vec![])
+        } else if let Some(matches) = matches.subcommand_matches("delete") {
+            let opts: Vec<String> = matches
+                .get_many::<String>("options")
+                .unwrap_or_default()
+                .map(|o| o.to_string())
+                .collect();
+            handle_delete(&opts).await?;
             Ok(vec![])
         } else if let Some(matches) = matches.subcommand_matches("show") {
             let opts: Vec<&str> = matches
