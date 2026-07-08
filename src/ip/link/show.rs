@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, fmt::Write, io::ErrorKind, os::fd::AsRawFd};
+use std::{collections::HashMap, fmt::Write, os::fd::AsRawFd};
 
 use futures_util::stream::{StreamExt, TryStreamExt};
 use iproute_rs::{
@@ -922,32 +922,24 @@ fn resolve_ip_link_group_name(id: u32) -> String {
 async fn resolve_netns_names(
     links: &mut [CliLinkInfo],
 ) -> Result<(), CliError> {
-    let (conn, mut handle, _) = rtnetlink::new_connection().unwrap();
+    let (conn, mut handle, _) = match rtnetlink::new_connection() {
+        Ok(v) => v,
+        Err(_) => return Ok(()),
+    };
     tokio::spawn(conn);
 
-    // Read netns names from /run/netns
-    let netnses = std::fs::read_dir("/run/netns");
-    if let Err(e) = &netnses
-        && e.kind() == std::io::ErrorKind::NotFound
-    {
-        // No /run/netns, nothing to resolve
-        return Ok(());
-    }
-    let netnses = netnses?;
+    let dir = match std::fs::read_dir("/run/netns") {
+        Ok(d) => d,
+        Err(_) => return Ok(()),
+    };
 
     let mut id_to_name: HashMap<i32, String> = HashMap::new();
-    for netns in netnses {
-        let netns = netns?;
-        let name = netns.file_name().into_string().unwrap_or_default();
-        let file_res = std::fs::File::open(netns.path());
-        // Skip netnses that are not found (might be deleted)
-        if file_res
-            .as_ref()
-            .is_err_and(|e| e.kind() == ErrorKind::NotFound)
-        {
-            continue;
-        }
-        let file = file_res?;
+    for entry in dir.flatten() {
+        let name = entry.file_name().into_string().unwrap_or_default();
+        let file = match std::fs::File::open(entry.path()) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
 
         if let Some(id) =
             get_netns_id_from_fd(&mut handle, file.as_raw_fd() as u32).await
