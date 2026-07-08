@@ -578,6 +578,7 @@ pub(crate) fn parse_protocol_value(s: &str) -> Result<u8, CliError> {
 pub(crate) async fn handle_show(
     opts: &[&str],
     include_details: bool,
+    preferred_family: Option<AddressFamily>,
 ) -> Result<Vec<CliLinkInfo>, CliError> {
     let (addr_filter, link_opts) = AddressShowFilter::parse(opts)?;
     let link_opts_refs: Vec<&str> =
@@ -617,6 +618,11 @@ pub(crate) async fn handle_show(
     }
 
     for msg in &address_msgs {
+        if let Some(family) = preferred_family
+            && msg.header.family != family
+        {
+            continue;
+        }
         let addr_info = parse_nl_msg_to_address(msg.clone())?;
         if addr_filter.matches(&addr_info, msg) {
             addresses_infos.push(addr_info);

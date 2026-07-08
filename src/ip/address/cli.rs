@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use rtnetlink::packet_route::AddressFamily;
+
 use super::{
     add::{AddressModifyOp, handle_add, handle_delete, handle_modify},
     save::{handle_flush, handle_restore, handle_save, handle_showdump},
@@ -131,6 +133,7 @@ impl AddressCommand {
 
     pub(crate) async fn handle(
         matches: &clap::ArgMatches,
+        preferred_family: Option<AddressFamily>,
     ) -> Result<Vec<CliLinkInfo>, CliError> {
         if let Some(matches) = matches.subcommand_matches("add") {
             let opts: Vec<String> = matches
@@ -172,28 +175,38 @@ impl AddressCommand {
             Ok(vec![])
         } else if matches.subcommand_matches("help").is_some() {
             let msg = concat!(
-                "Usage: ip address {add|change|replace} IFADDR dev IFNAME [ LIFETIME ]\n",
-                "                                                      [ CONFFLAG-LIST ]\n",
+                "Usage: ip address {add|change|replace} IFADDR dev IFNAME [ \
+                 LIFETIME ]\n",
+                "                                                      [ \
+                 CONFFLAG-LIST ]\n",
                 "       ip address del IFADDR dev IFNAME [mngtmpaddr]\n",
-                "       ip address {save|flush} [ dev IFNAME ] [ scope SCOPE-ID ] [ to PREFIX ]\n",
-                "                            [ FLAG-LIST ] [ label LABEL ] [ { up | down } ]\n",
-                "       ip address [ show [ dev IFNAME ] [ scope SCOPE-ID ] [ master DEVICE ]\n",
+                "       ip address {save|flush} [ dev IFNAME ] [ scope \
+                 SCOPE-ID ] [ to PREFIX ]\n",
+                "                            [ FLAG-LIST ] [ label LABEL ] [ \
+                 { up | down } ]\n",
+                "       ip address [ show [ dev IFNAME ] [ scope SCOPE-ID ] [ \
+                 master DEVICE ]\n",
                 "                         [ nomaster ]\n",
-                "                         [ type TYPE ] [ to PREFIX ] [ FLAG-LIST ]\n",
-                "                         [ label LABEL ] [ { up | down } ] [ vrf NAME ]\n",
+                "                         [ type TYPE ] [ to PREFIX ] [ \
+                 FLAG-LIST ]\n",
+                "                         [ label LABEL ] [ { up | down } ] [ \
+                 vrf NAME ]\n",
                 "                         [ proto ADDRPROTO ] ]\n",
                 "       ip address {showdump|restore}\n",
                 "IFADDR := PREFIX | ADDR peer PREFIX\n",
                 "          [ broadcast ADDR ] [ anycast ADDR ]\n",
-                "          [ label IFNAME ] [ scope SCOPE-ID ] [ metric METRIC ]\n",
+                "          [ label IFNAME ] [ scope SCOPE-ID ] [ metric \
+                 METRIC ]\n",
                 "          [ proto ADDRPROTO ]\n",
                 "SCOPE-ID := [ host | link | global | NUMBER ]\n",
                 "FLAG-LIST := [ FLAG-LIST ] FLAG\n",
                 "FLAG  := [ permanent | dynamic | secondary | primary |\n",
-                "           [-]tentative | [-]deprecated | [-]dadfailed | temporary |\n",
+                "           [-]tentative | [-]deprecated | [-]dadfailed | \
+                 temporary |\n",
                 "           CONFFLAG-LIST ]\n",
                 "CONFFLAG-LIST := [ CONFFLAG-LIST ] CONFFLAG\n",
-                "CONFFLAG  := [ home | nodad | mngtmpaddr | noprefixroute | autojoin ]\n",
+                "CONFFLAG  := [ home | nodad | mngtmpaddr | noprefixroute | \
+                 autojoin ]\n",
                 "LIFETIME := [ valid_lft LFT ] [ preferred_lft LFT ]\n",
                 "LFT := forever | SECONDS\n",
                 "ADDRPROTO := [ NAME | NUMBER ]\n",
@@ -217,9 +230,11 @@ impl AddressCommand {
                 .unwrap_or_default()
                 .map(String::as_str)
                 .collect();
-            handle_show(&opts, matches.get_flag("DETAILS")).await
+            handle_show(&opts, matches.get_flag("DETAILS"), preferred_family)
+                .await
         } else {
-            handle_show(&[], matches.get_flag("DETAILS")).await
+            handle_show(&[], matches.get_flag("DETAILS"), preferred_family)
+                .await
         }
     }
 }

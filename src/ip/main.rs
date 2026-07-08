@@ -10,9 +10,37 @@ mod tests;
 use std::io::IsTerminal;
 
 use iproute_rs::{CliColor, CliError, OutputFormat, print_result_and_exit};
+use rtnetlink::packet_route::AddressFamily;
 
 use self::{address::AddressCommand, link::LinkCommand};
 use crate::neighbour::NeighbourCommand;
+
+pub(crate) fn resolve_preferred_family(
+    matches: &clap::ArgMatches,
+) -> Option<AddressFamily> {
+    if matches.get_flag("FAMILY4") {
+        return Some(AddressFamily::Inet);
+    }
+    if matches.get_flag("FAMILY6") {
+        return Some(AddressFamily::Inet6);
+    }
+    if matches.get_flag("FAMILYM") {
+        return Some(AddressFamily::Bridge);
+    }
+    if matches.get_flag("FAMILY0") {
+        return Some(AddressFamily::Unspec);
+    }
+    if let Some(family) = matches.get_one::<String>("FAMILY") {
+        return match family.as_str() {
+            "inet" => Some(AddressFamily::Inet),
+            "inet6" => Some(AddressFamily::Inet6),
+            "bridge" => Some(AddressFamily::Bridge),
+            "link" | "mpls" => Some(AddressFamily::Unspec),
+            _ => None,
+        };
+    }
+    None
+}
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), CliError> {
@@ -64,6 +92,42 @@ async fn main() -> Result<(), CliError> {
                 .action(clap::ArgAction::SetTrue)
                 .global(true),
         )
+        .arg(
+            clap::Arg::new("FAMILY4")
+                .short('4')
+                .help("IPv4 only")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            clap::Arg::new("FAMILY6")
+                .short('6')
+                .help("IPv6 only")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            clap::Arg::new("FAMILYM")
+                .short('B')
+                .help("Bridge only")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            clap::Arg::new("FAMILY0")
+                .short('0')
+                .help("Link layer only")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            clap::Arg::new("FAMILY")
+                .short('f')
+                .long("family")
+                .help("Address family")
+                .value_parser(["inet", "inet6", "bridge", "mpls", "link"])
+                .global(true),
+        )
         .subcommand_required(true)
         .subcommand(LinkCommand::gen_command())
         .subcommand(AddressCommand::gen_command())
@@ -93,7 +157,11 @@ async fn main() -> Result<(), CliError> {
     } else if let Some(matches) =
         matches.subcommand_matches(AddressCommand::CMD)
     {
-        print_result_and_exit(AddressCommand::handle(matches).await, fmt);
+        let preferred_family = resolve_preferred_family(matches);
+        print_result_and_exit(
+            AddressCommand::handle(matches, preferred_family).await,
+            fmt,
+        );
     } else if let Some(matches) =
         matches.subcommand_matches(NeighbourCommand::CMD)
     {
