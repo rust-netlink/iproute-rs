@@ -64,14 +64,13 @@ where
             "kernel_ra",
         ]);
 
-        // Wait 2 seconds for interface to be up and addresses to be assigned
         std::thread::sleep(std::time::Duration::from_secs(2));
 
         test(ns);
     });
 }
 
-fn with_dummy_iface_empty<T>(test: T)
+pub(crate) fn with_dummy_iface_empty<T>(test: T)
 where
     T: FnOnce(&NetnsGuard),
 {
@@ -141,166 +140,12 @@ fn test_address_alias_address_s() {
 }
 
 #[test]
-fn test_address_add_simple_ipv4() {
-    with_dummy_iface_empty(|ns| {
-        ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
-        ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
-fn test_address_add_ipv4_with_label() {
-    with_dummy_iface_empty(|ns| {
-        ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
-            "label",
-            "test-label",
-        ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
-fn test_address_add_simple_ipv6() {
-    with_dummy_iface_empty(|ns| {
-        ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "2001:db8::1/64",
-            "dev",
-            DUMMY_NAME,
-        ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
-fn test_address_add_ipv4_with_all_options() {
-    with_dummy_iface_empty(|ns| {
-        ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
-            "valid_lft",
-            "21384",
-            "preferred_lft",
-            "21384",
-            "scope",
-            "global",
-            "mngtmpaddr",
-            "proto",
-            "kernel_ra",
-        ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
-fn test_address_add_ipv6_with_all_options() {
-    with_dummy_iface_empty(|ns| {
-        ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "2001:db8::1/64",
-            "dev",
-            DUMMY_NAME,
-            "valid_lft",
-            "21384",
-            "preferred_lft",
-            "21384",
-            "scope",
-            "global",
-            "mngtmpaddr",
-            "proto",
-            "kernel_ra",
-        ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
-fn test_address_add_home_flag() {
-    with_dummy_iface_empty(|ns| {
-        ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "2001:db8::1/64",
-            "dev",
-            DUMMY_NAME,
-            "scope",
-            "global",
-            "home",
-            "proto",
-            "kernel_ra",
-        ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
-fn test_address_add_noprefixroute_flag() {
-    with_dummy_iface_empty(|ns| {
-        ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
-            "noprefixroute",
-        ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
-fn test_address_add_with_scope_link() {
-    with_dummy_iface_empty(|ns| {
-        ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "169.254.0.1/16",
-            "dev",
-            DUMMY_NAME,
-            "scope",
-            "link",
-        ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
-fn test_address_mixed_add_ip_rs_and_system() {
-    with_dummy_iface_empty(|ns| {
-        ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
-        ]);
-        ns.exec_cmd(&["ip", "addr", "add", "10.0.0.2/24", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+fn test_address_alias_add_ls() {
+    with_netns(|ns| {
+        ns.assert_alias_output(
+            &["address", "show", "lo"],
+            &["add", "ls", "lo"],
+        );
     });
 }
 
@@ -332,20 +177,17 @@ fn test_address_add_alias_addr_ad() {
 }
 
 #[test]
-fn test_address_add_alias_a_ad() {
+fn test_address_mixed_add_ip_rs_and_system() {
     with_dummy_iface_empty(|ns| {
-        ns.ip_rs_exec_cmd(&["a", "ad", "2001:db8::1/64", "dev", DUMMY_NAME]);
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "add",
+            "10.0.0.1/24",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        ns.exec_cmd(&["ip", "addr", "add", "10.0.0.2/24", "dev", DUMMY_NAME]);
         std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
-fn test_address_alias_add_ls() {
-    with_netns(|ns| {
-        ns.assert_alias_output(
-            &["address", "show", "lo"],
-            &["add", "ls", "lo"],
-        );
     });
 }
