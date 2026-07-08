@@ -57,6 +57,12 @@ impl NetnsGuard {
     }
 
     pub fn ip_rs_exec_cmd(&self, args: &[&str]) -> String {
+        let raw = self.ip_rs_exec_cmd_raw(args);
+        String::from_utf8(raw)
+            .expect("Failed to convert command output to String")
+    }
+
+    pub fn ip_rs_exec_cmd_raw(&self, args: &[&str]) -> Vec<u8> {
         let mut cur_exec_path =
             std::env::current_exe().expect("No current exec path");
         cur_exec_path.pop();
@@ -81,8 +87,7 @@ impl NetnsGuard {
             panic!("Command failed: {args:?}\nstderr: {stderr}");
         }
 
-        String::from_utf8(output.stdout)
-            .expect("Failed to convert command output to String")
+        output.stdout
     }
 
     pub fn assert_alias_output(

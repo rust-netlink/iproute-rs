@@ -6,3 +6,5 @@ mod address;
 mod ipv4;
 #[cfg(test)]
 mod ipv6;
+#[cfg(test)]
+mod save_restore;

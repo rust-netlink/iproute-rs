@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    add::{AddressModifyOp, handle_add, handle_delete, handle_modify},
+    add::{handle_add, handle_delete, handle_modify, AddressModifyOp},
+    save::{handle_restore, handle_save},
     show::handle_show,
 };
 use crate::{CliError, link::CliLinkInfo};
@@ -85,6 +86,18 @@ impl AddressCommand {
                             .trailing_var_arg(true),
                     ),
             )
+            .subcommand(
+                clap::Command::new("save")
+                    .alias("sav")
+                    .about("save protocol address to stdout"),
+            )
+            .subcommand(
+                clap::Command::new("restore")
+                    .alias("rest")
+                    .alias("resto")
+                    .alias("restor")
+                    .about("restore protocol address from stdin"),
+            )
     }
 
     pub(crate) async fn handle(
@@ -121,6 +134,12 @@ impl AddressCommand {
                 .map(|o| o.to_string())
                 .collect();
             handle_delete(&opts).await?;
+            Ok(vec![])
+        } else if matches.subcommand_matches("save").is_some() {
+            handle_save().await?;
+            Ok(vec![])
+        } else if matches.subcommand_matches("restore").is_some() {
+            handle_restore().await?;
             Ok(vec![])
         } else if let Some(matches) = matches.subcommand_matches("show") {
             let opts: Vec<&str> = matches
