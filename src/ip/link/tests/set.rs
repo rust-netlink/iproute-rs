@@ -367,6 +367,126 @@ fn test_set_vrf_mtu() {
     });
 }
 
+// --- Inet tests ---
+
+fn with_dummy_inet_iface<T>(test: T)
+where
+    T: FnOnce(&NetnsGuard),
+{
+    with_netns(|ns| {
+        ns.ip_rs_exec_cmd(&["link", "add", DUMMY_NAME, "type", "dummy"]);
+        // inet_set_link_af requires in_device which is only created after
+        // an IPv4 address is assigned to the interface
+        ns.exec_cmd(&["ip", "addr", "add", "192.0.2.1/32", "dev", DUMMY_NAME]);
+        test(ns);
+    });
+}
+
+#[test]
+fn test_set_inet_forwarding_on() {
+    with_dummy_inet_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            DUMMY_NAME,
+            "inet",
+            "forwarding",
+            "on",
+        ]);
+        ns.assert_eq_output(&["link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_set_inet_forwarding_off() {
+    with_dummy_inet_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            DUMMY_NAME,
+            "inet",
+            "forwarding",
+            "off",
+        ]);
+        ns.assert_eq_output(&["link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_set_inet_proxy_arp_on() {
+    with_dummy_inet_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            DUMMY_NAME,
+            "inet",
+            "proxy_arp",
+            "on",
+        ]);
+        ns.assert_eq_output(&["link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_set_inet_accept_redirects_off() {
+    with_dummy_inet_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            DUMMY_NAME,
+            "inet",
+            "accept_redirects",
+            "off",
+        ]);
+        ns.assert_eq_output(&["link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_set_inet_arp_ignore() {
+    with_dummy_inet_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            DUMMY_NAME,
+            "inet",
+            "arp_ignore",
+            "1",
+        ]);
+        ns.assert_eq_output(&["link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_set_inet_rp_filter() {
+    with_dummy_inet_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            DUMMY_NAME,
+            "inet",
+            "rp_filter",
+            "2",
+        ]);
+        ns.assert_eq_output(&["link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_set_inet_arp_announce() {
+    with_dummy_inet_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            DUMMY_NAME,
+            "inet",
+            "arp_announce",
+            "1",
+        ]);
+        ns.assert_eq_output(&["link", "show", DUMMY_NAME]);
+    });
+}
+
 // --- GSO/GRO tests ---
 
 #[test]
@@ -609,5 +729,46 @@ fn test_set_bond_mode_with_type() {
             "balance-rr",
         ]);
         ns.assert_eq_output(&["-d", "link", "show", BOND_NAME]);
+    });
+}
+
+// --- mode tests ---
+
+#[test]
+fn test_set_dummy_mode_default() {
+    with_dummy_iface(|ns| {
+        ns.ip_rs_exec_cmd(&["link", "set", DUMMY_NAME, "mode", "default"]);
+        ns.assert_eq_output(&["link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_set_dummy_mode_dormant() {
+    with_dummy_iface(|ns| {
+        ns.ip_rs_exec_cmd(&["link", "set", DUMMY_NAME, "mode", "dormant"]);
+        ns.assert_eq_output(&["link", "show", DUMMY_NAME]);
+    });
+}
+
+// --- link-netns test ---
+
+#[test]
+fn test_set_link_netns() {
+    const PEER: &str = "test-ln-peer";
+    with_dummy_iface(|ns| {
+        std::process::Command::new("ip")
+            .args(["netns", "add", PEER])
+            .status()
+            .expect("failed to create peer netns");
+        std::process::Command::new("ip")
+            .args(["netns", "exec", &ns.name, "ip", "netns", "set", PEER, "0"])
+            .status()
+            .expect("failed to assign nsid");
+        ns.ip_rs_exec_cmd(&["link", "set", DUMMY_NAME, "link-netns", PEER]);
+        ns.assert_eq_output(&["-d", "link", "show", DUMMY_NAME]);
+        // cleanup
+        let _ = std::process::Command::new("ip")
+            .args(["netns", "del", PEER])
+            .status();
     });
 }

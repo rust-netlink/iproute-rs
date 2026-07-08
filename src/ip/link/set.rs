@@ -5,11 +5,12 @@ use std::os::unix::io::AsRawFd;
 use futures_util::TryStreamExt;
 use iproute_rs::{CliError, parse_mac_str};
 use rtnetlink::packet_route::link::{
-    AfSpecInet6, AfSpecUnspec, In6AddrGenMode, InfoKind, LinkAttribute,
-    LinkFlags, LinkHeader, LinkInfo, LinkMessage, LinkProtocolDownReason,
-    LinkVfInfo, State, VfInfo, VfInfoGuid, VfInfoLinkState, VfInfoMac,
-    VfInfoRate, VfInfoRssQueryEn, VfInfoSpoofCheck, VfInfoTrust, VfInfoTxRate,
-    VfInfoVlan, VfLinkState, VfVlan, VfVlanInfo, VlanProtocol,
+    AfSpecInet, AfSpecInet6, AfSpecUnspec, In6AddrGenMode, InetDevConf,
+    InfoKind, LinkAttribute, LinkFlags, LinkHeader, LinkInfo, LinkMessage,
+    LinkMode, LinkProtocolDownReason, LinkVfInfo, State, VfInfo, VfInfoGuid,
+    VfInfoLinkState, VfInfoMac, VfInfoRate, VfInfoRssQueryEn, VfInfoSpoofCheck,
+    VfInfoTrust, VfInfoTxRate, VfInfoVlan, VfLinkState, VfVlan, VfVlanInfo,
+    VlanProtocol,
 };
 
 use super::{
@@ -219,6 +220,22 @@ async fn handle_link_set_replace(
     if let Some(v) = conf.link_netnsid {
         attrs.push(LinkAttribute::LinkNetNsId(v));
     }
+    if let Some(ref name) = conf.link_netns {
+        let nsid = handle
+            .link()
+            .get_netns_id(name.clone())
+            .execute()
+            .await
+            .map_err(|e| {
+                CliError::from(format!("Failed to resolve link-netns: {e}"))
+            })?
+            .ok_or_else(|| {
+                CliError::from(format!(
+                    "Cannot find network namespace \"{name}\""
+                ))
+            })?;
+        attrs.push(LinkAttribute::LinkNetNsId(nsid));
+    }
     if let Some(v) = conf.addrgenmode {
         attrs.push(LinkAttribute::AfSpecUnspec(vec![AfSpecUnspec::Inet6(
             vec![AfSpecInet6::AddrGenMode(v)],
@@ -226,6 +243,9 @@ async fn handle_link_set_replace(
     }
     if let Some(v) = conf.parentdev_name {
         attrs.push(LinkAttribute::ParentDevName(v));
+    }
+    if let Some(v) = conf.mode {
+        attrs.push(LinkAttribute::Mode(LinkMode::from(v)));
     }
 
     if !conf.vf_configs.is_empty() {
@@ -287,6 +307,97 @@ async fn handle_link_set_replace(
         if !link_infos.is_empty() {
             attrs.push(LinkAttribute::LinkInfo(link_infos));
         }
+    }
+
+    if !conf.inet.is_empty() {
+        let mut devconf = InetDevConf::default();
+        for (key, val) in &conf.inet {
+            let on = val == "on";
+            match key.as_str() {
+                "forwarding" => devconf.forwarding = if on { 1 } else { 0 },
+                "mc_forwarding" => {
+                    devconf.mc_forwarding = if on { 1 } else { 0 }
+                }
+                "proxy_arp" => devconf.proxy_arp = if on { 1 } else { 0 },
+                "accept_redirects" => {
+                    devconf.accept_redirects = if on { 1 } else { 0 }
+                }
+                "secure_redirects" => {
+                    devconf.secure_redirects = if on { 1 } else { 0 }
+                }
+                "send_redirects" => {
+                    devconf.send_redirects = if on { 1 } else { 0 }
+                }
+                "shared_media" => devconf.shared_media = if on { 1 } else { 0 },
+                "rp_filter" => {
+                    devconf.rp_filter = val.parse::<i32>().unwrap_or(0)
+                }
+                "accept_source_route" => {
+                    devconf.accept_source_route = if on { 1 } else { 0 }
+                }
+                "bootp_relay" => devconf.bootp_relay = if on { 1 } else { 0 },
+                "log_martians" => devconf.log_martians = if on { 1 } else { 0 },
+                "tag" => devconf.tag = val.parse::<i32>().unwrap_or(0),
+                "arp_filter" => devconf.arpfilter = if on { 1 } else { 0 },
+                "medium_id" => {
+                    devconf.medium_id = val.parse::<i32>().unwrap_or(0)
+                }
+                "disable_xfrm" => devconf.noxfrm = if on { 1 } else { 0 },
+                "disable_policy" => devconf.nopolicy = if on { 1 } else { 0 },
+                "force_igmp_version" => {
+                    devconf.force_igmp_version = val.parse::<i32>().unwrap_or(0)
+                }
+                "arp_announce" => {
+                    devconf.arp_announce = val.parse::<i32>().unwrap_or(0)
+                }
+                "arp_ignore" => {
+                    devconf.arp_ignore = val.parse::<i32>().unwrap_or(0)
+                }
+                "promote_secondaries" => {
+                    devconf.promote_secondaries = if on { 1 } else { 0 }
+                }
+                "arp_accept" => {
+                    devconf.arp_accept = val.parse::<i32>().unwrap_or(0)
+                }
+                "arp_notify" => devconf.arp_notify = if on { 1 } else { 0 },
+                "accept_local" => devconf.accept_local = if on { 1 } else { 0 },
+                "src_vmark" => devconf.src_vmark = if on { 1 } else { 0 },
+                "proxy_arp_pvlan" => {
+                    devconf.proxy_arp_pvlan = if on { 1 } else { 0 }
+                }
+                "route_localnet" => {
+                    devconf.route_localnet = if on { 1 } else { 0 }
+                }
+                "igmpv2_unsolicited_report_interval" => {
+                    devconf.igmpv2_unsolicited_report_interval =
+                        val.parse::<i32>().unwrap_or(0)
+                }
+                "igmpv3_unsolicited_report_interval" => {
+                    devconf.igmpv3_unsolicited_report_interval =
+                        val.parse::<i32>().unwrap_or(0)
+                }
+                "ignore_routes_with_linkdown" => {
+                    devconf.ignore_routes_with_linkdown = if on { 1 } else { 0 }
+                }
+                "drop_unicast_in_l2_multicast" => {
+                    devconf.drop_unicast_in_l2_multicast =
+                        if on { 1 } else { 0 }
+                }
+                "drop_gratuitous_arp" => {
+                    devconf.drop_gratuitous_arp = if on { 1 } else { 0 }
+                }
+                "bc_forwarding" => {
+                    devconf.bc_forwarding = if on { 1 } else { 0 }
+                }
+                "arp_evict_nocarrier" => {
+                    devconf.arp_evict_nocarrier = if on { 1 } else { 0 }
+                }
+                _ => {}
+            }
+        }
+        attrs.push(LinkAttribute::AfSpecUnspec(vec![AfSpecUnspec::Inet(
+            vec![AfSpecInet::DevConfRequest(devconf)],
+        )]));
     }
 
     if let Some(ref xdp_conf) = conf.xdp {
@@ -364,11 +475,14 @@ struct LinkSetConf {
     gro_max_size: Option<u32>,
     gro_ipv4_max_size: Option<u32>,
     link_netnsid: Option<i32>,
+    link_netns: Option<String>,
     addrgenmode: Option<In6AddrGenMode>,
     parentdev_name: Option<String>,
+    mode: Option<u8>,
     vf_configs: Vec<VfConfig>,
     iface_type: Option<InfoKind>,
     iface_specific: Vec<String>,
+    inet: Vec<(String, String)>,
     xdp: Option<XdpConfig>,
 }
 
@@ -403,11 +517,14 @@ impl LinkSetConf {
         let mut gro_max_size = None;
         let mut gro_ipv4_max_size = None;
         let mut link_netnsid = None;
+        let mut link_netns_name = None;
         let mut addrgenmode = None;
         let mut parentdev_name = None;
+        let mut mode = None;
         let mut vf_configs: Vec<VfConfig> = Vec::new();
         let mut iface_type = None;
         let mut iface_specific = Vec::new();
+        let mut inet = Vec::new();
         let mut xdp = None;
 
         let mut iter = args.iter().peekable();
@@ -645,6 +762,35 @@ impl LinkSetConf {
                     };
                     parentdev_name = Some(v.clone());
                 }
+                "mode" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"mode\" requires a value",
+                        ));
+                    };
+                    mode = Some(match v.as_str() {
+                        "default" => 0,
+                        "dormant" => 1,
+                        _ => {
+                            return Err(CliError::from(format!(
+                                "Invalid link mode: {v}"
+                            )));
+                        }
+                    });
+                }
+                "link-netns" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "\"link-netns\" requires a value",
+                        ));
+                    };
+                    if link_netnsid.is_some() || link_netns_name.is_some() {
+                        return Err(CliError::from(
+                            "Duplicate \"link-netns/link-netnsid\" argument",
+                        ));
+                    }
+                    link_netns_name = Some(v.clone());
+                }
                 "link-netnsid" => {
                     let Some(v) = iter.next() else {
                         return Err(CliError::from(
@@ -870,6 +1016,66 @@ impl LinkSetConf {
                     }
                     vf_configs.push(cfg);
                 }
+                "inet" => loop {
+                    match iter.peek().map(|s| s.as_str()) {
+                        Some(
+                            "forwarding"
+                            | "proxy_arp"
+                            | "accept_redirects"
+                            | "secure_redirects"
+                            | "send_redirects"
+                            | "shared_media"
+                            | "accept_source_route"
+                            | "bootp_relay"
+                            | "log_martians"
+                            | "arp_filter"
+                            | "disable_xfrm"
+                            | "disable_policy"
+                            | "promote_secondaries"
+                            | "arp_notify"
+                            | "accept_local"
+                            | "src_vmark"
+                            | "proxy_arp_pvlan"
+                            | "route_localnet"
+                            | "bc_forwarding"
+                            | "ignore_routes_with_linkdown"
+                            | "drop_unicast_in_l2_multicast"
+                            | "drop_gratuitous_arp"
+                            | "arp_evict_nocarrier"
+                            | "mc_forwarding",
+                        ) => {
+                            let key = iter.next().unwrap();
+                            let Some(val) = iter.next() else {
+                                return Err(CliError::from(format!(
+                                    "\"{key}\" requires a value"
+                                )));
+                            };
+                            parse_on_off(val)?;
+                            inet.push((key.to_string(), val.clone()));
+                        }
+                        Some(
+                            "rp_filter"
+                            | "arp_announce"
+                            | "arp_accept"
+                            | "arp_ignore"
+                            | "force_igmp_version"
+                            | "tag"
+                            | "medium_id"
+                            | "igmpv2_unsolicited_report_interval"
+                            | "igmpv3_unsolicited_report_interval",
+                        ) => {
+                            let key = iter.next().unwrap();
+                            let Some(val) = iter.next() else {
+                                return Err(CliError::from(format!(
+                                    "\"{key}\" requires a value"
+                                )));
+                            };
+                            parse_u32(val, key)?;
+                            inet.push((key.to_string(), val.clone()));
+                        }
+                        _ => break,
+                    }
+                },
                 "type" => {
                     let Some(kind_str) = iter.next() else {
                         return Err(CliError::from(
@@ -934,11 +1140,14 @@ impl LinkSetConf {
             gro_max_size,
             gro_ipv4_max_size,
             link_netnsid,
+            link_netns: link_netns_name,
             addrgenmode,
             parentdev_name,
+            mode,
             vf_configs,
             iface_type,
             iface_specific,
+            inet,
             xdp,
         })
     }
