@@ -67,224 +67,243 @@ impl LinkSetCommand {
             .unwrap_or_default()
             .map(|o| o.to_string())
             .collect();
+        handle_link_set_replace(&opts, false).await
+    }
 
-        let conf = LinkSetConf::parse(&opts)?;
+    pub(crate) async fn handle_replace(
+        matches: &clap::ArgMatches,
+    ) -> Result<Vec<CliLinkInfo>, CliError> {
+        let opts: Vec<String> = matches
+            .get_many::<String>("options")
+            .unwrap_or_default()
+            .map(|o| o.to_string())
+            .collect();
+        handle_link_set_replace(&opts, true).await
+    }
+}
 
-        let (connection, handle, _) = rtnetlink::new_connection()?;
-        tokio::spawn(connection);
+async fn handle_link_set_replace(
+    opts: &[String],
+    is_replace: bool,
+) -> Result<Vec<CliLinkInfo>, CliError> {
+    let conf = LinkSetConf::parse(opts)?;
 
-        let mut header = LinkHeader::default();
-        let mut attrs: Vec<LinkAttribute> = Vec::new();
+    let (connection, handle, _) = rtnetlink::new_connection()?;
+    tokio::spawn(connection);
 
+    let mut header = LinkHeader::default();
+    let mut attrs: Vec<LinkAttribute> = Vec::new();
+
+    if is_replace {
+        if conf.name.is_none() {
+            attrs.push(LinkAttribute::IfName(conf.dev.clone()));
+        }
+    } else {
         let ifindex = get_ifindex_by_name(&handle, &conf.dev).await?;
         header.index = ifindex;
-
-        if let Some(v) = conf.up {
-            if v {
-                header.flags |= LinkFlags::Up;
-            } else {
-                header.flags.remove(LinkFlags::Up);
-            }
-            header.change_mask |= LinkFlags::Up;
-        }
-
-        if let Some(v) = conf.name {
-            attrs.push(LinkAttribute::IfName(v));
-        }
-        if let Some(v) = conf.mtu {
-            attrs.push(LinkAttribute::Mtu(v));
-        }
-        if let Some(v) = conf.address {
-            attrs.push(LinkAttribute::Address(v));
-        }
-        if let Some(v) = conf.broadcast {
-            attrs.push(LinkAttribute::Broadcast(v));
-        }
-        if let Some(v) = conf.txqueuelen {
-            attrs.push(LinkAttribute::TxQueueLen(v));
-        }
-        if let Some(v) = conf.arp {
-            if !v {
-                header.flags |= LinkFlags::Noarp;
-            }
-            header.change_mask |= LinkFlags::Noarp;
-        }
-        if let Some(v) = conf.multicast {
-            if v {
-                header.flags |= LinkFlags::Multicast;
-            }
-            header.change_mask |= LinkFlags::Multicast;
-        }
-        if let Some(v) = conf.allmulticast {
-            if v {
-                header.flags |= LinkFlags::Allmulti;
-            }
-            header.change_mask |= LinkFlags::Allmulti;
-        }
-        if let Some(v) = conf.promisc {
-            if v {
-                header.flags |= LinkFlags::Promisc;
-            }
-            header.change_mask |= LinkFlags::Promisc;
-        }
-        if let Some(v) = conf.dynamic {
-            if v {
-                header.flags |= LinkFlags::Dynamic;
-            }
-            header.change_mask |= LinkFlags::Dynamic;
-        }
-        if let Some(v) = conf.notrailers {
-            if v {
-                header.flags.remove(LinkFlags::Notrailers);
-            } else {
-                header.flags |= LinkFlags::Notrailers;
-            }
-            header.change_mask |= LinkFlags::Notrailers;
-        }
-        if let Some(master) = conf.master {
-            let ctrl_index = get_ifindex_by_name(&handle, &master).await?;
-            attrs.push(LinkAttribute::Controller(ctrl_index));
-        }
-        if conf.nomaster {
-            attrs.push(LinkAttribute::Controller(0));
-        }
-        if let Some(v) = conf.group {
-            attrs.push(LinkAttribute::Group(v));
-        }
-        if let Some(v) = conf.netns_pid {
-            attrs.push(LinkAttribute::NetNsPid(v));
-        }
-        if let Some(ref file) = conf.netns_file {
-            attrs.push(LinkAttribute::NetNsFd(file.as_raw_fd()));
-        }
-        if let Some(v) = conf.protodown {
-            attrs.push(LinkAttribute::ProtoDown(if v { 1 } else { 0 }));
-        }
-        if let Some(v) = conf.carrier {
-            attrs.push(LinkAttribute::Carrier(if v { 1 } else { 0 }));
-        }
-        if let Some(v) = conf.state {
-            attrs.push(LinkAttribute::OperState(v));
-        }
-        if let Some(v) = conf.alias {
-            attrs.push(LinkAttribute::IfAlias(v));
-        }
-        if let Some((preason, on)) = conf.proto_down_reason {
-            let mask = 1u32.checked_shl(preason).unwrap_or(0);
-            let value = if on { mask } else { 0 };
-            attrs.push(LinkAttribute::ProtoDownReason(vec![
-                LinkProtocolDownReason::Mask(mask),
-                LinkProtocolDownReason::Value(value),
-            ]));
-        }
-        if let Some(v) = conf.gso_max_size {
-            attrs.push(LinkAttribute::GsoMaxSize(v));
-        }
-        if let Some(v) = conf.gso_ipv4_max_size {
-            attrs.push(LinkAttribute::GsoIpv4MaxSize(v));
-        }
-        if let Some(v) = conf.gso_max_segs {
-            attrs.push(LinkAttribute::GsoMaxSegs(v));
-        }
-        if let Some(v) = conf.gro_max_size {
-            attrs.push(LinkAttribute::GroMaxSize(v));
-        }
-        if let Some(v) = conf.gro_ipv4_max_size {
-            attrs.push(LinkAttribute::GroIpv4MaxSize(v));
-        }
-        if let Some(v) = conf.link_netnsid {
-            attrs.push(LinkAttribute::LinkNetNsId(v));
-        }
-        if let Some(v) = conf.addrgenmode {
-            attrs.push(LinkAttribute::AfSpecUnspec(vec![AfSpecUnspec::Inet6(
-                vec![AfSpecInet6::AddrGenMode(v)],
-            )]));
-        }
-        if let Some(v) = conf.parentdev_name {
-            attrs.push(LinkAttribute::ParentDevName(v));
-        }
-
-        if !conf.vf_configs.is_empty() {
-            let mut vf_info_list: Vec<LinkVfInfo> = Vec::new();
-            for vf in &conf.vf_configs {
-                let mut infos: Vec<VfInfo> = Vec::new();
-                if let Some(mac) = vf.mac {
-                    infos
-                        .push(VfInfo::Mac(VfInfoMac::new(vf.vf_num, &mac[..])));
-                }
-                if let Some(vlan) = vf.vlan {
-                    infos.push(VfInfo::Vlan(vlan));
-                }
-                if !vf.vlan_list.is_empty() {
-                    let vlan_nlas: Vec<VfVlan> = vf
-                        .vlan_list
-                        .iter()
-                        .map(|vi| VfVlan::Info(*vi))
-                        .collect();
-                    infos.push(VfInfo::VlanList(vlan_nlas));
-                }
-                if let Some(tx) = vf.tx_rate {
-                    infos.push(VfInfo::TxRate(tx));
-                }
-                if let Some(rate) = vf.rate {
-                    infos.push(VfInfo::Rate(rate));
-                }
-                if let Some(enabled) = vf.spoofchk {
-                    infos.push(VfInfo::SpoofCheck(VfInfoSpoofCheck::new(
-                        vf.vf_num, enabled,
-                    )));
-                }
-                if let Some(enabled) = vf.query_rss {
-                    infos.push(VfInfo::RssQueryEn(VfInfoRssQueryEn::new(
-                        vf.vf_num, enabled,
-                    )));
-                }
-                if let Some(enabled) = vf.trust {
-                    infos.push(VfInfo::Trust(VfInfoTrust::new(
-                        vf.vf_num, enabled,
-                    )));
-                }
-                if let Some(state) = vf.link_state {
-                    infos.push(VfInfo::LinkState(VfInfoLinkState::new(
-                        vf.vf_num, state,
-                    )));
-                }
-                if let Some(guid) = vf.node_guid {
-                    infos.push(VfInfo::IbNodeGuid(VfInfoGuid::new(
-                        vf.vf_num, guid,
-                    )));
-                }
-                if let Some(guid) = vf.port_guid {
-                    infos.push(VfInfo::IbPortGuid(VfInfoGuid::new(
-                        vf.vf_num, guid,
-                    )));
-                }
-                vf_info_list.push(LinkVfInfo(infos));
-            }
-            attrs.push(LinkAttribute::VfInfoList(vf_info_list));
-        }
-
-        if let Some(iface_type) = conf.iface_type {
-            let link_infos =
-                build_type_link_info(&handle, iface_type, &conf.iface_specific)
-                    .await?;
-            if !link_infos.is_empty() {
-                attrs.push(LinkAttribute::LinkInfo(link_infos));
-            }
-        }
-
-        if let Some(ref xdp_conf) = conf.xdp {
-            let xdp_attrs = build_xdp_attrs(xdp_conf)?;
-            attrs.push(LinkAttribute::Xdp(xdp_attrs));
-        }
-
-        let mut message = LinkMessage::default();
-        message.header = header;
-        message.attributes = attrs;
-        handle.link().change(message).execute().await?;
-
-        Ok(vec![])
     }
+
+    if let Some(v) = conf.up {
+        if v {
+            header.flags |= LinkFlags::Up;
+        } else {
+            header.flags.remove(LinkFlags::Up);
+        }
+        header.change_mask |= LinkFlags::Up;
+    }
+
+    if let Some(v) = conf.name {
+        attrs.push(LinkAttribute::IfName(v));
+    }
+    if let Some(v) = conf.mtu {
+        attrs.push(LinkAttribute::Mtu(v));
+    }
+    if let Some(v) = conf.address {
+        attrs.push(LinkAttribute::Address(v));
+    }
+    if let Some(v) = conf.broadcast {
+        attrs.push(LinkAttribute::Broadcast(v));
+    }
+    if let Some(v) = conf.txqueuelen {
+        attrs.push(LinkAttribute::TxQueueLen(v));
+    }
+    if let Some(v) = conf.arp {
+        if !v {
+            header.flags |= LinkFlags::Noarp;
+        }
+        header.change_mask |= LinkFlags::Noarp;
+    }
+    if let Some(v) = conf.multicast {
+        if v {
+            header.flags |= LinkFlags::Multicast;
+        }
+        header.change_mask |= LinkFlags::Multicast;
+    }
+    if let Some(v) = conf.allmulticast {
+        if v {
+            header.flags |= LinkFlags::Allmulti;
+        }
+        header.change_mask |= LinkFlags::Allmulti;
+    }
+    if let Some(v) = conf.promisc {
+        if v {
+            header.flags |= LinkFlags::Promisc;
+        }
+        header.change_mask |= LinkFlags::Promisc;
+    }
+    if let Some(v) = conf.dynamic {
+        if v {
+            header.flags |= LinkFlags::Dynamic;
+        }
+        header.change_mask |= LinkFlags::Dynamic;
+    }
+    if let Some(v) = conf.notrailers {
+        if v {
+            header.flags.remove(LinkFlags::Notrailers);
+        } else {
+            header.flags |= LinkFlags::Notrailers;
+        }
+        header.change_mask |= LinkFlags::Notrailers;
+    }
+    if let Some(master) = conf.master {
+        let ctrl_index = get_ifindex_by_name(&handle, &master).await?;
+        attrs.push(LinkAttribute::Controller(ctrl_index));
+    }
+    if conf.nomaster {
+        attrs.push(LinkAttribute::Controller(0));
+    }
+    if let Some(v) = conf.group {
+        attrs.push(LinkAttribute::Group(v));
+    }
+    if let Some(v) = conf.netns_pid {
+        attrs.push(LinkAttribute::NetNsPid(v));
+    }
+    if let Some(ref file) = conf.netns_file {
+        attrs.push(LinkAttribute::NetNsFd(file.as_raw_fd()));
+    }
+    if let Some(v) = conf.protodown {
+        attrs.push(LinkAttribute::ProtoDown(if v { 1 } else { 0 }));
+    }
+    if let Some(v) = conf.carrier {
+        attrs.push(LinkAttribute::Carrier(if v { 1 } else { 0 }));
+    }
+    if let Some(v) = conf.state {
+        attrs.push(LinkAttribute::OperState(v));
+    }
+    if let Some(v) = conf.alias {
+        attrs.push(LinkAttribute::IfAlias(v));
+    }
+    if let Some((preason, on)) = conf.proto_down_reason {
+        let mask = 1u32.checked_shl(preason).unwrap_or(0);
+        let value = if on { mask } else { 0 };
+        attrs.push(LinkAttribute::ProtoDownReason(vec![
+            LinkProtocolDownReason::Mask(mask),
+            LinkProtocolDownReason::Value(value),
+        ]));
+    }
+    if let Some(v) = conf.gso_max_size {
+        attrs.push(LinkAttribute::GsoMaxSize(v));
+    }
+    if let Some(v) = conf.gso_ipv4_max_size {
+        attrs.push(LinkAttribute::GsoIpv4MaxSize(v));
+    }
+    if let Some(v) = conf.gso_max_segs {
+        attrs.push(LinkAttribute::GsoMaxSegs(v));
+    }
+    if let Some(v) = conf.gro_max_size {
+        attrs.push(LinkAttribute::GroMaxSize(v));
+    }
+    if let Some(v) = conf.gro_ipv4_max_size {
+        attrs.push(LinkAttribute::GroIpv4MaxSize(v));
+    }
+    if let Some(v) = conf.link_netnsid {
+        attrs.push(LinkAttribute::LinkNetNsId(v));
+    }
+    if let Some(v) = conf.addrgenmode {
+        attrs.push(LinkAttribute::AfSpecUnspec(vec![AfSpecUnspec::Inet6(
+            vec![AfSpecInet6::AddrGenMode(v)],
+        )]));
+    }
+    if let Some(v) = conf.parentdev_name {
+        attrs.push(LinkAttribute::ParentDevName(v));
+    }
+
+    if !conf.vf_configs.is_empty() {
+        let mut vf_info_list: Vec<LinkVfInfo> = Vec::new();
+        for vf in &conf.vf_configs {
+            let mut infos: Vec<VfInfo> = Vec::new();
+            if let Some(mac) = vf.mac {
+                infos.push(VfInfo::Mac(VfInfoMac::new(vf.vf_num, &mac[..])));
+            }
+            if let Some(vlan) = vf.vlan {
+                infos.push(VfInfo::Vlan(vlan));
+            }
+            if !vf.vlan_list.is_empty() {
+                let vlan_nlas: Vec<VfVlan> =
+                    vf.vlan_list.iter().map(|vi| VfVlan::Info(*vi)).collect();
+                infos.push(VfInfo::VlanList(vlan_nlas));
+            }
+            if let Some(tx) = vf.tx_rate {
+                infos.push(VfInfo::TxRate(tx));
+            }
+            if let Some(rate) = vf.rate {
+                infos.push(VfInfo::Rate(rate));
+            }
+            if let Some(enabled) = vf.spoofchk {
+                infos.push(VfInfo::SpoofCheck(VfInfoSpoofCheck::new(
+                    vf.vf_num, enabled,
+                )));
+            }
+            if let Some(enabled) = vf.query_rss {
+                infos.push(VfInfo::RssQueryEn(VfInfoRssQueryEn::new(
+                    vf.vf_num, enabled,
+                )));
+            }
+            if let Some(enabled) = vf.trust {
+                infos.push(VfInfo::Trust(VfInfoTrust::new(vf.vf_num, enabled)));
+            }
+            if let Some(state) = vf.link_state {
+                infos.push(VfInfo::LinkState(VfInfoLinkState::new(
+                    vf.vf_num, state,
+                )));
+            }
+            if let Some(guid) = vf.node_guid {
+                infos
+                    .push(VfInfo::IbNodeGuid(VfInfoGuid::new(vf.vf_num, guid)));
+            }
+            if let Some(guid) = vf.port_guid {
+                infos
+                    .push(VfInfo::IbPortGuid(VfInfoGuid::new(vf.vf_num, guid)));
+            }
+            vf_info_list.push(LinkVfInfo(infos));
+        }
+        attrs.push(LinkAttribute::VfInfoList(vf_info_list));
+    }
+
+    if let Some(iface_type) = conf.iface_type {
+        let link_infos =
+            build_type_link_info(&handle, iface_type, &conf.iface_specific)
+                .await?;
+        if !link_infos.is_empty() {
+            attrs.push(LinkAttribute::LinkInfo(link_infos));
+        }
+    }
+
+    if let Some(ref xdp_conf) = conf.xdp {
+        let xdp_attrs = build_xdp_attrs(xdp_conf)?;
+        attrs.push(LinkAttribute::Xdp(xdp_attrs));
+    }
+
+    let mut message = LinkMessage::default();
+    message.header = header;
+    message.attributes = attrs;
+    if is_replace {
+        handle.link().add(message).replace().execute().await?;
+    } else {
+        handle.link().change(message).execute().await?;
+    }
+
+    Ok(vec![])
 }
 
 async fn get_ifindex_by_name(

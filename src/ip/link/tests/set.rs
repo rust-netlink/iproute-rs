@@ -524,6 +524,74 @@ fn test_set_dev_keyword() {
     });
 }
 
+// --- replace tests ---
+
+#[test]
+fn test_replace_create_dummy() {
+    with_netns(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "replace",
+            "test-rpl-dummy",
+            "type",
+            "dummy",
+        ]);
+        ns.assert_eq_output(&["link", "show", "test-rpl-dummy"]);
+    });
+}
+
+#[test]
+fn test_replace_create_dummy_with_opts() {
+    with_netns(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "replace",
+            "test-rpl-opts",
+            "mtu",
+            "2000",
+            "address",
+            "00:11:22:33:44:55",
+            "txqueuelen",
+            "1000",
+            "type",
+            "dummy",
+        ]);
+        ns.assert_eq_output(&["link", "show", "test-rpl-opts"]);
+    });
+}
+
+#[test]
+fn test_replace_existing_fails() {
+    with_dummy_iface(|ns| {
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                ns.ip_rs_exec_cmd(&[
+                    "link", "replace", DUMMY_NAME, "type", "dummy",
+                ]);
+            }));
+        assert!(result.is_err());
+    });
+}
+
+#[test]
+fn test_replace_create_bridge() {
+    with_netns(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "replace",
+            "test-rpl-br",
+            "type",
+            "bridge",
+            "forward_delay",
+            "15",
+        ]);
+        ns.assert_eq_output_map(
+            &["-d", "link", "show", "test-rpl-br"],
+            strip_nondeterministic,
+        );
+    });
+}
+
 #[test]
 fn test_set_bond_mode_with_type() {
     // Test that `ip link set type bond mode ...` is parsed correctly

@@ -123,6 +123,15 @@ impl LinkCommand {
             .subcommand(LinkAddCommand::gen_command())
             .subcommand(LinkDeleteCommand::gen_command())
             .subcommand(LinkSetCommand::gen_command())
+            .subcommand(
+                clap::Command::new("replace")
+                    .about("replace virtual link")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
+            )
             .subcommand(LinkPropertyCommand::gen_command())
             .subcommand(
                 clap::Command::new("xstats")
@@ -181,6 +190,9 @@ impl LinkCommand {
             matches.subcommand_matches(LinkSetCommand::CMD)
         {
             LinkSetCommand::handle(matches).await?;
+            Ok(LinkOutput::Show(vec![]))
+        } else if let Some(matches) = matches.subcommand_matches("replace") {
+            LinkSetCommand::handle_replace(matches).await?;
             Ok(LinkOutput::Show(vec![]))
         } else if let Some(matches) =
             matches.subcommand_matches(LinkPropertyCommand::CMD)
