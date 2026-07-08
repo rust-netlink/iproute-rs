@@ -86,3 +86,39 @@ fn test_address_add_alias_a_ad() {
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
+
+#[test]
+fn test_address_change_ipv6_scope() {
+    with_dummy_iface_empty(|ns| {
+        ns.exec_cmd(&[
+            "ip", "addr", "add", "2001:db8::1/64", "dev", DUMMY_NAME,
+        ]);
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "change",
+            "2001:db8::1/64",
+            "dev",
+            DUMMY_NAME,
+            "scope",
+            "host",
+        ]);
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_replace_ipv6_create_new() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "replace",
+            "2001:db8::1/64",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
