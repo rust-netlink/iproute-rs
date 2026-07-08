@@ -559,13 +559,42 @@ impl AddressShowFilter {
                 Ok(ip) => ip,
                 Err(_) => return false,
             };
-            if addr_ip != *target {
-                return false;
-            }
-            if let Some(plen) = self.to_prefix_len
-                && addr.prefixlen != plen
-            {
-                return false;
+
+            // Check if address falls within the target prefix
+            if let Some(plen) = self.to_prefix_len {
+                // Network prefix containment check
+                match (target, &addr_ip) {
+                    (IpAddr::V4(target_v4), IpAddr::V4(addr_v4)) => {
+                        let target_u32 = u32::from(*target_v4);
+                        let addr_u32 = u32::from(*addr_v4);
+                        let mask = if plen == 0 {
+                            0u32
+                        } else {
+                            !0u32 << (32 - plen)
+                        };
+                        if (target_u32 & mask) != (addr_u32 & mask) {
+                            return false;
+                        }
+                    }
+                    (IpAddr::V6(target_v6), IpAddr::V6(addr_v6)) => {
+                        let target_u128 = u128::from(*target_v6);
+                        let addr_u128 = u128::from(*addr_v6);
+                        let mask = if plen == 0 {
+                            0u128
+                        } else {
+                            !0u128 << (128 - plen)
+                        };
+                        if (target_u128 & mask) != (addr_u128 & mask) {
+                            return false;
+                        }
+                    }
+                    _ => return false, // IPv4/IPv6 mismatch
+                }
+            } else {
+                // No prefix length specified, do exact match
+                if addr_ip != *target {
+                    return false;
+                }
             }
         }
 
