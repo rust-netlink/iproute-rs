@@ -241,10 +241,14 @@ impl AddressCommand {
                 .unwrap_or_default()
                 .map(String::as_str)
                 .collect();
-            handle_show(&opts, matches.get_flag("DETAILS"), preferred_family)
-                .await
+            handle_show(
+                &opts,
+                matches.get_count("DETAILS") > 0,
+                preferred_family,
+            )
+            .await
         } else {
-            handle_show(&[], matches.get_flag("DETAILS"), preferred_family)
+            handle_show(&[], matches.get_count("DETAILS") > 0, preferred_family)
                 .await
         }
     }

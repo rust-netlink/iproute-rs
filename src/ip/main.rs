@@ -81,8 +81,8 @@ async fn main() -> Result<(), CliError> {
         .arg(
             clap::Arg::new("DETAILS")
                 .short('d')
-                .help("Interface details")
-                .action(clap::ArgAction::SetTrue)
+                .help("Interface details (repeatable)")
+                .action(clap::ArgAction::Count)
                 .global(true),
         )
         .arg(

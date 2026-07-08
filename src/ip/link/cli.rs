@@ -227,11 +227,11 @@ impl LinkCommand {
                 .unwrap_or_default()
                 .map(String::as_str)
                 .collect();
-            handle_show(&opts, matches.get_flag("DETAILS"))
+            handle_show(&opts, matches.get_count("DETAILS") > 0)
                 .await
                 .map(LinkOutput::Show)
         } else {
-            handle_show(&[], matches.get_flag("DETAILS"))
+            handle_show(&[], matches.get_count("DETAILS") > 0)
                 .await
                 .map(LinkOutput::Show)
         }
