@@ -4,11 +4,13 @@ use iproute_rs::CliError;
 use rtnetlink::{
     LinkIpVlan, LinkIpVtap, LinkMessageBuilder,
     packet_route::link::{
-        InfoIpVlan, InfoIpVtap, IpVlanFlags, IpVlanMode, IpVtapMode,
+        InfoIpVlan, InfoIpVtap, InfoKind, IpVlanFlags, IpVlanMode, IpVtapMode,
+        LinkInfo,
     },
 };
 use serde::Serialize;
 
+use super::parse::extract_link_info;
 use crate::link::LinkBaseConf;
 
 fn is_false(v: &bool) -> bool {
@@ -101,6 +103,94 @@ impl From<&[InfoIpVtap]> for CliLinkInfoDataIpVtap {
     }
 }
 
+fn parse_ipvlan_args<'a>(
+    mut builder: LinkMessageBuilder<LinkIpVlan>,
+    iter: &mut impl Iterator<Item = &'a str>,
+) -> Result<LinkMessageBuilder<LinkIpVlan>, CliError> {
+    while let Some(key) = iter.next() {
+        match key {
+            "mode" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from("IPVLAN mode requires a value"));
+                };
+                let mode = v.parse::<IpVlanMode>().map_err(|e| {
+                    CliError::from(format!(
+                        "Unknown IPVLAN mode: {v}, supported: l2, l3, l3s: {e}"
+                    ))
+                })?;
+                builder = builder.mode(mode);
+            }
+            "flag" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from("IPVLAN flag requires a value"));
+                };
+                let flag = match v {
+                    "bridge" => IpVlanFlags::empty(),
+                    "private" => IpVlanFlags::Private,
+                    "vepa" => IpVlanFlags::Vepa,
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Unknown IPVLAN flag: {v}, supported: bridge, \
+                             private, vepa"
+                        )));
+                    }
+                };
+                builder = builder.flag(flag);
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown IPVLAN argument: {key}"
+                )));
+            }
+        }
+    }
+    Ok(builder)
+}
+
+fn parse_ipvtap_args<'a>(
+    mut builder: LinkMessageBuilder<LinkIpVtap>,
+    iter: &mut impl Iterator<Item = &'a str>,
+) -> Result<LinkMessageBuilder<LinkIpVtap>, CliError> {
+    while let Some(key) = iter.next() {
+        match key {
+            "mode" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from("IPVTAP mode requires a value"));
+                };
+                let mode = v.parse::<IpVtapMode>().map_err(|e| {
+                    CliError::from(format!(
+                        "Unknown IPVTAP mode: {v}, supported: l2, l3, l3s: {e}"
+                    ))
+                })?;
+                builder = builder.mode(mode);
+            }
+            "flag" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from("IPVTAP flag requires a value"));
+                };
+                let flag = match v {
+                    "bridge" => IpVlanFlags::empty(),
+                    "private" => IpVlanFlags::Private,
+                    "vepa" => IpVlanFlags::Vepa,
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Unknown IPVTAP flag: {v}, supported: bridge, \
+                             private, vepa"
+                        )));
+                    }
+                };
+                builder = builder.flag(flag);
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown IPVTAP argument: {key}"
+                )));
+            }
+        }
+    }
+    Ok(builder)
+}
+
 impl LinkBaseConf {
     pub(crate) async fn apply_ipvlan(
         &self,
@@ -113,52 +203,11 @@ impl LinkBaseConf {
 
         let link_ifindex = self.get_ifindex_by_name(handle, link_name).await?;
 
-        let mut builder = LinkMessageBuilder::<LinkIpVlan>::new(&self.name)
+        let builder = LinkMessageBuilder::<LinkIpVlan>::new(&self.name)
             .link(link_ifindex);
 
-        let mut iter = self.iface_specific.iter();
-        while let Some(key) = iter.next() {
-            match key.as_str() {
-                "mode" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "IPVLAN mode requires a value",
-                        ));
-                    };
-                    let mode = v.parse::<IpVlanMode>().map_err(|e| {
-                        CliError::from(format!(
-                            "Unknown IPVLAN mode: {v}, supported: l2, l3, \
-                             l3s: {e}"
-                        ))
-                    })?;
-                    builder = builder.mode(mode);
-                }
-                "flag" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "IPVLAN flag requires a value",
-                        ));
-                    };
-                    let flag = match v.as_str() {
-                        "bridge" => IpVlanFlags::empty(),
-                        "private" => IpVlanFlags::Private,
-                        "vepa" => IpVlanFlags::Vepa,
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Unknown IPVLAN flag: {v}, supported: bridge, \
-                                 private, vepa"
-                            )));
-                        }
-                    };
-                    builder = builder.flag(flag);
-                }
-                _ => {
-                    return Err(CliError::from(format!(
-                        "Unknown IPVLAN argument: {key}"
-                    )));
-                }
-            }
-        }
+        let mut iter = self.iface_specific.iter().map(|s| s.as_str());
+        let builder = parse_ipvlan_args(builder, &mut iter)?;
 
         Ok(builder)
     }
@@ -174,52 +223,11 @@ impl LinkBaseConf {
 
         let link_ifindex = self.get_ifindex_by_name(handle, link_name).await?;
 
-        let mut builder = LinkMessageBuilder::<LinkIpVtap>::new(&self.name)
+        let builder = LinkMessageBuilder::<LinkIpVtap>::new(&self.name)
             .link(link_ifindex);
 
-        let mut iter = self.iface_specific.iter();
-        while let Some(key) = iter.next() {
-            match key.as_str() {
-                "mode" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "IPVTAP mode requires a value",
-                        ));
-                    };
-                    let mode = v.parse::<IpVtapMode>().map_err(|e| {
-                        CliError::from(format!(
-                            "Unknown IPVTAP mode: {v}, supported: l2, l3, \
-                             l3s: {e}"
-                        ))
-                    })?;
-                    builder = builder.mode(mode);
-                }
-                "flag" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "IPVTAP flag requires a value",
-                        ));
-                    };
-                    let flag = match v.as_str() {
-                        "bridge" => IpVlanFlags::empty(),
-                        "private" => IpVlanFlags::Private,
-                        "vepa" => IpVlanFlags::Vepa,
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Unknown IPVTAP flag: {v}, supported: bridge, \
-                                 private, vepa"
-                            )));
-                        }
-                    };
-                    builder = builder.flag(flag);
-                }
-                _ => {
-                    return Err(CliError::from(format!(
-                        "Unknown IPVTAP argument: {key}"
-                    )));
-                }
-            }
-        }
+        let mut iter = self.iface_specific.iter().map(|s| s.as_str());
+        let builder = parse_ipvtap_args(builder, &mut iter)?;
 
         Ok(builder)
     }
@@ -260,6 +268,17 @@ impl std::fmt::Display for CliLinkInfoDataIpVtap {
 pub(crate) struct IfaceIpVlan;
 
 impl IfaceIpVlan {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder = LinkMessageBuilder::<LinkIpVlan>::new_with_info_kind(
+            InfoKind::IpVlan,
+        );
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = parse_ipvlan_args(builder, &mut iter)?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... ipvlan [ mode MODE ] [ FLAGS ]
@@ -274,6 +293,17 @@ FLAGS: bridge | private | vepa
 pub(crate) struct IfaceIpVtap;
 
 impl IfaceIpVtap {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder = LinkMessageBuilder::<LinkIpVtap>::new_with_info_kind(
+            InfoKind::IpVtap,
+        );
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = parse_ipvtap_args(builder, &mut iter)?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... ipvtap [ mode MODE ] [ FLAGS ]

@@ -3,10 +3,11 @@
 use iproute_rs::CliError;
 use rtnetlink::{
     LinkMessageBuilder, LinkNetkit,
-    packet_route::link::{InfoNetkit, NetkitMode},
+    packet_route::link::{InfoNetkit, LinkInfo, NetkitMode},
 };
 use serde::Serialize;
 
+use super::parse::extract_link_info;
 use crate::link::LinkBaseConf;
 
 #[derive(Serialize)]
@@ -202,6 +203,76 @@ impl std::fmt::Display for CliLinkInfoDataNetkit {
 pub(crate) struct IfaceNetkit;
 
 impl IfaceNetkit {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let mut builder = LinkMessageBuilder::<LinkNetkit>::new_with_info_kind(
+            rtnetlink::packet_route::link::InfoKind::Netkit,
+        );
+        let mut mode = NetkitMode::L3;
+        let mut policy = None;
+        let mut scrub = None;
+
+        let mut iter = args.iter().peekable();
+        while let Some(key) = iter.next() {
+            match key.as_str() {
+                "mode" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "netkit mode requires a value",
+                        ));
+                    };
+                    mode = v.parse().map_err(|_| {
+                        CliError::from(format!(
+                            "netkit mode must be l3 or l2, got {v}"
+                        ))
+                    })?;
+                }
+                "forward" | "blackhole" => {
+                    let p = key.parse().map_err(|_| {
+                        CliError::from(format!(
+                            "netkit policy must be forward or blackhole, got \
+                             {key}"
+                        ))
+                    })?;
+                    policy = Some(p);
+                }
+                "scrub" => {
+                    let Some(v) = iter.next() else {
+                        return Err(CliError::from(
+                            "netkit scrub requires a value",
+                        ));
+                    };
+                    let s = v.parse().map_err(|_| {
+                        CliError::from(format!(
+                            "netkit scrub must be default or none, got {v}"
+                        ))
+                    })?;
+                    scrub = Some(s);
+                }
+                "peer" => {
+                    // skip peer args in set mode
+                    break;
+                }
+                _ => {
+                    return Err(CliError::from(format!(
+                        "Unknown netkit argument: {key}"
+                    )));
+                }
+            }
+        }
+
+        builder = builder.mode(mode);
+        if let Some(p) = policy {
+            builder = builder.policy(p);
+        }
+        if let Some(s) = scrub {
+            builder = builder.scrub(s);
+        }
+
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... netkit [ mode MODE ] [ POLICY ] [ scrub SCRUB ] [ peer [ POLICY <options> ] ]

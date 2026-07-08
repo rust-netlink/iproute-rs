@@ -4,12 +4,13 @@ use iproute_rs::CliError;
 use rtnetlink::{
     LinkMacSec, LinkMessageBuilder,
     packet_route::link::{
-        InfoMacSec, MacSecCipherId, MacSecOffload, MacSecValidate,
+        InfoKind, InfoMacSec, LinkInfo, MacSecCipherId, MacSecOffload,
+        MacSecValidate,
     },
 };
 use serde::Serialize;
 
-use super::parse::{parse_on_off_01, parse_u8, parse_u32};
+use super::parse::{extract_link_info, parse_on_off_01, parse_u8, parse_u32};
 use crate::link::LinkBaseConf;
 
 #[derive(Serialize, Default)]
@@ -182,6 +183,219 @@ impl std::fmt::Display for CliLinkInfoDataMacSec {
     }
 }
 
+fn parse_macsec_args<'a>(
+    mut builder: LinkMessageBuilder<LinkMacSec>,
+    iter: &mut impl Iterator<Item = &'a str>,
+) -> Result<LinkMessageBuilder<LinkMacSec>, CliError> {
+    let mut pending_window = None;
+    while let Some(key) = iter.next() {
+        match key {
+            "sci" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from("MACSEC sci requires a value"));
+                };
+                let val = u64::from_str_radix(v.trim_start_matches("0x"), 16)
+                    .map_err(|_| {
+                    CliError::from(format!("Invalid MACSEC sci: {v}"))
+                })?;
+                builder = builder.sci(val.to_be());
+            }
+            "port" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from("MACSEC port requires a value"));
+                };
+                let val: u16 = v.parse().map_err(|_| {
+                    CliError::from(format!("Invalid MACSEC port: {v}"))
+                })?;
+                builder = builder.port(val);
+            }
+            "cipher" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACSEC cipher requires a value",
+                    ));
+                };
+                let val = match v {
+                    "default" => {
+                        #[allow(deprecated)]
+                        let v = MacSecCipherId::DefaultGcmAes128;
+                        v
+                    }
+                    "gcm-aes-128" | "GCM-AES-128" => MacSecCipherId::GcmAes128,
+                    "gcm-aes-256" | "GCM-AES-256" => MacSecCipherId::GcmAes256,
+                    "gcm-aes-xpn-128" | "GCM-AES-XPN-128" => {
+                        MacSecCipherId::GcmAesXpn128
+                    }
+                    "gcm-aes-xpn-256" | "GCM-AES-XPN-256" => {
+                        MacSecCipherId::GcmAesXpn256
+                    }
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Unknown MACSEC cipher: {v}, supported: default, \
+                             gcm-aes-128, gcm-aes-256, gcm-aes-xpn-128, \
+                             gcm-aes-xpn-256"
+                        )));
+                    }
+                };
+                builder = builder.cipher_suite(val);
+            }
+            "icvlen" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACSEC icvlen requires a value",
+                    ));
+                };
+                let val = parse_u8(v, "MACSEC icvlen")?;
+                builder = builder.icv_len(val);
+            }
+            "encrypt" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACSEC encrypt requires a value",
+                    ));
+                };
+                let val = parse_on_off_01(v)?;
+                builder = builder.encrypt(val);
+            }
+            "send_sci" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACSEC send_sci requires a value",
+                    ));
+                };
+                let val = parse_on_off_01(v)?;
+                builder = builder.inc_sci(val);
+            }
+            "end_station" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACSEC end_station requires a value",
+                    ));
+                };
+                let val = parse_on_off_01(v)?;
+                builder = builder.es(val);
+            }
+            "scb" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from("MACSEC scb requires a value"));
+                };
+                let val = parse_on_off_01(v)?;
+                builder = builder.scb(val);
+            }
+            "protect" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACSEC protect requires a value",
+                    ));
+                };
+                let val = parse_on_off_01(v)?;
+                builder = builder.protect(val);
+            }
+            "replay" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACSEC replay requires a value",
+                    ));
+                };
+                let val = parse_on_off_01(v)?;
+                builder = builder.replay_protect(val);
+                if val {
+                    pending_window = Some(());
+                }
+            }
+            "validate" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACSEC validate requires a value",
+                    ));
+                };
+                let val = match v {
+                    "disabled" => MacSecValidate::Disabled,
+                    "check" => MacSecValidate::Check,
+                    "strict" => MacSecValidate::Strict,
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Unknown MACSEC validate: {v}, supported: \
+                             disabled, check, strict"
+                        )));
+                    }
+                };
+                builder = builder.validation(val);
+            }
+            "encodingsa" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACSEC encodingsa requires a value",
+                    ));
+                };
+                let val: u8 = v.parse().map_err(|_| {
+                    CliError::from(format!("Invalid MACSEC encodingsa: {v}"))
+                })?;
+                if val > 3 {
+                    return Err(CliError::from(format!(
+                        "MACSEC encodingsa must be 0-3, got {v}"
+                    )));
+                }
+                builder = builder.encoding_sa(val);
+            }
+            "offload" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACSEC offload requires a value",
+                    ));
+                };
+                let val = match v {
+                    "off" => MacSecOffload::Off,
+                    "phy" => MacSecOffload::Phy,
+                    "mac" => MacSecOffload::Mac,
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Unknown MACSEC offload: {v}, supported: off, \
+                             phy, mac"
+                        )));
+                    }
+                };
+                builder = builder.offload(val);
+            }
+            "address" => {
+                let Some(_v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACSEC address requires a value",
+                    ));
+                };
+            }
+            "window" if pending_window.is_some() => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACSEC window requires a value",
+                    ));
+                };
+                let val = parse_u32(v, "MACSEC window")?;
+                builder = builder.window(val);
+                pending_window = None;
+            }
+            "window" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACSEC window requires a value",
+                    ));
+                };
+                let val = parse_u32(v, "MACSEC window")?;
+                builder = builder.window(val);
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown MACSEC argument: {key}"
+                )));
+            }
+        }
+    }
+    if pending_window.is_some() {
+        // replay on but no window arg following; that's fine
+    }
+    Ok(builder)
+}
+
 impl LinkBaseConf {
     pub(crate) async fn apply_macsec(
         &self,
@@ -194,227 +408,11 @@ impl LinkBaseConf {
 
         let link_ifindex = self.get_ifindex_by_name(handle, link_name).await?;
 
-        let mut builder = LinkMessageBuilder::<LinkMacSec>::new(&self.name)
+        let builder = LinkMessageBuilder::<LinkMacSec>::new(&self.name)
             .link(link_ifindex);
 
-        let mut iter = self.iface_specific.iter();
-        while let Some(key) = iter.next() {
-            match key.as_str() {
-                "sci" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC sci requires a value",
-                        ));
-                    };
-                    let val =
-                        u64::from_str_radix(v.trim_start_matches("0x"), 16)
-                            .map_err(|_| {
-                                CliError::from(format!(
-                                    "Invalid MACSEC sci: {v}"
-                                ))
-                            })?;
-                    builder = builder.sci(val.to_be());
-                }
-                "port" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC port requires a value",
-                        ));
-                    };
-                    let val: u16 = v.parse().map_err(|_| {
-                        CliError::from(format!("Invalid MACSEC port: {v}"))
-                    })?;
-                    builder = builder.port(val);
-                }
-                "cipher" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC cipher requires a value",
-                        ));
-                    };
-                    let val = match v.as_str() {
-                        "default" => {
-                            #[allow(deprecated)]
-                            let v = MacSecCipherId::DefaultGcmAes128;
-                            v
-                        }
-                        "gcm-aes-128" | "GCM-AES-128" => {
-                            MacSecCipherId::GcmAes128
-                        }
-                        "gcm-aes-256" | "GCM-AES-256" => {
-                            MacSecCipherId::GcmAes256
-                        }
-                        "gcm-aes-xpn-128" | "GCM-AES-XPN-128" => {
-                            MacSecCipherId::GcmAesXpn128
-                        }
-                        "gcm-aes-xpn-256" | "GCM-AES-XPN-256" => {
-                            MacSecCipherId::GcmAesXpn256
-                        }
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Unknown MACSEC cipher: {v}, supported: \
-                                 default, gcm-aes-128, gcm-aes-256, \
-                                 gcm-aes-xpn-128, gcm-aes-xpn-256"
-                            )));
-                        }
-                    };
-                    builder = builder.cipher_suite(val);
-                }
-                "icvlen" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC icvlen requires a value",
-                        ));
-                    };
-                    let val = parse_u8(v, "MACSEC icvlen")?;
-                    builder = builder.icv_len(val);
-                }
-                "encrypt" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC encrypt requires a value",
-                        ));
-                    };
-                    let val = parse_on_off_01(v)?;
-                    builder = builder.encrypt(val);
-                }
-                "send_sci" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC send_sci requires a value",
-                        ));
-                    };
-                    let val = parse_on_off_01(v)?;
-                    builder = builder.inc_sci(val);
-                }
-                "end_station" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC end_station requires a value",
-                        ));
-                    };
-                    let val = parse_on_off_01(v)?;
-                    builder = builder.es(val);
-                }
-                "scb" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC scb requires a value",
-                        ));
-                    };
-                    let val = parse_on_off_01(v)?;
-                    builder = builder.scb(val);
-                }
-                "protect" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC protect requires a value",
-                        ));
-                    };
-                    let val = parse_on_off_01(v)?;
-                    builder = builder.protect(val);
-                }
-                "replay" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC replay requires a value",
-                        ));
-                    };
-                    let val = parse_on_off_01(v)?;
-                    builder = builder.replay_protect(val);
-                    if val
-                        && iter.len() > 0
-                        && iter.clone().next() == Some(&"window".to_string())
-                    {
-                        iter.next();
-                        let Some(w) = iter.next() else {
-                            return Err(CliError::from(
-                                "MACSEC window requires a value",
-                            ));
-                        };
-                        let win = parse_u32(w, "MACSEC window")?;
-                        builder = builder.window(win);
-                    }
-                }
-                "window" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC window requires a value",
-                        ));
-                    };
-                    let val = parse_u32(v, "MACSEC window")?;
-                    builder = builder.window(val);
-                }
-                "validate" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC validate requires a value",
-                        ));
-                    };
-                    let val = match v.as_str() {
-                        "disabled" => MacSecValidate::Disabled,
-                        "check" => MacSecValidate::Check,
-                        "strict" => MacSecValidate::Strict,
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Unknown MACSEC validate: {v}, supported: \
-                                 disabled, check, strict"
-                            )));
-                        }
-                    };
-                    builder = builder.validation(val);
-                }
-                "encodingsa" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC encodingsa requires a value",
-                        ));
-                    };
-                    let val: u8 = v.parse().map_err(|_| {
-                        CliError::from(format!(
-                            "Invalid MACSEC encodingsa: {v}"
-                        ))
-                    })?;
-                    if val > 3 {
-                        return Err(CliError::from(format!(
-                            "MACSEC encodingsa must be 0-3, got {v}"
-                        )));
-                    }
-                    builder = builder.encoding_sa(val);
-                }
-                "offload" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC offload requires a value",
-                        ));
-                    };
-                    let val = match v.as_str() {
-                        "off" => MacSecOffload::Off,
-                        "phy" => MacSecOffload::Phy,
-                        "mac" => MacSecOffload::Mac,
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Unknown MACSEC offload: {v}, supported: off, \
-                                 phy, mac"
-                            )));
-                        }
-                    };
-                    builder = builder.offload(val);
-                }
-                "address" => {
-                    let Some(_v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACSEC address requires a value",
-                        ));
-                    };
-                }
-                _ => {
-                    return Err(CliError::from(format!(
-                        "Unknown MACSEC argument: {key}"
-                    )));
-                }
-            }
-        }
+        let mut iter = self.iface_specific.iter().map(|s| s.as_str());
+        let builder = parse_macsec_args(builder, &mut iter)?;
 
         Ok(builder)
     }
@@ -423,6 +421,17 @@ impl LinkBaseConf {
 pub(crate) struct IfaceMacSec;
 
 impl IfaceMacSec {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder = LinkMessageBuilder::<LinkMacSec>::new_with_info_kind(
+            InfoKind::MacSec,
+        );
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = parse_macsec_args(builder, &mut iter)?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... macsec [ [ address <lladdr> ] port { 1..2^16-1 } | sci <u64> ]

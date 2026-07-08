@@ -22,16 +22,28 @@ use super::{
         bridge::{IfaceBridge, IfaceBridgePort},
         can::IfaceCan,
         dsa::IfaceDsa,
+        geneve::IfaceGeneve,
+        gre::{
+            IfaceErSpan, IfaceGre, IfaceGre6, IfaceGreTap, IfaceGreTap6,
+            IfaceIp6ErSpan,
+        },
         gtp::IfaceGtp,
         hsr::IfaceHsr,
         ipoib::IfaceIpoib,
+        iptun::{IfaceIp6Tnl, IfaceIpIp, IfaceSit},
+        ipvlan::{IfaceIpVlan, IfaceIpVtap},
+        mac_vlan::{IfaceMacVlan, IfaceMacVtap},
+        macsec::IfaceMacSec,
+        netkit::IfaceNetkit,
         parse::{parse_eui64, parse_i32, parse_on_off, parse_u32},
         rmnet::IfaceRmNet,
         team::IfaceTeamPort,
         vlan::IfaceVlan,
         vrf::IfaceVrf,
+        vti::{IfaceVti, IfaceVti6},
         vxlan::IfaceVxlan,
         wwan::IfaceWwan,
+        xfrm::IfaceXfrm,
     },
     xdp::{XdpConfig, build_xdp_attrs, parse_xdp_args},
 };
@@ -1190,17 +1202,6 @@ async fn build_type_link_info(
         | InfoKind::VirtWifi
         | InfoKind::Veth
         | InfoKind::Vxcan
-        | InfoKind::Xfrm
-        | InfoKind::MacSec
-        | InfoKind::Geneve
-        | InfoKind::GreTun
-        | InfoKind::GreTap
-        | InfoKind::GreTun6
-        | InfoKind::GreTap6
-        | InfoKind::ErSpan
-        | InfoKind::Ip6ErSpan
-        | InfoKind::IpIp
-        | InfoKind::Ip6Tnl
         | InfoKind::Wireguard => Ok(build_kind_only(kind)),
         InfoKind::Vlan => {
             let mut infos = IfaceVlan::build_entries(args)?;
@@ -1227,7 +1228,6 @@ async fn build_type_link_info(
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }
-        InfoKind::Netkit => Ok(build_kind_only(InfoKind::Netkit)),
         InfoKind::Vrf => {
             let mut infos = IfaceVrf::build_entries(args)?;
             clean_extracted(&mut infos, kind);
@@ -1238,10 +1238,6 @@ async fn build_type_link_info(
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }
-        InfoKind::IpVlan => Ok(build_kind_only(InfoKind::IpVlan)),
-        InfoKind::IpVtap => Ok(build_kind_only(InfoKind::IpVtap)),
-        InfoKind::MacVlan => Ok(build_kind_only(InfoKind::MacVlan)),
-        InfoKind::MacVtap => Ok(build_kind_only(InfoKind::MacVtap)),
         InfoKind::RmNet => {
             let mut infos = IfaceRmNet::build_entries(args)?;
             clean_extracted(&mut infos, kind);
@@ -1269,6 +1265,101 @@ async fn build_type_link_info(
         }
         InfoKind::Vxlan => {
             let mut infos = IfaceVxlan::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::Xfrm => {
+            let mut infos = IfaceXfrm::build_entries(handle, args).await?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::MacSec => {
+            let mut infos = IfaceMacSec::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::Geneve => {
+            let mut infos = IfaceGeneve::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::GreTun => {
+            let mut infos = IfaceGre::build_entries(handle, args).await?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::GreTap => {
+            let mut infos = IfaceGreTap::build_entries(handle, args).await?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::GreTun6 => {
+            let mut infos = IfaceGre6::build_entries(handle, args).await?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::GreTap6 => {
+            let mut infos = IfaceGreTap6::build_entries(handle, args).await?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::ErSpan => {
+            let mut infos = IfaceErSpan::build_entries(handle, args).await?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::Ip6ErSpan => {
+            let mut infos = IfaceIp6ErSpan::build_entries(handle, args).await?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::IpIp => {
+            let mut infos = IfaceIpIp::build_entries(handle, args).await?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::SitTun => {
+            let mut infos = IfaceSit::build_entries(handle, args).await?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::Ip6Tnl => {
+            let mut infos = IfaceIp6Tnl::build_entries(handle, args).await?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::Netkit => {
+            let mut infos = IfaceNetkit::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::IpVlan => {
+            let mut infos = IfaceIpVlan::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::IpVtap => {
+            let mut infos = IfaceIpVtap::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::MacVlan => {
+            let mut infos = IfaceMacVlan::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::MacVtap => {
+            let mut infos = IfaceMacVtap::build_entries(args)?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::Vti => {
+            let mut infos = IfaceVti::build_entries(handle, args).await?;
+            clean_extracted(&mut infos, kind);
+            Ok(infos)
+        }
+        InfoKind::Vti6 => {
+            let mut infos = IfaceVti6::build_entries(handle, args).await?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }

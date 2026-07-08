@@ -4,11 +4,13 @@ use iproute_rs::CliError;
 use rtnetlink::{
     LinkMacVlan, LinkMacVtap, LinkMessageBuilder,
     packet_route::link::{
-        InfoMacVlan, InfoMacVtap, MacVlanFlags, MacVlanMode, MacVtapMode,
+        InfoKind, InfoMacVlan, InfoMacVtap, LinkInfo, MacVlanFlags,
+        MacVlanMode, MacVtapMode,
     },
 };
 use serde::Serialize;
 
+use super::parse::extract_link_info;
 use crate::link::LinkBaseConf;
 
 fn is_false(v: &bool) -> bool {
@@ -191,6 +193,168 @@ impl From<&[InfoMacVtap]> for CliLinkInfoDataMacVtap {
     }
 }
 
+fn parse_macvlan_args<'a>(
+    mut builder: LinkMessageBuilder<LinkMacVlan>,
+    iter: &mut impl Iterator<Item = &'a str>,
+) -> Result<LinkMessageBuilder<LinkMacVlan>, CliError> {
+    while let Some(key) = iter.next() {
+        match key {
+            "mode" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACVLAN mode requires a value",
+                    ));
+                };
+                let mode = v.parse::<MacVlanMode>().map_err(|e| {
+                    CliError::from(format!(
+                        "Unknown MACVLAN mode: {v}, supported: private, vepa, \
+                         bridge, passthru, source: {e}"
+                    ))
+                })?;
+                builder = builder.mode(mode);
+            }
+            "flag" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACVLAN flag requires a value",
+                    ));
+                };
+                let flag = match v {
+                    "nopromisc" => MacVlanFlags::NoPromisc,
+                    "nodst" => MacVlanFlags::NoDst,
+                    "null" => MacVlanFlags::empty(),
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Unknown MACVLAN flag: {v}, supported: nopromisc, \
+                             nodst, null"
+                        )));
+                    }
+                };
+                builder = builder.append_info_data(InfoMacVlan::Flags(flag));
+            }
+            "nopromisc" => {
+                builder = builder.append_info_data(InfoMacVlan::Flags(
+                    MacVlanFlags::NoPromisc,
+                ));
+            }
+            "nodst" => {
+                builder = builder
+                    .append_info_data(InfoMacVlan::Flags(MacVlanFlags::NoDst));
+            }
+            "bcqueuelen" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACVLAN bcqueuelen requires a value",
+                    ));
+                };
+                let val: u32 = v.parse().map_err(|_| {
+                    CliError::from(format!("Invalid MACVLAN bcqueuelen: {v}"))
+                })?;
+                builder =
+                    builder.append_info_data(InfoMacVlan::BcQueueLen(val));
+            }
+            "bclim" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACVLAN bclim requires a value",
+                    ));
+                };
+                let val: i32 = v.parse().map_err(|_| {
+                    CliError::from(format!("Invalid MACVLAN bclim: {v}"))
+                })?;
+                builder = builder.append_info_data(InfoMacVlan::BcCutoff(val));
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown MACVLAN argument: {key}"
+                )));
+            }
+        }
+    }
+    Ok(builder)
+}
+
+fn parse_macvtap_args<'a>(
+    mut builder: LinkMessageBuilder<LinkMacVtap>,
+    iter: &mut impl Iterator<Item = &'a str>,
+) -> Result<LinkMessageBuilder<LinkMacVtap>, CliError> {
+    while let Some(key) = iter.next() {
+        match key {
+            "mode" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACVTAP mode requires a value",
+                    ));
+                };
+                let mode = v.parse::<MacVtapMode>().map_err(|e| {
+                    CliError::from(format!(
+                        "Unknown MACVTAP mode: {v}, supported: private, vepa, \
+                         bridge, passthru, source: {e}"
+                    ))
+                })?;
+                builder = builder.mode(mode);
+            }
+            "flag" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACVTAP flag requires a value",
+                    ));
+                };
+                let flag = match v {
+                    "nopromisc" => MacVlanFlags::NoPromisc,
+                    "nodst" => MacVlanFlags::NoDst,
+                    "null" => MacVlanFlags::empty(),
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Unknown MACVTAP flag: {v}, supported: nopromisc, \
+                             nodst, null"
+                        )));
+                    }
+                };
+                builder = builder.append_info_data(InfoMacVtap::Flags(flag));
+            }
+            "nopromisc" => {
+                builder = builder.append_info_data(InfoMacVtap::Flags(
+                    MacVlanFlags::NoPromisc,
+                ));
+            }
+            "nodst" => {
+                builder = builder
+                    .append_info_data(InfoMacVtap::Flags(MacVlanFlags::NoDst));
+            }
+            "bcqueuelen" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACVTAP bcqueuelen requires a value",
+                    ));
+                };
+                let val: u32 = v.parse().map_err(|_| {
+                    CliError::from(format!("Invalid MACVTAP bcqueuelen: {v}"))
+                })?;
+                builder =
+                    builder.append_info_data(InfoMacVtap::BcQueueLen(val));
+            }
+            "bclim" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "MACVTAP bclim requires a value",
+                    ));
+                };
+                let val: i32 = v.parse().map_err(|_| {
+                    CliError::from(format!("Invalid MACVTAP bclim: {v}"))
+                })?;
+                builder = builder.append_info_data(InfoMacVtap::BcCutoff(val));
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown MACVTAP argument: {key}"
+                )));
+            }
+        }
+    }
+    Ok(builder)
+}
+
 impl LinkBaseConf {
     pub(crate) async fn apply_macvlan(
         &self,
@@ -203,89 +367,11 @@ impl LinkBaseConf {
 
         let link_ifindex = self.get_ifindex_by_name(handle, link_name).await?;
 
-        let mut builder = LinkMessageBuilder::<LinkMacVlan>::new(&self.name)
+        let builder = LinkMessageBuilder::<LinkMacVlan>::new(&self.name)
             .link(link_ifindex);
 
-        let mut iter = self.iface_specific.iter();
-        while let Some(key) = iter.next() {
-            match key.as_str() {
-                "mode" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACVLAN mode requires a value",
-                        ));
-                    };
-                    let mode = v.parse::<MacVlanMode>().map_err(|e| {
-                        CliError::from(format!(
-                            "Unknown MACVLAN mode: {v}, supported: private, \
-                             vepa, bridge, passthru, source: {e}"
-                        ))
-                    })?;
-                    builder = builder.mode(mode);
-                }
-                "flag" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACVLAN flag requires a value",
-                        ));
-                    };
-                    let flag = match v.as_str() {
-                        "nopromisc" => MacVlanFlags::NoPromisc,
-                        "nodst" => MacVlanFlags::NoDst,
-                        "null" => MacVlanFlags::empty(),
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Unknown MACVLAN flag: {v}, supported: \
-                                 nopromisc, nodst, null"
-                            )));
-                        }
-                    };
-                    builder =
-                        builder.append_info_data(InfoMacVlan::Flags(flag));
-                }
-                "nopromisc" => {
-                    builder = builder.append_info_data(InfoMacVlan::Flags(
-                        MacVlanFlags::NoPromisc,
-                    ));
-                }
-                "nodst" => {
-                    builder = builder.append_info_data(InfoMacVlan::Flags(
-                        MacVlanFlags::NoDst,
-                    ));
-                }
-                "bcqueuelen" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACVLAN bcqueuelen requires a value",
-                        ));
-                    };
-                    let val: u32 = v.parse().map_err(|_| {
-                        CliError::from(format!(
-                            "Invalid MACVLAN bcqueuelen: {v}"
-                        ))
-                    })?;
-                    builder =
-                        builder.append_info_data(InfoMacVlan::BcQueueLen(val));
-                }
-                "bclim" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACVLAN bclim requires a value",
-                        ));
-                    };
-                    let val: i32 = v.parse().map_err(|_| {
-                        CliError::from(format!("Invalid MACVLAN bclim: {v}"))
-                    })?;
-                    builder =
-                        builder.append_info_data(InfoMacVlan::BcCutoff(val));
-                }
-                _ => {
-                    return Err(CliError::from(format!(
-                        "Unknown MACVLAN argument: {key}"
-                    )));
-                }
-            }
-        }
+        let mut iter = self.iface_specific.iter().map(|s| s.as_str());
+        let builder = parse_macvlan_args(builder, &mut iter)?;
 
         Ok(builder)
     }
@@ -301,89 +387,11 @@ impl LinkBaseConf {
 
         let link_ifindex = self.get_ifindex_by_name(handle, link_name).await?;
 
-        let mut builder = LinkMessageBuilder::<LinkMacVtap>::new(&self.name)
+        let builder = LinkMessageBuilder::<LinkMacVtap>::new(&self.name)
             .link(link_ifindex);
 
-        let mut iter = self.iface_specific.iter();
-        while let Some(key) = iter.next() {
-            match key.as_str() {
-                "mode" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACVTAP mode requires a value",
-                        ));
-                    };
-                    let mode = v.parse::<MacVtapMode>().map_err(|e| {
-                        CliError::from(format!(
-                            "Unknown MACVTAP mode: {v}, supported: private, \
-                             vepa, bridge, passthru, source: {e}"
-                        ))
-                    })?;
-                    builder = builder.mode(mode);
-                }
-                "flag" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACVTAP flag requires a value",
-                        ));
-                    };
-                    let flag = match v.as_str() {
-                        "nopromisc" => MacVlanFlags::NoPromisc,
-                        "nodst" => MacVlanFlags::NoDst,
-                        "null" => MacVlanFlags::empty(),
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Unknown MACVTAP flag: {v}, supported: \
-                                 nopromisc, nodst, null"
-                            )));
-                        }
-                    };
-                    builder =
-                        builder.append_info_data(InfoMacVtap::Flags(flag));
-                }
-                "nopromisc" => {
-                    builder = builder.append_info_data(InfoMacVtap::Flags(
-                        MacVlanFlags::NoPromisc,
-                    ));
-                }
-                "nodst" => {
-                    builder = builder.append_info_data(InfoMacVtap::Flags(
-                        MacVlanFlags::NoDst,
-                    ));
-                }
-                "bcqueuelen" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACVTAP bcqueuelen requires a value",
-                        ));
-                    };
-                    let val: u32 = v.parse().map_err(|_| {
-                        CliError::from(format!(
-                            "Invalid MACVTAP bcqueuelen: {v}"
-                        ))
-                    })?;
-                    builder =
-                        builder.append_info_data(InfoMacVtap::BcQueueLen(val));
-                }
-                "bclim" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "MACVTAP bclim requires a value",
-                        ));
-                    };
-                    let val: i32 = v.parse().map_err(|_| {
-                        CliError::from(format!("Invalid MACVTAP bclim: {v}"))
-                    })?;
-                    builder =
-                        builder.append_info_data(InfoMacVtap::BcCutoff(val));
-                }
-                _ => {
-                    return Err(CliError::from(format!(
-                        "Unknown MACVTAP argument: {key}"
-                    )));
-                }
-            }
-        }
+        let mut iter = self.iface_specific.iter().map(|s| s.as_str());
+        let builder = parse_macvtap_args(builder, &mut iter)?;
 
         Ok(builder)
     }
@@ -456,6 +464,17 @@ impl std::fmt::Display for CliLinkInfoDataMacVtap {
 pub(crate) struct IfaceMacVlan;
 
 impl IfaceMacVlan {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder = LinkMessageBuilder::<LinkMacVlan>::new_with_info_kind(
+            InfoKind::MacVlan,
+        );
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = parse_macvlan_args(builder, &mut iter)?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r#"Usage: ... macvlan mode MODE [flag MODE_FLAG] MODE_OPTS [bcqueuelen BC_QUEUE_LEN] [bclim BCLIM]
@@ -473,6 +492,17 @@ BCLIM: Threshold for broadcast queueing: 32-bit integer
 pub(crate) struct IfaceMacVtap;
 
 impl IfaceMacVtap {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder = LinkMessageBuilder::<LinkMacVtap>::new_with_info_kind(
+            InfoKind::MacVtap,
+        );
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = parse_macvtap_args(builder, &mut iter)?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r#"Usage: ... macvtap mode MODE [flag MODE_FLAG] MODE_OPTS [bcqueuelen BC_QUEUE_LEN] [bclim BCLIM]

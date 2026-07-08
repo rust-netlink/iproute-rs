@@ -6,13 +6,15 @@ use std::{
     str::FromStr,
 };
 
+use futures_util::TryStreamExt;
 use iproute_rs::CliError;
 use rtnetlink::{
-    LinkMessageBuilder, LinkVti, LinkVti6, packet_route::link::InfoVti,
+    LinkMessageBuilder, LinkVti, LinkVti6,
+    packet_route::link::{InfoKind, InfoVti, LinkInfo},
 };
 use serde::Serialize;
 
-use super::parse::parse_u32;
+use super::parse::{extract_link_info, parse_u32};
 use crate::link::LinkBaseConf;
 
 #[derive(Serialize)]
@@ -118,72 +120,155 @@ impl std::fmt::Display for CliLinkInfoDataVti {
     }
 }
 
+async fn parse_vti_args<'a>(
+    mut builder: LinkMessageBuilder<LinkVti>,
+    iter: &mut impl Iterator<Item = &'a str>,
+    handle: &rtnetlink::Handle,
+) -> Result<LinkMessageBuilder<LinkVti>, CliError> {
+    while let Some(key) = iter.next() {
+        let mut next_val = || {
+            iter.next().ok_or_else(|| {
+                CliError::from(format!("vti {key} requires a value"))
+            })
+        };
+        match key {
+            "local" => {
+                let v = next_val()?;
+                let addr: Ipv4Addr = parse_ip(v, "local")?;
+                builder = builder.local(addr);
+            }
+            "remote" => {
+                let v = next_val()?;
+                let addr: Ipv4Addr = parse_ip(v, "remote")?;
+                builder = builder.remote(addr);
+            }
+            "dev" => {
+                let v = next_val()?;
+                let ifindex = get_ifindex(handle, v).await?;
+                builder = builder.dev(ifindex);
+            }
+            "key" => {
+                let v = next_val()?;
+                let key = parse_key(v)?;
+                builder = builder.ikey(key);
+                builder = builder.okey(key);
+            }
+            "ikey" => {
+                let v = next_val()?;
+                let key = parse_key(v)?;
+                builder = builder.ikey(key);
+            }
+            "okey" => {
+                let v = next_val()?;
+                let key = parse_key(v)?;
+                builder = builder.okey(key);
+            }
+            "fwmark" => {
+                let v = next_val()?;
+                let mark = if let Some(hex) = v.strip_prefix("0x") {
+                    u32::from_str_radix(hex, 16)
+                } else {
+                    v.parse()
+                };
+                let mark = mark.map_err(|_| {
+                    CliError::from(format!("invalid fwmark: {v}"))
+                })?;
+                builder = builder.fwmark(mark);
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown vti argument: {key}"
+                )));
+            }
+        }
+    }
+    Ok(builder)
+}
+
+async fn parse_vti6_args<'a>(
+    mut builder: LinkMessageBuilder<LinkVti6>,
+    iter: &mut impl Iterator<Item = &'a str>,
+    handle: &rtnetlink::Handle,
+) -> Result<LinkMessageBuilder<LinkVti6>, CliError> {
+    while let Some(key) = iter.next() {
+        let mut next_val = || {
+            iter.next().ok_or_else(|| {
+                CliError::from(format!("vti6 {key} requires a value"))
+            })
+        };
+        match key {
+            "local" => {
+                let v = next_val()?;
+                let addr = parse_ip::<std::net::Ipv6Addr>(v, "local")?;
+                builder = builder.local(addr);
+            }
+            "remote" => {
+                let v = next_val()?;
+                let addr = parse_ip::<std::net::Ipv6Addr>(v, "remote")?;
+                builder = builder.remote(addr);
+            }
+            "dev" => {
+                let v = next_val()?;
+                let ifindex = get_ifindex(handle, v).await?;
+                builder = builder.dev(ifindex);
+            }
+            "key" => {
+                let v = next_val()?;
+                let key = parse_key(v)?;
+                builder = builder.ikey(key);
+                builder = builder.okey(key);
+            }
+            "ikey" => {
+                let v = next_val()?;
+                let key = parse_key(v)?;
+                builder = builder.ikey(key);
+            }
+            "okey" => {
+                let v = next_val()?;
+                let key = parse_key(v)?;
+                builder = builder.okey(key);
+            }
+            "fwmark" => {
+                let v = next_val()?;
+                let mark = if let Some(hex) = v.strip_prefix("0x") {
+                    u32::from_str_radix(hex, 16)
+                } else {
+                    v.parse()
+                };
+                let mark = mark.map_err(|_| {
+                    CliError::from(format!("invalid fwmark: {v}"))
+                })?;
+                builder = builder.fwmark(mark);
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown vti6 argument: {key}"
+                )));
+            }
+        }
+    }
+    Ok(builder)
+}
+
+async fn get_ifindex(
+    handle: &rtnetlink::Handle,
+    name: &str,
+) -> Result<u32, CliError> {
+    let mut links = handle.link().get().match_name(name.to_string()).execute();
+    let link = links.try_next().await?.ok_or_else(|| {
+        CliError::from(format!("Device \"{name}\" does not exist"))
+    })?;
+    Ok(link.header.index)
+}
+
 impl LinkBaseConf {
     pub(crate) async fn apply_vti(
         &self,
         handle: &rtnetlink::Handle,
     ) -> Result<LinkMessageBuilder<LinkVti>, CliError> {
-        let mut builder = LinkVti::new(&self.name);
-
-        let mut iter = self.iface_specific.iter();
-        while let Some(key) = iter.next() {
-            let mut next_val = || {
-                iter.next().ok_or_else(|| {
-                    CliError::from(format!("vti {key} requires a value"))
-                })
-            };
-            match key.as_str() {
-                "local" => {
-                    let v = next_val()?;
-                    let addr: Ipv4Addr = parse_ip(v, "local")?;
-                    builder = builder.local(addr);
-                }
-                "remote" => {
-                    let v = next_val()?;
-                    let addr: Ipv4Addr = parse_ip(v, "remote")?;
-                    builder = builder.remote(addr);
-                }
-                "dev" => {
-                    let v = next_val()?;
-                    let ifindex = self.get_ifindex_by_name(handle, v).await?;
-                    builder = builder.dev(ifindex);
-                }
-                "key" => {
-                    let v = next_val()?;
-                    let key = parse_key(v)?;
-                    builder = builder.ikey(key);
-                    builder = builder.okey(key);
-                }
-                "ikey" => {
-                    let v = next_val()?;
-                    let key = parse_key(v)?;
-                    builder = builder.ikey(key);
-                }
-                "okey" => {
-                    let v = next_val()?;
-                    let key = parse_key(v)?;
-                    builder = builder.okey(key);
-                }
-                "fwmark" => {
-                    let v = next_val()?;
-                    let mark = if let Some(hex) = v.strip_prefix("0x") {
-                        u32::from_str_radix(hex, 16)
-                    } else {
-                        v.parse()
-                    };
-                    let mark = mark.map_err(|_| {
-                        CliError::from(format!("invalid fwmark: {v}"))
-                    })?;
-                    builder = builder.fwmark(mark);
-                }
-                _ => {
-                    return Err(CliError::from(format!(
-                        "Unknown vti argument: {key}"
-                    )));
-                }
-            }
-        }
-
+        let builder = LinkVti::new(&self.name);
+        let mut iter = self.iface_specific.iter().map(|s| s.as_str());
+        let builder = parse_vti_args(builder, &mut iter, handle).await?;
         Ok(builder)
     }
 
@@ -191,67 +276,9 @@ impl LinkBaseConf {
         &self,
         handle: &rtnetlink::Handle,
     ) -> Result<LinkMessageBuilder<LinkVti6>, CliError> {
-        let mut builder = LinkVti6::new(&self.name);
-
-        let mut iter = self.iface_specific.iter();
-        while let Some(key) = iter.next() {
-            let mut next_val = || {
-                iter.next().ok_or_else(|| {
-                    CliError::from(format!("vti6 {key} requires a value"))
-                })
-            };
-            match key.as_str() {
-                "local" => {
-                    let v = next_val()?;
-                    let addr = parse_ip::<std::net::Ipv6Addr>(v, "local")?;
-                    builder = builder.local(addr);
-                }
-                "remote" => {
-                    let v = next_val()?;
-                    let addr = parse_ip::<std::net::Ipv6Addr>(v, "remote")?;
-                    builder = builder.remote(addr);
-                }
-                "dev" => {
-                    let v = next_val()?;
-                    let ifindex = self.get_ifindex_by_name(handle, v).await?;
-                    builder = builder.dev(ifindex);
-                }
-                "key" => {
-                    let v = next_val()?;
-                    let key = parse_key(v)?;
-                    builder = builder.ikey(key);
-                    builder = builder.okey(key);
-                }
-                "ikey" => {
-                    let v = next_val()?;
-                    let key = parse_key(v)?;
-                    builder = builder.ikey(key);
-                }
-                "okey" => {
-                    let v = next_val()?;
-                    let key = parse_key(v)?;
-                    builder = builder.okey(key);
-                }
-                "fwmark" => {
-                    let v = next_val()?;
-                    let mark = if let Some(hex) = v.strip_prefix("0x") {
-                        u32::from_str_radix(hex, 16)
-                    } else {
-                        v.parse()
-                    };
-                    let mark = mark.map_err(|_| {
-                        CliError::from(format!("invalid fwmark: {v}"))
-                    })?;
-                    builder = builder.fwmark(mark);
-                }
-                _ => {
-                    return Err(CliError::from(format!(
-                        "Unknown vti6 argument: {key}"
-                    )));
-                }
-            }
-        }
-
+        let builder = LinkVti6::new(&self.name);
+        let mut iter = self.iface_specific.iter().map(|s| s.as_str());
+        let builder = parse_vti6_args(builder, &mut iter, handle).await?;
         Ok(builder)
     }
 }
@@ -286,6 +313,17 @@ fn parse_key(s: &str) -> Result<u32, CliError> {
 pub(crate) struct IfaceVti;
 
 impl IfaceVti {
+    pub(crate) async fn build_entries(
+        handle: &rtnetlink::Handle,
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder =
+            LinkMessageBuilder::<LinkVti>::new_with_info_kind(InfoKind::Vti);
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = parse_vti_args(builder, &mut iter, handle).await?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... vti           [ remote ADDR ]
@@ -304,6 +342,17 @@ Where:        ADDR := { IP_ADDRESS }
 pub(crate) struct IfaceVti6;
 
 impl IfaceVti6 {
+    pub(crate) async fn build_entries(
+        handle: &rtnetlink::Handle,
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder =
+            LinkMessageBuilder::<LinkVti6>::new_with_info_kind(InfoKind::Vti6);
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = parse_vti6_args(builder, &mut iter, handle).await?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... vti6          [ remote ADDR ]

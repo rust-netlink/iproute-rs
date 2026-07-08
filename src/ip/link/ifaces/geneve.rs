@@ -5,11 +5,11 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use iproute_rs::CliError;
 use rtnetlink::{
     LinkGeneve, LinkMessageBuilder,
-    packet_route::link::{GeneveDf, InfoGeneve},
+    packet_route::link::{GeneveDf, InfoGeneve, InfoKind, LinkInfo},
 };
 use serde::Serialize;
 
-use super::parse::{parse_u8, parse_u16};
+use super::parse::{extract_link_info, parse_u8, parse_u16};
 use crate::link::LinkBaseConf;
 
 #[derive(Serialize, Default)]
@@ -164,6 +164,138 @@ impl std::fmt::Display for CliLinkInfoDataGeneve {
     }
 }
 
+fn parse_geneve_args<'a>(
+    mut builder: LinkMessageBuilder<LinkGeneve>,
+    iter: &mut impl Iterator<Item = &'a str>,
+) -> Result<LinkMessageBuilder<LinkGeneve>, CliError> {
+    while let Some(key) = iter.next() {
+        match key {
+            "id" | "vni" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from("GENEVE id requires a value"));
+                };
+                let val: u32 = v.parse().map_err(|_| {
+                    CliError::from(format!("Invalid GENEVE id: {v}"))
+                })?;
+                if val >= 1u32 << 24 {
+                    return Err(CliError::from(format!(
+                        "Invalid GENEVE id: {v}, must be <= 16777215"
+                    )));
+                }
+                builder = builder.id(val);
+            }
+            "remote" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "GENEVE remote requires a value",
+                    ));
+                };
+                if let Ok(addr) = v.parse::<Ipv4Addr>() {
+                    builder = builder.remote(addr);
+                } else if let Ok(addr) = v.parse::<Ipv6Addr>() {
+                    builder = builder.remote6(addr);
+                } else {
+                    return Err(CliError::from(format!(
+                        "Invalid GENEVE remote address: {v}"
+                    )));
+                }
+            }
+            "ttl" | "hoplimit" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from("GENEVE ttl requires a value"));
+                };
+                if v == "inherit" {
+                    builder = builder.ttl_inherit(true);
+                } else if v != "auto" {
+                    let val: u8 = v.parse().map_err(|_| {
+                        CliError::from(format!("Invalid GENEVE ttl: {v}"))
+                    })?;
+                    builder = builder.ttl(val);
+                }
+            }
+            "tos" | "dsfield" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from("GENEVE tos requires a value"));
+                };
+                if v == "inherit" {
+                    builder = builder.tos(1);
+                } else {
+                    let val: u8 = parse_u8(v, "GENEVE tos")?;
+                    builder = builder.tos(val);
+                }
+            }
+            "df" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from("GENEVE df requires a value"));
+                };
+                let val = v.parse::<GeneveDf>().map_err(|e| {
+                    CliError::from(format!(
+                        "Invalid GENEVE df: {v}, supported: unset, set, \
+                         inherit: {e}"
+                    ))
+                })?;
+                builder = builder.df(val);
+            }
+            "label" | "flowlabel" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "GENEVE label requires a value",
+                    ));
+                };
+                let val: u32 = v.parse().map_err(|_| {
+                    CliError::from(format!("Invalid GENEVE label: {v}"))
+                })?;
+                if val & 0xfff00000 != 0 {
+                    return Err(CliError::from(format!(
+                        "Invalid GENEVE label: {v}, must be <= 1048575"
+                    )));
+                }
+                builder = builder.label(val);
+            }
+            "dstport" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "GENEVE dstport requires a value",
+                    ));
+                };
+                let val = parse_u16(v, "GENEVE dstport")?;
+                builder = builder.port(val);
+            }
+            "external" => {
+                builder = builder.collect_metadata();
+            }
+            "noexternal" => {}
+            "udpcsum" => {
+                builder = builder.udp_csum(true);
+            }
+            "noudpcsum" => {
+                builder = builder.udp_csum(false);
+            }
+            "udp6zerocsumtx" => {
+                builder = builder.udp_zero_csum6_tx(true);
+            }
+            "noudp6zerocsumtx" => {
+                builder = builder.udp_zero_csum6_tx(false);
+            }
+            "udp6zerocsumrx" => {
+                builder = builder.udp_zero_csum6_rx(true);
+            }
+            "noudp6zerocsumrx" => {
+                builder = builder.udp_zero_csum6_rx(false);
+            }
+            "innerprotoinherit" => {
+                builder = builder.inner_proto_inherit();
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown GENEVE argument: {key}"
+                )));
+            }
+        }
+    }
+    Ok(builder)
+}
+
 impl LinkBaseConf {
     pub(crate) async fn apply_geneve(
         &self,
@@ -176,143 +308,11 @@ impl LinkBaseConf {
 
         let link_ifindex = self.get_ifindex_by_name(handle, link_name).await?;
 
-        let mut builder = LinkMessageBuilder::<LinkGeneve>::new(&self.name)
+        let builder = LinkMessageBuilder::<LinkGeneve>::new(&self.name)
             .link(link_ifindex);
 
-        let mut iter = self.iface_specific.iter();
-        while let Some(key) = iter.next() {
-            match key.as_str() {
-                "id" | "vni" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "GENEVE id requires a value",
-                        ));
-                    };
-                    let val: u32 = v.parse().map_err(|_| {
-                        CliError::from(format!("Invalid GENEVE id: {v}"))
-                    })?;
-                    if val >= 1u32 << 24 {
-                        return Err(CliError::from(format!(
-                            "Invalid GENEVE id: {v}, must be <= 16777215"
-                        )));
-                    }
-                    builder = builder.id(val);
-                }
-                "remote" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "GENEVE remote requires a value",
-                        ));
-                    };
-                    if let Ok(addr) = v.parse::<Ipv4Addr>() {
-                        builder = builder.remote(addr);
-                    } else if let Ok(addr) = v.parse::<Ipv6Addr>() {
-                        builder = builder.remote6(addr);
-                    } else {
-                        return Err(CliError::from(format!(
-                            "Invalid GENEVE remote address: {v}"
-                        )));
-                    }
-                }
-                "ttl" | "hoplimit" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "GENEVE ttl requires a value",
-                        ));
-                    };
-                    if v == "inherit" {
-                        builder = builder.ttl_inherit(true);
-                    } else if v != "auto" {
-                        let val: u8 = v.parse().map_err(|_| {
-                            CliError::from(format!("Invalid GENEVE ttl: {v}"))
-                        })?;
-                        builder = builder.ttl(val);
-                    }
-                }
-                "tos" | "dsfield" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "GENEVE tos requires a value",
-                        ));
-                    };
-                    if v == "inherit" {
-                        builder = builder.tos(1);
-                    } else {
-                        let val: u8 = parse_u8(v, "GENEVE tos")?;
-                        builder = builder.tos(val);
-                    }
-                }
-                "df" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "GENEVE df requires a value",
-                        ));
-                    };
-                    let val = v.parse::<GeneveDf>().map_err(|e| {
-                        CliError::from(format!(
-                            "Invalid GENEVE df: {v}, supported: unset, set, \
-                             inherit: {e}"
-                        ))
-                    })?;
-                    builder = builder.df(val);
-                }
-                "label" | "flowlabel" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "GENEVE label requires a value",
-                        ));
-                    };
-                    let val: u32 = v.parse().map_err(|_| {
-                        CliError::from(format!("Invalid GENEVE label: {v}"))
-                    })?;
-                    if val & 0xfff00000 != 0 {
-                        return Err(CliError::from(format!(
-                            "Invalid GENEVE label: {v}, must be <= 1048575"
-                        )));
-                    }
-                    builder = builder.label(val);
-                }
-                "dstport" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "GENEVE dstport requires a value",
-                        ));
-                    };
-                    let val = parse_u16(v, "GENEVE dstport")?;
-                    builder = builder.port(val);
-                }
-                "external" => {
-                    builder = builder.collect_metadata();
-                }
-                "noexternal" => {}
-                "udpcsum" => {
-                    builder = builder.udp_csum(true);
-                }
-                "noudpcsum" => {
-                    builder = builder.udp_csum(false);
-                }
-                "udp6zerocsumtx" => {
-                    builder = builder.udp_zero_csum6_tx(true);
-                }
-                "noudp6zerocsumtx" => {
-                    builder = builder.udp_zero_csum6_tx(false);
-                }
-                "udp6zerocsumrx" => {
-                    builder = builder.udp_zero_csum6_rx(true);
-                }
-                "noudp6zerocsumrx" => {
-                    builder = builder.udp_zero_csum6_rx(false);
-                }
-                "innerprotoinherit" => {
-                    builder = builder.inner_proto_inherit();
-                }
-                _ => {
-                    return Err(CliError::from(format!(
-                        "Unknown GENEVE argument: {key}"
-                    )));
-                }
-            }
-        }
+        let mut iter = self.iface_specific.iter().map(|s| s.as_str());
+        let builder = parse_geneve_args(builder, &mut iter)?;
 
         Ok(builder)
     }
@@ -321,6 +321,17 @@ impl LinkBaseConf {
 pub(crate) struct IfaceGeneve;
 
 impl IfaceGeneve {
+    pub(crate) fn build_entries(
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder = LinkMessageBuilder::<LinkGeneve>::new_with_info_kind(
+            InfoKind::Geneve,
+        );
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = parse_geneve_args(builder, &mut iter)?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... geneve id VNI

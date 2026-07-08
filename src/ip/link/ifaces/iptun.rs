@@ -6,19 +6,21 @@ use std::{
     str::FromStr,
 };
 
+use futures_util::TryStreamExt;
 use iproute_rs::CliError;
 use rtnetlink::{
     LinkIp6Tnl, LinkIpIp, LinkMessageBuilder, LinkSit,
     packet_route::{
         IpProtocol,
         link::{
-            InfoIpTunnel, Ip6TunnelFlags, TunnelEncapFlags, TunnelEncapType,
+            InfoIpTunnel, InfoKind, Ip6TunnelFlags, LinkInfo, TunnelEncapFlags,
+            TunnelEncapType,
         },
     },
 };
 use serde::Serialize;
 
-use super::parse::parse_u16;
+use super::parse::{extract_link_info, parse_u16};
 use crate::link::LinkBaseConf;
 
 #[derive(Serialize)]
@@ -364,177 +366,394 @@ impl std::fmt::Display for CliLinkInfoDataIpIp {
     }
 }
 
+async fn parse_sit_args_impl<'a>(
+    mut builder: LinkMessageBuilder<LinkSit>,
+    iter: &mut impl Iterator<Item = &'a str>,
+    handle: &rtnetlink::Handle,
+) -> Result<LinkMessageBuilder<LinkSit>, CliError> {
+    let mut metadata = false;
+
+    while let Some(key) = iter.next() {
+        let mut next_val = || {
+            iter.next().ok_or_else(|| {
+                CliError::from(format!("sit {key} requires a value"))
+            })
+        };
+        match key {
+            "local" => {
+                let v = next_val()?;
+                let addr: Ipv4Addr = parse_ip(v, "local")?;
+                builder = builder.local(addr);
+            }
+            "remote" => {
+                let v = next_val()?;
+                let addr: Ipv4Addr = parse_ip(v, "remote")?;
+                builder = builder.remote(addr);
+            }
+            "dev" => {
+                let v = next_val()?;
+                let ifindex = get_ifindex(handle, v).await?;
+                builder = builder.dev(ifindex);
+            }
+            "ttl" | "hoplimit" | "hlim" => {
+                let v = next_val()?;
+                match v {
+                    "inherit" => {
+                        builder = builder.ttl(0);
+                    }
+                    _ => {
+                        let ttl: u8 = v.parse().map_err(|_| {
+                            CliError::from(format!("invalid TTL: {v}"))
+                        })?;
+                        builder = builder.ttl(ttl);
+                    }
+                }
+            }
+            "tos" | "tclass" | "tc" | "dsfield" => {
+                let v = next_val()?;
+                match v {
+                    "inherit" => {
+                        builder = builder.tos(1);
+                    }
+                    _ => {
+                        let tos: u8 = parse_dsfield(v)?;
+                        builder = builder.tos(tos);
+                    }
+                }
+            }
+            "pmtudisc" => {
+                builder = builder.pmtudisc(true);
+            }
+            "nopmtudisc" => {
+                builder = builder.pmtudisc(false);
+            }
+            "isatap" => {
+                builder = builder.isatap(true);
+            }
+            "mode" => {
+                let v = next_val()?;
+                match v {
+                    "ip6ip" | "ipv6/ipv4" => {
+                        builder = builder.protocol(IpProtocol::Ipv6);
+                    }
+                    "ipip" | "ipv4/ipv4" | "ip4ip4" => {
+                        builder = builder.protocol(IpProtocol::Ipip);
+                    }
+                    "mplsip" | "mpls/ipv4" => {
+                        let proto = IpProtocol::from(137u8);
+                        builder = builder.protocol(proto);
+                    }
+                    "any" | "any/ipv4" => {
+                        let proto = IpProtocol::from(0u8);
+                        builder = builder.protocol(proto);
+                    }
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Cannot guess tunnel mode: {v}"
+                        )));
+                    }
+                }
+            }
+            "external" => {
+                metadata = true;
+            }
+            "noencap" => {
+                builder = builder.encap_type(TunnelEncapType::None);
+            }
+            "encap" => {
+                let v = next_val()?;
+                match v {
+                    "fou" => {
+                        builder = builder.encap_type(TunnelEncapType::Fou);
+                    }
+                    "gue" => {
+                        builder = builder.encap_type(TunnelEncapType::Gue);
+                    }
+                    "none" => {
+                        builder = builder.encap_type(TunnelEncapType::None);
+                    }
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Invalid encap type: {v}"
+                        )));
+                    }
+                }
+            }
+            "encap-sport" => {
+                let v = next_val()?;
+                if v == "auto" {
+                    builder = builder.encap_sport(0);
+                } else {
+                    let port = parse_u16(v, "encap-sport")?;
+                    builder = builder.encap_sport(port);
+                }
+            }
+            "encap-dport" => {
+                let v = next_val()?;
+                let port = parse_u16(v, "encap-dport")?;
+                builder = builder.encap_dport(port);
+            }
+            "encap-csum" => {
+                let flags = TunnelEncapFlags::CSum;
+                builder = builder.encap_flags(flags);
+            }
+            "noencap-csum" => {
+                let flags = TunnelEncapFlags::empty();
+                builder = builder.encap_flags(flags);
+            }
+            "encap-udp6-csum" => {
+                let flags = TunnelEncapFlags::CSum6;
+                builder = builder.encap_flags(flags);
+            }
+            "noencap-udp6-csum" => {
+                let flags = TunnelEncapFlags::empty();
+                builder = builder.encap_flags(flags);
+            }
+            "encap-remcsum" => {
+                let flags = TunnelEncapFlags::RemCSum;
+                builder = builder.encap_flags(flags);
+            }
+            "noencap-remcsum" => {
+                let flags = TunnelEncapFlags::empty();
+                builder = builder.encap_flags(flags);
+            }
+            "fwmark" => {
+                let v = next_val()?;
+                let mark = if let Some(hex) = v.strip_prefix("0x") {
+                    u32::from_str_radix(hex, 16)
+                } else {
+                    v.parse()
+                };
+                let mark = mark.map_err(|_| {
+                    CliError::from(format!("invalid fwmark: {v}"))
+                })?;
+                builder = builder.fwmark(mark);
+            }
+            "6rd-prefix" => {
+                let v = next_val()?;
+                let (addr, prefixlen) = parse_addr_with_prefix::<Ipv6Addr>(v)?;
+                builder = builder.ipv6_rd_prefix(addr);
+                builder = builder.ipv6_rd_prefixlen(prefixlen);
+            }
+            "6rd-relay_prefix" => {
+                let v = next_val()?;
+                let (addr, prefixlen) = parse_addr_with_prefix::<Ipv4Addr>(v)?;
+                builder = builder.ipv6_rd_relay_prefix(addr);
+                builder = builder.ipv6_rd_relay_prefixlen(prefixlen);
+            }
+            "6rd-reset" => {
+                builder = builder
+                    .ipv6_rd_prefix(Ipv6Addr::new(0x2002, 0, 0, 0, 0, 0, 0, 0));
+                builder = builder.ipv6_rd_prefixlen(16);
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown sit argument: {key}"
+                )));
+            }
+        }
+    }
+
+    if metadata {
+        builder = builder.collect_metadata(true);
+    }
+
+    Ok(builder)
+}
+
+async fn parse_iptun4_common<'a>(
+    mut builder: LinkMessageBuilder<LinkIpIp>,
+    iter: &mut impl Iterator<Item = &'a str>,
+    handle: &rtnetlink::Handle,
+) -> Result<LinkMessageBuilder<LinkIpIp>, CliError> {
+    let mut metadata = false;
+
+    while let Some(key) = iter.next() {
+        let mut next_val = || {
+            iter.next().ok_or_else(|| {
+                CliError::from(format!("ipip {key} requires a value"))
+            })
+        };
+        match key {
+            "local" => {
+                let v = next_val()?;
+                let addr: Ipv4Addr = parse_ip(v, "local")?;
+                builder = builder.local(addr);
+            }
+            "remote" => {
+                let v = next_val()?;
+                let addr: Ipv4Addr = parse_ip(v, "remote")?;
+                builder = builder.remote(addr);
+            }
+            "dev" => {
+                let v = next_val()?;
+                let ifindex = get_ifindex(handle, v).await?;
+                builder = builder.dev(ifindex);
+            }
+            "ttl" | "hoplimit" | "hlim" => {
+                let v = next_val()?;
+                match v {
+                    "inherit" => {
+                        builder = builder.ttl(0);
+                    }
+                    _ => {
+                        let ttl: u8 = v.parse().map_err(|_| {
+                            CliError::from(format!("invalid TTL: {v}"))
+                        })?;
+                        builder = builder.ttl(ttl);
+                    }
+                }
+            }
+            "tos" | "tclass" | "tc" | "dsfield" => {
+                let v = next_val()?;
+                match v {
+                    "inherit" => {
+                        builder = builder.tos(1);
+                    }
+                    _ => {
+                        let tos: u8 = parse_dsfield(v)?;
+                        builder = builder.tos(tos);
+                    }
+                }
+            }
+            "pmtudisc" => {
+                builder = builder.pmtudisc(true);
+            }
+            "nopmtudisc" => {
+                builder = builder.pmtudisc(false);
+            }
+            "mode" => {
+                let v = next_val()?;
+                match v {
+                    "ipip" | "ipv4/ipv4" | "ip4ip4" => {
+                        builder = builder.protocol(IpProtocol::Ipip);
+                    }
+                    "mplsip" | "mpls/ipv4" => {
+                        let proto = IpProtocol::from(137u8);
+                        builder = builder.protocol(proto);
+                    }
+                    "any" | "any/ipv4" => {
+                        let proto = IpProtocol::from(0u8);
+                        builder = builder.protocol(proto);
+                    }
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Cannot guess tunnel mode: {v}"
+                        )));
+                    }
+                }
+            }
+            "external" => {
+                metadata = true;
+            }
+            "noencap" => {
+                builder = builder.encap_type(TunnelEncapType::None);
+            }
+            "encap" => {
+                let v = next_val()?;
+                match v {
+                    "fou" => {
+                        builder = builder.encap_type(TunnelEncapType::Fou);
+                    }
+                    "gue" => {
+                        builder = builder.encap_type(TunnelEncapType::Gue);
+                    }
+                    "none" => {
+                        builder = builder.encap_type(TunnelEncapType::None);
+                    }
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Invalid encap type: {v}"
+                        )));
+                    }
+                }
+            }
+            "encap-sport" => {
+                let v = next_val()?;
+                if v == "auto" {
+                    builder = builder.encap_sport(0);
+                } else {
+                    let port = parse_u16(v, "encap-sport")?;
+                    builder = builder.encap_sport(port);
+                }
+            }
+            "encap-dport" => {
+                let v = next_val()?;
+                let port = parse_u16(v, "encap-dport")?;
+                builder = builder.encap_dport(port);
+            }
+            "encap-csum" => {
+                let flags = TunnelEncapFlags::CSum;
+                builder = builder.encap_flags(flags);
+            }
+            "noencap-csum" => {
+                let flags = TunnelEncapFlags::empty();
+                builder = builder.encap_flags(flags);
+            }
+            "encap-udp6-csum" => {
+                let flags = TunnelEncapFlags::CSum6;
+                builder = builder.encap_flags(flags);
+            }
+            "noencap-udp6-csum" => {
+                let flags = TunnelEncapFlags::empty();
+                builder = builder.encap_flags(flags);
+            }
+            "encap-remcsum" => {
+                let flags = TunnelEncapFlags::RemCSum;
+                builder = builder.encap_flags(flags);
+            }
+            "noencap-remcsum" => {
+                let flags = TunnelEncapFlags::empty();
+                builder = builder.encap_flags(flags);
+            }
+            "fwmark" => {
+                let v = next_val()?;
+                let mark = if let Some(hex) = v.strip_prefix("0x") {
+                    u32::from_str_radix(hex, 16)
+                } else {
+                    v.parse()
+                };
+                let mark = mark.map_err(|_| {
+                    CliError::from(format!("invalid fwmark: {v}"))
+                })?;
+                builder = builder.fwmark(mark);
+            }
+            "isatap" | "6rd-prefix" | "6rd-relay_prefix" | "6rd-reset" => {}
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown ipip argument: {key}"
+                )));
+            }
+        }
+    }
+
+    if metadata {
+        builder = builder.collect_metadata(true);
+    }
+
+    Ok(builder)
+}
+
+async fn get_ifindex(
+    handle: &rtnetlink::Handle,
+    name: &str,
+) -> Result<u32, CliError> {
+    let mut links = handle.link().get().match_name(name.to_string()).execute();
+    use futures_util::TryStreamExt;
+    let link = links.try_next().await?.ok_or_else(|| {
+        CliError::from(format!("Device \"{name}\" does not exist"))
+    })?;
+    Ok(link.header.index)
+}
+
 impl LinkBaseConf {
     pub(crate) async fn apply_iptun(
         &self,
         handle: &rtnetlink::Handle,
     ) -> Result<LinkMessageBuilder<LinkIpIp>, CliError> {
-        let mut builder = LinkIpIp::new(&self.name);
-        let mut metadata = false;
-
-        let mut iter = self.iface_specific.iter();
-        while let Some(key) = iter.next() {
-            let mut next_val = || {
-                iter.next().ok_or_else(|| {
-                    CliError::from(format!("ipip {key} requires a value"))
-                })
-            };
-            match key.as_str() {
-                "local" => {
-                    let v = next_val()?;
-                    let addr: Ipv4Addr = parse_ip(v, "local")?;
-                    builder = builder.local(addr);
-                }
-                "remote" => {
-                    let v = next_val()?;
-                    let addr: Ipv4Addr = parse_ip(v, "remote")?;
-                    builder = builder.remote(addr);
-                }
-                "dev" => {
-                    let v = next_val()?;
-                    let ifindex = self.get_ifindex_by_name(handle, v).await?;
-                    builder = builder.dev(ifindex);
-                }
-                "ttl" | "hoplimit" | "hlim" => {
-                    let v = next_val()?;
-                    match v.as_str() {
-                        "inherit" => {
-                            builder = builder.ttl(0);
-                        }
-                        _ => {
-                            let ttl: u8 = v.parse().map_err(|_| {
-                                CliError::from(format!("invalid TTL: {v}"))
-                            })?;
-                            builder = builder.ttl(ttl);
-                        }
-                    }
-                }
-                "tos" | "tclass" | "tc" | "dsfield" => {
-                    let v = next_val()?;
-                    match v.as_str() {
-                        "inherit" => {
-                            builder = builder.tos(1);
-                        }
-                        _ => {
-                            let tos: u8 = parse_dsfield(v)?;
-                            builder = builder.tos(tos);
-                        }
-                    }
-                }
-                "pmtudisc" => {
-                    builder = builder.pmtudisc(true);
-                }
-                "nopmtudisc" => {
-                    builder = builder.pmtudisc(false);
-                }
-                "mode" => {
-                    let v = next_val()?;
-                    match v.as_str() {
-                        "ipip" | "ipv4/ipv4" | "ip4ip4" => {
-                            builder = builder.protocol(IpProtocol::Ipip);
-                        }
-                        "mplsip" | "mpls/ipv4" => {
-                            let proto = IpProtocol::from(137u8);
-                            builder = builder.protocol(proto);
-                        }
-                        "any" | "any/ipv4" => {
-                            let proto = IpProtocol::from(0u8);
-                            builder = builder.protocol(proto);
-                        }
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Cannot guess tunnel mode: {v}"
-                            )));
-                        }
-                    }
-                }
-                "external" => {
-                    metadata = true;
-                }
-                "noencap" => {
-                    builder = builder.encap_type(TunnelEncapType::None);
-                }
-                "encap" => {
-                    let v = next_val()?;
-                    match v.as_str() {
-                        "fou" => {
-                            builder = builder.encap_type(TunnelEncapType::Fou);
-                        }
-                        "gue" => {
-                            builder = builder.encap_type(TunnelEncapType::Gue);
-                        }
-                        "none" => {
-                            builder = builder.encap_type(TunnelEncapType::None);
-                        }
-                        _ => {
-                            return Err(CliError::from(format!(
-                                "Invalid encap type: {v}"
-                            )));
-                        }
-                    }
-                }
-                "encap-sport" => {
-                    let v = next_val()?;
-                    if v == "auto" {
-                        builder = builder.encap_sport(0);
-                    } else {
-                        let port = parse_u16(v, "encap-sport")?;
-                        builder = builder.encap_sport(port);
-                    }
-                }
-                "encap-dport" => {
-                    let v = next_val()?;
-                    let port = parse_u16(v, "encap-dport")?;
-                    builder = builder.encap_dport(port);
-                }
-                "encap-csum" => {
-                    let flags = TunnelEncapFlags::CSum;
-                    builder = builder.encap_flags(flags);
-                }
-                "noencap-csum" => {
-                    let flags = TunnelEncapFlags::empty();
-                    builder = builder.encap_flags(flags);
-                }
-                "encap-udp6-csum" => {
-                    let flags = TunnelEncapFlags::CSum6;
-                    builder = builder.encap_flags(flags);
-                }
-                "noencap-udp6-csum" => {
-                    let flags = TunnelEncapFlags::empty();
-                    builder = builder.encap_flags(flags);
-                }
-                "encap-remcsum" => {
-                    let flags = TunnelEncapFlags::RemCSum;
-                    builder = builder.encap_flags(flags);
-                }
-                "noencap-remcsum" => {
-                    let flags = TunnelEncapFlags::empty();
-                    builder = builder.encap_flags(flags);
-                }
-                "fwmark" => {
-                    let v = next_val()?;
-                    let mark = if let Some(hex) = v.strip_prefix("0x") {
-                        u32::from_str_radix(hex, 16)
-                    } else {
-                        v.parse()
-                    };
-                    let mark = mark.map_err(|_| {
-                        CliError::from(format!("invalid fwmark: {v}"))
-                    })?;
-                    builder = builder.fwmark(mark);
-                }
-                _ => {
-                    return Err(CliError::from(format!(
-                        "Unknown ipip argument: {key}"
-                    )));
-                }
-            }
-        }
-
-        if metadata {
-            builder = builder.collect_metadata(true);
-        }
-
+        let builder = LinkIpIp::new(&self.name);
+        let mut iter = self.iface_specific.iter().map(|s| s.as_str());
+        let builder = parse_iptun4_common(builder, &mut iter, handle).await?;
         Ok(builder)
     }
 }
@@ -800,31 +1019,115 @@ impl LinkBaseConf {
         &self,
         handle: &rtnetlink::Handle,
     ) -> Result<LinkMessageBuilder<LinkSit>, CliError> {
-        let mut builder = LinkSit::new(&self.name);
+        let builder = LinkSit::new(&self.name);
+        let mut iter = self.iface_specific.iter().map(|s| s.as_str());
+        let builder = parse_sit_args_impl(builder, &mut iter, handle).await?;
+        Ok(builder)
+    }
+}
+
+fn parse_addr_with_prefix<T: FromStr>(s: &str) -> Result<(T, u16), CliError>
+where
+    T::Err: std::fmt::Display,
+{
+    if let Some((addr_str, prefix_str)) = s.split_once('/') {
+        let addr: T = addr_str
+            .parse()
+            .map_err(|e| CliError::from(format!("Invalid address: {e}")))?;
+        let prefixlen: u16 = prefix_str.parse().map_err(|_| {
+            CliError::from(format!("Invalid prefix length: {prefix_str}"))
+        })?;
+        Ok((addr, prefixlen))
+    } else {
+        let addr: T = s
+            .parse()
+            .map_err(|e| CliError::from(format!("Invalid address: {e}")))?;
+        Ok((addr, 0))
+    }
+}
+
+pub(crate) struct IfaceIpIp;
+
+impl IfaceIpIp {
+    pub(crate) async fn build_entries(
+        handle: &rtnetlink::Handle,
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder =
+            LinkMessageBuilder::<LinkIpIp>::new_with_info_kind(InfoKind::IpIp);
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = parse_iptun4_common(builder, &mut iter, handle).await?;
+        Ok(extract_link_info(builder.build()))
+    }
+
+    #[rustfmt::skip]
+    pub(crate) fn print_help() -> &'static str {
+        r"Usage: ... ipip          [ remote ADDR ]
+                        [ local ADDR ]
+                        [ ttl TTL ]
+                        [ tos TOS ]
+                        [ [no]pmtudisc ]
+                        [ 6rd-prefix ADDR ]
+                        [ 6rd-relay_prefix ADDR ]
+                        [ 6rd-reset ]
+                        [ dev PHYS_DEV ]
+                        [ fwmark MARK ]
+                        [ external ]
+                        [ noencap ]
+                        [ encap { fou | gue | none } ]
+                        [ encap-sport PORT ]
+                        [ encap-dport PORT ]
+                        [ [no]encap-csum ]
+                        [ [no]encap-csum6 ]
+                        [ [no]encap-remcsum ]
+                        [ mode { ipip | mplsip | any } ]
+
+Where:        ADDR := { IP_ADDRESS | any }
+        TOS  := { NUMBER | inherit }
+        TTL  := { 1..255 | inherit }
+        MARK := { 0x0..0xffffffff }
+"
+    }
+}
+
+pub(crate) struct IfaceIp6Tnl;
+
+impl IfaceIp6Tnl {
+    pub(crate) async fn build_entries(
+        handle: &rtnetlink::Handle,
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let mut builder = LinkMessageBuilder::<LinkIp6Tnl>::new_with_info_kind(
+            InfoKind::Ip6Tnl,
+        );
         let mut metadata = false;
 
-        let mut iter = self.iface_specific.iter();
+        let mut iter = args.iter();
         while let Some(key) = iter.next() {
             let mut next_val = || {
                 iter.next().ok_or_else(|| {
-                    CliError::from(format!("sit {key} requires a value"))
+                    CliError::from(format!("ip6tnl {key} requires a value"))
                 })
             };
             match key.as_str() {
                 "local" => {
                     let v = next_val()?;
-                    let addr: Ipv4Addr = parse_ip(v, "local")?;
+                    let addr: Ipv6Addr = parse_ip(v, "local")?;
                     builder = builder.local(addr);
                 }
                 "remote" => {
                     let v = next_val()?;
-                    let addr: Ipv4Addr = parse_ip(v, "remote")?;
+                    let addr: Ipv6Addr = parse_ip(v, "remote")?;
                     builder = builder.remote(addr);
                 }
                 "dev" => {
                     let v = next_val()?;
-                    let ifindex = self.get_ifindex_by_name(handle, v).await?;
-                    builder = builder.dev(ifindex);
+                    let mut links =
+                        handle.link().get().match_name(v.to_string()).execute();
+                    let link = links.try_next().await?.ok_or_else(|| {
+                        CliError::from(format!("Device \"{v}\" does not exist"))
+                    })?;
+                    builder = builder.dev(link.header.index);
                 }
                 "ttl" | "hoplimit" | "hlim" => {
                     let v = next_val()?;
@@ -840,17 +1143,75 @@ impl LinkBaseConf {
                         }
                     }
                 }
+                "encaplimit" => {
+                    let v = next_val()?;
+                    if v == "none" {
+                        builder = builder
+                            .set_flag(Ip6TunnelFlags::IgnEncapLimit, true);
+                    } else {
+                        let limit: u8 = v.parse().map_err(|_| {
+                            CliError::from(format!("invalid encaplimit: {v}"))
+                        })?;
+                        builder = builder.encap_limit(limit);
+                        builder = builder
+                            .set_flag(Ip6TunnelFlags::IgnEncapLimit, false);
+                    }
+                }
                 "tos" | "tclass" | "tc" | "dsfield" => {
                     let v = next_val()?;
-                    match v.as_str() {
-                        "inherit" => {
-                            builder = builder.tos(1);
-                        }
-                        _ => {
-                            let tos: u8 = parse_dsfield(v)?;
-                            builder = builder.tos(tos);
-                        }
+                    if v == "inherit" {
+                        builder = builder.tclass(None);
+                    } else {
+                        let uval: u8 = if let Some(hex) = v.strip_prefix("0x") {
+                            u8::from_str_radix(hex, 16).map_err(|_| {
+                                CliError::from(format!("invalid TClass: {v}"))
+                            })?
+                        } else {
+                            v.parse::<u8>().map_err(|_| {
+                                CliError::from(format!("invalid TClass: {v}"))
+                            })?
+                        };
+                        builder = builder.tclass(Some(uval));
                     }
+                }
+                "flowlabel" | "fl" => {
+                    let v = next_val()?;
+                    if v == "inherit" {
+                        builder = builder.flowlabel(None);
+                    } else {
+                        let uval = if let Some(hex) = v.strip_prefix("0x") {
+                            u32::from_str_radix(hex, 16)
+                        } else {
+                            v.parse()
+                        };
+                        let uval = uval.map_err(|_| {
+                            CliError::from(format!("invalid flowlabel: {v}"))
+                        })?;
+                        if uval > 0xfffff {
+                            return Err(CliError::from(format!(
+                                "invalid flowlabel: {v}"
+                            )));
+                        }
+                        builder = builder.flowlabel(Some(uval));
+                    }
+                }
+                "dscp" => {
+                    let v = next_val()?;
+                    if v != "inherit" {
+                        return Err(CliError::from(format!(
+                            "dscp only supports inherit, got {v}"
+                        )));
+                    }
+                    builder =
+                        builder.set_flag(Ip6TunnelFlags::RcvDscpCopy, true);
+                }
+                "allow-localremote" => {
+                    builder = builder
+                        .set_flag(Ip6TunnelFlags::AllowLocalRemote, true);
+                }
+                "noallow-localremote" => {
+                    builder = builder
+                        .set_flag(Ip6TunnelFlags::AllowLocalRemote, false);
                 }
                 "pmtudisc" => {
                     builder = builder.pmtudisc(true);
@@ -858,23 +1219,16 @@ impl LinkBaseConf {
                 "nopmtudisc" => {
                     builder = builder.pmtudisc(false);
                 }
-                "isatap" => {
-                    builder = builder.isatap(true);
-                }
                 "mode" => {
                     let v = next_val()?;
                     match v.as_str() {
-                        "ip6ip" | "ipv6/ipv4" => {
+                        "ip6ip6" | "ipv6/ipv6" => {
                             builder = builder.protocol(IpProtocol::Ipv6);
                         }
-                        "ipip" | "ipv4/ipv4" | "ip4ip4" => {
+                        "ipip6" | "ip4ip6" | "ip/ipv6" | "ipv4/ipv6" => {
                             builder = builder.protocol(IpProtocol::Ipip);
                         }
-                        "mplsip" | "mpls/ipv4" => {
-                            let proto = IpProtocol::from(137u8);
-                            builder = builder.protocol(proto);
-                        }
-                        "any" | "any/ipv4" => {
+                        "any" | "any/ipv6" => {
                             let proto = IpProtocol::from(0u8);
                             builder = builder.protocol(proto);
                         }
@@ -950,39 +1304,27 @@ impl LinkBaseConf {
                 }
                 "fwmark" => {
                     let v = next_val()?;
-                    let mark = if let Some(hex) = v.strip_prefix("0x") {
-                        u32::from_str_radix(hex, 16)
+                    if v == "inherit" {
+                        builder = builder
+                            .set_flag(Ip6TunnelFlags::UseOrigFwMark, true);
+                        builder = builder.fwmark(0);
                     } else {
-                        v.parse()
-                    };
-                    let mark = mark.map_err(|_| {
-                        CliError::from(format!("invalid fwmark: {v}"))
-                    })?;
-                    builder = builder.fwmark(mark);
-                }
-                "6rd-prefix" => {
-                    let v = next_val()?;
-                    let (addr, prefixlen) =
-                        parse_addr_with_prefix::<Ipv6Addr>(v)?;
-                    builder = builder.ipv6_rd_prefix(addr);
-                    builder = builder.ipv6_rd_prefixlen(prefixlen);
-                }
-                "6rd-relay_prefix" => {
-                    let v = next_val()?;
-                    let (addr, prefixlen) =
-                        parse_addr_with_prefix::<Ipv4Addr>(v)?;
-                    builder = builder.ipv6_rd_relay_prefix(addr);
-                    builder = builder.ipv6_rd_relay_prefixlen(prefixlen);
-                }
-                "6rd-reset" => {
-                    builder = builder.ipv6_rd_prefix(Ipv6Addr::new(
-                        0x2002, 0, 0, 0, 0, 0, 0, 0,
-                    ));
-                    builder = builder.ipv6_rd_prefixlen(16);
+                        let mark = if let Some(hex) = v.strip_prefix("0x") {
+                            u32::from_str_radix(hex, 16)
+                        } else {
+                            v.parse()
+                        };
+                        let mark = mark.map_err(|_| {
+                            CliError::from(format!("invalid fwmark: {v}"))
+                        })?;
+                        builder = builder.fwmark(mark);
+                        builder = builder
+                            .set_flag(Ip6TunnelFlags::UseOrigFwMark, false);
+                    }
                 }
                 _ => {
                     return Err(CliError::from(format!(
-                        "Unknown sit argument: {key}"
+                        "Unknown ip6tnl argument: {key}"
                     )));
                 }
             }
@@ -992,66 +1334,9 @@ impl LinkBaseConf {
             builder = builder.collect_metadata(true);
         }
 
-        Ok(builder)
+        Ok(extract_link_info(builder.build()))
     }
-}
 
-fn parse_addr_with_prefix<T: FromStr>(s: &str) -> Result<(T, u16), CliError>
-where
-    T::Err: std::fmt::Display,
-{
-    if let Some((addr_str, prefix_str)) = s.split_once('/') {
-        let addr: T = addr_str
-            .parse()
-            .map_err(|e| CliError::from(format!("Invalid address: {e}")))?;
-        let prefixlen: u16 = prefix_str.parse().map_err(|_| {
-            CliError::from(format!("Invalid prefix length: {prefix_str}"))
-        })?;
-        Ok((addr, prefixlen))
-    } else {
-        let addr: T = s
-            .parse()
-            .map_err(|e| CliError::from(format!("Invalid address: {e}")))?;
-        Ok((addr, 0))
-    }
-}
-
-pub(crate) struct IfaceIpIp;
-
-impl IfaceIpIp {
-    #[rustfmt::skip]
-    pub(crate) fn print_help() -> &'static str {
-        r"Usage: ... ipip          [ remote ADDR ]
-                        [ local ADDR ]
-                        [ ttl TTL ]
-                        [ tos TOS ]
-                        [ [no]pmtudisc ]
-                        [ 6rd-prefix ADDR ]
-                        [ 6rd-relay_prefix ADDR ]
-                        [ 6rd-reset ]
-                        [ dev PHYS_DEV ]
-                        [ fwmark MARK ]
-                        [ external ]
-                        [ noencap ]
-                        [ encap { fou | gue | none } ]
-                        [ encap-sport PORT ]
-                        [ encap-dport PORT ]
-                        [ [no]encap-csum ]
-                        [ [no]encap-csum6 ]
-                        [ [no]encap-remcsum ]
-                        [ mode { ipip | mplsip | any } ]
-
-Where:        ADDR := { IP_ADDRESS | any }
-        TOS  := { NUMBER | inherit }
-        TTL  := { 1..255 | inherit }
-        MARK := { 0x0..0xffffffff }
-"
-    }
-}
-
-pub(crate) struct IfaceIp6Tnl;
-
-impl IfaceIp6Tnl {
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... ip6tnl        [ remote ADDR ]
@@ -1087,6 +1372,17 @@ Where:        ADDR          := IPV6_ADDRESS
 pub(crate) struct IfaceSit;
 
 impl IfaceSit {
+    pub(crate) async fn build_entries(
+        handle: &rtnetlink::Handle,
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder =
+            LinkMessageBuilder::<LinkSit>::new_with_info_kind(InfoKind::SitTun);
+        let mut iter = args.iter().map(|s| s.as_str());
+        let builder = parse_sit_args_impl(builder, &mut iter, handle).await?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... sit           [ remote ADDR ]

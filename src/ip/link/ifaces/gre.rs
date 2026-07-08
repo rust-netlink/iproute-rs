@@ -11,11 +11,12 @@ use rtnetlink::{
     LinkGre, LinkGre6, LinkMessageBuilder,
     packet_route::link::{
         ErSpanDir, GreEncapFlags, GreEncapType, GreIOFlags, InfoGre, InfoGre6,
+        InfoKind, LinkInfo,
     },
 };
 use serde::Serialize;
 
-use super::parse::parse_u16;
+use super::parse::{extract_link_info, parse_u16};
 use crate::link::LinkBaseConf;
 
 #[derive(Serialize)]
@@ -772,6 +773,288 @@ async fn build_gre_opts(
     Ok(builder)
 }
 
+async fn build_gre_entries_set(
+    mut builder: LinkMessageBuilder<LinkGre>,
+    handle: &rtnetlink::Handle,
+    args: &[String],
+) -> Result<LinkMessageBuilder<LinkGre>, CliError> {
+    let mut metadata = false;
+
+    let mut iter = args.iter();
+    while let Some(key) = iter.next() {
+        let mut next_val = || {
+            iter.next().ok_or_else(|| {
+                CliError::from(format!("gre {key} requires a value"))
+            })
+        };
+        match key.as_str() {
+            "local" => {
+                let v = next_val()?;
+                let addr: Ipv4Addr = parse_ip(v, "local")?;
+                builder = builder.local(addr);
+            }
+            "remote" => {
+                let v = next_val()?;
+                let addr: Ipv4Addr = parse_ip(v, "remote")?;
+                builder = builder.remote(addr);
+            }
+            "dev" => {
+                let v = next_val()?;
+                use futures_util::TryStreamExt;
+                let mut links =
+                    handle.link().get().match_name(v.to_string()).execute();
+                let link = links.try_next().await?.ok_or_else(|| {
+                    CliError::from(format!("Device \"{v}\" does not exist"))
+                })?;
+                builder = builder.dev(link.header.index);
+            }
+            "ttl" | "hoplimit" | "hlim" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "inherit" => {
+                        builder = builder.ttl(0);
+                    }
+                    _ => {
+                        let ttl: u8 = v.parse().map_err(|_| {
+                            CliError::from(format!("invalid TTL: {v}"))
+                        })?;
+                        builder = builder.ttl(ttl);
+                    }
+                }
+            }
+            "tos" | "tclass" | "dsfield" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "inherit" => {
+                        builder = builder.tos(1);
+                    }
+                    _ => {
+                        let tos = parse_dsfield(v)?;
+                        builder = builder.tos(tos);
+                    }
+                }
+            }
+            "pmtudisc" => {
+                builder = builder.pmtudisc(true);
+            }
+            "nopmtudisc" => {
+                builder = builder.pmtudisc(false);
+            }
+            "key" => {
+                let v = next_val()?;
+                let key: u32 = if v.contains('.') {
+                    parse_ip::<Ipv4Addr>(v, "key")?.into()
+                } else {
+                    v.parse::<u32>().map_err(|_| {
+                        CliError::from(format!("invalid key: {v}"))
+                    })?
+                };
+                builder = builder
+                    .ikey(key)
+                    .iflags(GreIOFlags::Key)
+                    .okey(key)
+                    .oflags(GreIOFlags::Key);
+            }
+            "ikey" => {
+                let v = next_val()?;
+                let key: u32 = if v.contains('.') {
+                    parse_ip::<Ipv4Addr>(v, "ikey")?.into()
+                } else {
+                    v.parse::<u32>().map_err(|_| {
+                        CliError::from(format!("invalid ikey: {v}"))
+                    })?
+                };
+                builder = builder.ikey(key).iflags(GreIOFlags::Key);
+            }
+            "okey" => {
+                let v = next_val()?;
+                let key: u32 = if v.contains('.') {
+                    parse_ip::<Ipv4Addr>(v, "okey")?.into()
+                } else {
+                    v.parse::<u32>().map_err(|_| {
+                        CliError::from(format!("invalid okey: {v}"))
+                    })?
+                };
+                builder = builder.okey(key).oflags(GreIOFlags::Key);
+            }
+            "seq" => {
+                builder =
+                    builder.iflags(GreIOFlags::Seq).oflags(GreIOFlags::Seq);
+            }
+            "iseq" => {
+                builder = builder.iflags(GreIOFlags::Seq);
+            }
+            "noseq" => {
+                builder = builder
+                    .iflags(GreIOFlags::empty())
+                    .oflags(GreIOFlags::empty());
+            }
+            "noiseq" => {
+                builder = builder.iflags(GreIOFlags::empty());
+            }
+            "oseq" => {
+                builder = builder.oflags(GreIOFlags::Seq);
+            }
+            "nooseq" => {
+                builder = builder.oflags(GreIOFlags::empty());
+            }
+            "csum" => {
+                builder = builder
+                    .iflags(GreIOFlags::Checksum)
+                    .oflags(GreIOFlags::Checksum);
+            }
+            "icsum" => {
+                builder = builder.iflags(GreIOFlags::Checksum);
+            }
+            "nocsum" => {
+                builder = builder
+                    .iflags(GreIOFlags::empty())
+                    .oflags(GreIOFlags::empty());
+            }
+            "noicsum" => {
+                builder = builder.iflags(GreIOFlags::empty());
+            }
+            "ocsum" => {
+                builder = builder.oflags(GreIOFlags::Checksum);
+            }
+            "noocsum" => {
+                builder = builder.oflags(GreIOFlags::empty());
+            }
+            "external" => {
+                metadata = true;
+            }
+            "noencap" => {
+                builder = builder.encap_type(GreEncapType::None);
+            }
+            "encap" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "fou" => {
+                        builder = builder.encap_type(GreEncapType::Fou);
+                    }
+                    "gue" => {
+                        builder = builder.encap_type(GreEncapType::Gue);
+                    }
+                    "none" => {
+                        builder = builder.encap_type(GreEncapType::None);
+                    }
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Invalid encap type: {v}"
+                        )));
+                    }
+                }
+            }
+            "encap-sport" => {
+                let v = next_val()?;
+                if v == "auto" {
+                    builder = builder.encap_sport(0);
+                } else {
+                    let port = parse_u16(v, "encap-sport")?;
+                    builder = builder.encap_sport(port);
+                }
+            }
+            "encap-dport" => {
+                let v = next_val()?;
+                let port = parse_u16(v, "encap-dport")?;
+                builder = builder.encap_dport(port);
+            }
+            "encap-csum" => {
+                builder = builder.encap_flags(GreEncapFlags::Checksum);
+            }
+            "noencap-csum" => {
+                builder = builder.encap_flags(GreEncapFlags::empty());
+            }
+            "encap-udp6-csum" => {
+                builder = builder.encap_flags(GreEncapFlags::Checksum6);
+            }
+            "noencap-udp6-csum" => {
+                builder = builder.encap_flags(GreEncapFlags::empty());
+            }
+            "encap-remcsum" => {
+                builder = builder.encap_flags(GreEncapFlags::RemoteChecksum);
+            }
+            "noencap-remcsum" => {
+                builder = builder.encap_flags(GreEncapFlags::empty());
+            }
+            "fwmark" => {
+                let v = next_val()?;
+                let mark = if let Some(hex) = v.strip_prefix("0x") {
+                    u32::from_str_radix(hex, 16)
+                } else {
+                    v.parse()
+                };
+                let mark = mark.map_err(|_| {
+                    CliError::from(format!("invalid fwmark: {v}"))
+                })?;
+                builder = builder.fwmark(mark.to_be());
+            }
+            "ignore-df" | "noignore-df" => {}
+            "erspan" => {
+                let v = next_val()?;
+                let idx: u32 = v.parse().map_err(|_| {
+                    CliError::from(format!("invalid erspan index: {v}"))
+                })?;
+                if idx == 0 || idx & !((1 << 20) - 1) != 0 {
+                    return Err(CliError::from(
+                        "erspan index must be > 0 and <= 20-bit",
+                    ));
+                }
+                builder = builder.erspan_index(idx);
+            }
+            "erspan_ver" => {
+                let v = next_val()?;
+                let ver: u8 = v.parse().map_err(|_| {
+                    CliError::from(format!("invalid erspan version: {v}"))
+                })?;
+                if ver > 2 {
+                    return Err(CliError::from("erspan version must be 0/1/2"));
+                }
+                builder = builder.erspan_ver(ver);
+            }
+            "erspan_dir" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "ingress" => {
+                        builder = builder.erspan_dir(ErSpanDir::Ingress);
+                    }
+                    "egress" => {
+                        builder = builder.erspan_dir(ErSpanDir::Egress);
+                    }
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Invalid erspan direction: {v}"
+                        )));
+                    }
+                }
+            }
+            "erspan_hwid" => {
+                let v = next_val()?;
+                let hwid = if let Some(hex) = v.strip_prefix("0x") {
+                    u16::from_str_radix(hex, 16)
+                } else {
+                    v.parse()
+                };
+                let hwid = hwid.map_err(|_| {
+                    CliError::from(format!("invalid erspan hwid: {v}"))
+                })?;
+                builder = builder.erspan_hwid(hwid);
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown gre argument: {key}"
+                )));
+            }
+        }
+    }
+
+    if metadata {
+        builder = builder.collect_metadata(true);
+    }
+
+    Ok(builder)
+}
+
 async fn build_gre6_opts(
     mut builder: LinkMessageBuilder<LinkGre6>,
     conf: &LinkBaseConf,
@@ -1075,9 +1358,327 @@ async fn build_gre6_opts(
     Ok(builder)
 }
 
+async fn build_gre6_entries_set(
+    mut builder: LinkMessageBuilder<LinkGre6>,
+    handle: &rtnetlink::Handle,
+    args: &[String],
+) -> Result<LinkMessageBuilder<LinkGre6>, CliError> {
+    let mut metadata = false;
+
+    let mut iter = args.iter();
+    while let Some(key) = iter.next() {
+        let mut next_val = || {
+            iter.next().ok_or_else(|| {
+                CliError::from(format!("ip6gre {key} requires a value"))
+            })
+        };
+        match key.as_str() {
+            "local" => {
+                let v = next_val()?;
+                let addr: Ipv6Addr = parse_ip(v, "local")?;
+                builder = builder.local(addr);
+            }
+            "remote" => {
+                let v = next_val()?;
+                let addr: Ipv6Addr = parse_ip(v, "remote")?;
+                builder = builder.remote(addr);
+            }
+            "dev" => {
+                let v = next_val()?;
+                use futures_util::TryStreamExt;
+                let mut links =
+                    handle.link().get().match_name(v.to_string()).execute();
+                let link = links.try_next().await?.ok_or_else(|| {
+                    CliError::from(format!("Device \"{v}\" does not exist"))
+                })?;
+                builder = builder.dev(link.header.index);
+            }
+            "ttl" | "hoplimit" | "hlim" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "inherit" => {
+                        builder = builder.ttl(0);
+                    }
+                    _ => {
+                        let ttl: u8 = v.parse().map_err(|_| {
+                            CliError::from(format!("invalid TTL: {v}"))
+                        })?;
+                        builder = builder.ttl(ttl);
+                    }
+                }
+            }
+            "encaplimit" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "none" => {}
+                    _ => {
+                        let limit: u8 = v.parse().map_err(|_| {
+                            CliError::from(format!("invalid encaplimit: {v}"))
+                        })?;
+                        builder = builder.encap_limit(limit);
+                    }
+                }
+            }
+            "tclass" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "inherit" => {}
+                    _ => {
+                        let tclass = parse_dsfield(v)?;
+                        builder = builder.flowlabel((tclass as u32) << 20);
+                    }
+                }
+            }
+            "flowlabel" | "fl" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "inherit" => {}
+                    _ => {
+                        let uval = if let Some(hex) = v.strip_prefix("0x") {
+                            u32::from_str_radix(hex, 16)
+                        } else {
+                            v.parse()
+                        };
+                        let uval = uval.map_err(|_| {
+                            CliError::from(format!("invalid flowlabel: {v}"))
+                        })?;
+                        builder = builder.flowlabel(uval & 0xfffff);
+                    }
+                }
+            }
+            "key" => {
+                let v = next_val()?;
+                let key: u32 = v
+                    .parse()
+                    .map_err(|_| CliError::from(format!("invalid key: {v}")))?;
+                builder = builder
+                    .ikey(key)
+                    .iflags(GreIOFlags::Key)
+                    .okey(key)
+                    .oflags(GreIOFlags::Key);
+            }
+            "ikey" => {
+                let v = next_val()?;
+                let key: u32 = v.parse().map_err(|_| {
+                    CliError::from(format!("invalid ikey: {v}"))
+                })?;
+                builder = builder.ikey(key).iflags(GreIOFlags::Key);
+            }
+            "okey" => {
+                let v = next_val()?;
+                let key: u32 = v.parse().map_err(|_| {
+                    CliError::from(format!("invalid okey: {v}"))
+                })?;
+                builder = builder.okey(key).oflags(GreIOFlags::Key);
+            }
+            "nokey" => {
+                builder = builder
+                    .ikey(0)
+                    .iflags(GreIOFlags::empty())
+                    .okey(0)
+                    .oflags(GreIOFlags::empty());
+            }
+            "noikey" => {
+                builder = builder.ikey(0).iflags(GreIOFlags::empty());
+            }
+            "nookey" => {
+                builder = builder.okey(0).oflags(GreIOFlags::empty());
+            }
+            "seq" => {
+                builder =
+                    builder.iflags(GreIOFlags::Seq).oflags(GreIOFlags::Seq);
+            }
+            "iseq" => {
+                builder = builder.iflags(GreIOFlags::Seq);
+            }
+            "noseq" => {
+                builder = builder
+                    .iflags(GreIOFlags::empty())
+                    .oflags(GreIOFlags::empty());
+            }
+            "noiseq" => {
+                builder = builder.iflags(GreIOFlags::empty());
+            }
+            "oseq" => {
+                builder = builder.oflags(GreIOFlags::Seq);
+            }
+            "nooseq" => {
+                builder = builder.oflags(GreIOFlags::empty());
+            }
+            "csum" => {
+                builder = builder
+                    .iflags(GreIOFlags::Checksum)
+                    .oflags(GreIOFlags::Checksum);
+            }
+            "icsum" => {
+                builder = builder.iflags(GreIOFlags::Checksum);
+            }
+            "nocsum" => {
+                builder = builder
+                    .iflags(GreIOFlags::empty())
+                    .oflags(GreIOFlags::empty());
+            }
+            "noicsum" => {
+                builder = builder.iflags(GreIOFlags::empty());
+            }
+            "ocsum" => {
+                builder = builder.oflags(GreIOFlags::Checksum);
+            }
+            "noocsum" => {
+                builder = builder.oflags(GreIOFlags::empty());
+            }
+            "external" => {
+                metadata = true;
+            }
+            "noencap" => {
+                builder = builder.encap_type(GreEncapType::None);
+            }
+            "encap" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "fou" => {
+                        builder = builder.encap_type(GreEncapType::Fou);
+                    }
+                    "gue" => {
+                        builder = builder.encap_type(GreEncapType::Gue);
+                    }
+                    "none" => {
+                        builder = builder.encap_type(GreEncapType::None);
+                    }
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Invalid encap type: {v}"
+                        )));
+                    }
+                }
+            }
+            "encap-sport" => {
+                let v = next_val()?;
+                if v == "auto" {
+                    builder = builder.encap_sport(0);
+                } else {
+                    let port = parse_u16(v, "encap-sport")?;
+                    builder = builder.encap_sport(port);
+                }
+            }
+            "encap-dport" => {
+                let v = next_val()?;
+                let port = parse_u16(v, "encap-dport")?;
+                builder = builder.encap_dport(port);
+            }
+            "encap-csum" => {
+                builder = builder.encap_flags(GreEncapFlags::Checksum);
+            }
+            "noencap-csum" => {
+                builder = builder.encap_flags(GreEncapFlags::empty());
+            }
+            "encap-udp6-csum" => {
+                builder = builder.encap_flags(GreEncapFlags::Checksum6);
+            }
+            "noencap-udp6-csum" => {
+                builder = builder.encap_flags(GreEncapFlags::empty());
+            }
+            "encap-remcsum" => {
+                builder = builder.encap_flags(GreEncapFlags::RemoteChecksum);
+            }
+            "noencap-remcsum" => {
+                builder = builder.encap_flags(GreEncapFlags::empty());
+            }
+            "fwmark" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "inherit" => {}
+                    _ => {
+                        let mark = if let Some(hex) = v.strip_prefix("0x") {
+                            u32::from_str_radix(hex, 16)
+                        } else {
+                            v.parse()
+                        };
+                        let mark = mark.map_err(|_| {
+                            CliError::from(format!("invalid fwmark: {v}"))
+                        })?;
+                        builder = builder.fwmark(mark);
+                    }
+                }
+            }
+            "erspan" => {
+                let v = next_val()?;
+                let idx: u32 = v.parse().map_err(|_| {
+                    CliError::from(format!("invalid erspan index: {v}"))
+                })?;
+                if idx == 0 || idx & !((1 << 20) - 1) != 0 {
+                    return Err(CliError::from(
+                        "erspan index must be > 0 and <= 20-bit",
+                    ));
+                }
+                builder = builder.erspan_index(idx);
+            }
+            "erspan_ver" => {
+                let v = next_val()?;
+                let ver: u8 = v.parse().map_err(|_| {
+                    CliError::from(format!("invalid erspan version: {v}"))
+                })?;
+                if ver > 2 {
+                    return Err(CliError::from("erspan version must be 0/1/2"));
+                }
+                builder = builder.erspan_ver(ver);
+            }
+            "erspan_dir" => {
+                let v = next_val()?;
+                match v.as_str() {
+                    "ingress" => {
+                        builder = builder.erspan_dir(ErSpanDir::Ingress);
+                    }
+                    "egress" => {
+                        builder = builder.erspan_dir(ErSpanDir::Egress);
+                    }
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "Invalid erspan direction: {v}"
+                        )));
+                    }
+                }
+            }
+            "erspan_hwid" => {
+                let v = next_val()?;
+                let hwid = if let Some(hex) = v.strip_prefix("0x") {
+                    u16::from_str_radix(hex, 16)
+                } else {
+                    v.parse()
+                };
+                let hwid = hwid.map_err(|_| {
+                    CliError::from(format!("invalid erspan hwid: {v}"))
+                })?;
+                builder = builder.erspan_hwid(hwid);
+            }
+            _ => {
+                return Err(CliError::from(format!(
+                    "Unknown ip6gre argument: {key}"
+                )));
+            }
+        }
+    }
+
+    if metadata {
+        builder = builder.collect_metadata(true);
+    }
+
+    Ok(builder)
+}
+
 pub(crate) struct IfaceGre;
 
 impl IfaceGre {
+    pub(crate) async fn build_entries(
+        handle: &rtnetlink::Handle,
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder =
+            LinkMessageBuilder::<LinkGre>::new_with_info_kind(InfoKind::GreTun);
+        let builder = build_gre_entries_set(builder, handle, args).await?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... gre              [ remote ADDR ]
@@ -1112,6 +1713,16 @@ Where:        ADDR := { IP_ADDRESS | any }
 pub(crate) struct IfaceGreTap;
 
 impl IfaceGreTap {
+    pub(crate) async fn build_entries(
+        handle: &rtnetlink::Handle,
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder =
+            LinkMessageBuilder::<LinkGre>::new_with_info_kind(InfoKind::GreTap);
+        let builder = build_gre_entries_set(builder, handle, args).await?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... gretap           [ remote ADDR ]
@@ -1146,6 +1757,17 @@ Where:        ADDR := { IP_ADDRESS | any }
 pub(crate) struct IfaceGre6;
 
 impl IfaceGre6 {
+    pub(crate) async fn build_entries(
+        handle: &rtnetlink::Handle,
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder = LinkMessageBuilder::<LinkGre6>::new_with_info_kind(
+            InfoKind::GreTun6,
+        );
+        let builder = build_gre6_entries_set(builder, handle, args).await?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... ip6gre           [ remote ADDR ]
@@ -1188,6 +1810,17 @@ Where:        ADDR          := IPV6_ADDRESS
 pub(crate) struct IfaceGreTap6;
 
 impl IfaceGreTap6 {
+    pub(crate) async fn build_entries(
+        handle: &rtnetlink::Handle,
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder = LinkMessageBuilder::<LinkGre6>::new_with_info_kind(
+            InfoKind::GreTap6,
+        );
+        let builder = build_gre6_entries_set(builder, handle, args).await?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... ip6gretap        [ remote ADDR ]
@@ -1230,6 +1863,18 @@ Where:        ADDR          := IPV6_ADDRESS
 pub(crate) struct IfaceErSpan;
 
 impl IfaceErSpan {
+    pub(crate) async fn build_entries(
+        handle: &rtnetlink::Handle,
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder =
+            LinkMessageBuilder::<LinkGre>::new_with_info_kind(InfoKind::ErSpan);
+        let flags = GreIOFlags::Key | GreIOFlags::Seq;
+        let builder = builder.erspan_ver(1).iflags(flags).oflags(flags);
+        let builder = build_gre_entries_set(builder, handle, args).await?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... erspan           [ remote ADDR ]
@@ -1263,6 +1908,19 @@ Where:        ADDR := { IP_ADDRESS | any }
 pub(crate) struct IfaceIp6ErSpan;
 
 impl IfaceIp6ErSpan {
+    pub(crate) async fn build_entries(
+        handle: &rtnetlink::Handle,
+        args: &[String],
+    ) -> Result<Vec<LinkInfo>, CliError> {
+        let builder = LinkMessageBuilder::<LinkGre6>::new_with_info_kind(
+            InfoKind::Ip6ErSpan,
+        );
+        let flags = GreIOFlags::Key | GreIOFlags::Seq;
+        let builder = builder.erspan_ver(1).iflags(flags).oflags(flags);
+        let builder = build_gre6_entries_set(builder, handle, args).await?;
+        Ok(extract_link_info(builder.build()))
+    }
+
     #[rustfmt::skip]
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... ip6erspan        [ remote ADDR ]
