@@ -27,5 +27,6 @@ pub(super) mod vrf;
 pub(super) mod vti;
 pub(super) mod vxcan;
 pub(super) mod vxlan;
+pub(super) mod wireguard;
 pub(super) mod wwan;
 pub(super) mod xfrm;

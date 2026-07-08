@@ -39,6 +39,7 @@ use super::{
         vti::{IfaceVti, IfaceVti6},
         vxcan::IfaceVxcan,
         vxlan::IfaceVxlan,
+        wireguard::IfaceWireguard,
         wwan::IfaceWwan,
         xfrm::IfaceXfrm,
     },
@@ -272,6 +273,7 @@ fn print_link_type_help(args: &[&str]) -> Result<(), CliError> {
                 "can" => IfaceCan::print_help(),
                 "dsa" => IfaceDsa::print_help(),
                 "sit" => IfaceSit::print_help(),
+                "wireguard" => IfaceWireguard::print_help(),
                 unknown => {
                     return Err(CliError::from(format!(
                         "Unknown device type: {unknown}"

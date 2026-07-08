@@ -959,7 +959,8 @@ async fn build_type_link_info(
         | InfoKind::ErSpan
         | InfoKind::Ip6ErSpan
         | InfoKind::IpIp
-        | InfoKind::Ip6Tnl => Ok(build_kind_only(kind)),
+        | InfoKind::Ip6Tnl
+        | InfoKind::Wireguard => Ok(build_kind_only(kind)),
         InfoKind::Vlan => {
             let mut infos = IfaceVlan::build_entries(args)?;
             clean_extracted(&mut infos, kind);

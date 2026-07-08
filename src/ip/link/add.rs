@@ -6,7 +6,7 @@ use futures_util::TryStreamExt;
 use iproute_rs::{CliError, parse_mac_str};
 use rtnetlink::{
     LinkDummy, LinkIfb, LinkMessageBuilder, LinkNetdevsim, LinkNlmon, LinkPfcp,
-    LinkTeam, LinkVcan, LinkVirtWifi,
+    LinkTeam, LinkVcan, LinkVirtWifi, LinkWireguard,
     packet_route::link::{InfoKind, LinkAttribute, LinkMessage},
 };
 
@@ -166,6 +166,9 @@ impl LinkAddCommand {
             }
             InfoKind::Vxlan => {
                 base_conf.apply(base_conf.apply_vxlan(&handle).await?)?
+            }
+            InfoKind::Wireguard => {
+                base_conf.apply(LinkWireguard::new(&base_conf.name))?
             }
             t => {
                 return Err(CliError::from(format!(
