@@ -64,8 +64,6 @@ where
             "kernel_ra",
         ]);
 
-        std::thread::sleep(std::time::Duration::from_secs(2));
-
         test(ns);
     });
 }
@@ -77,8 +75,6 @@ where
     with_netns(|ns| {
         ns.exec_cmd(&["ip", "link", "add", DUMMY_NAME, "type", "dummy"]);
         ns.exec_cmd(&["ip", "link", "set", DUMMY_NAME, "up"]);
-
-        std::thread::sleep(std::time::Duration::from_secs(1));
 
         test(ns);
     });
@@ -153,7 +149,6 @@ fn test_address_alias_add_ls() {
 fn test_address_add_alias_addr_a() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&["addr", "a", "10.0.0.1/24", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -162,7 +157,6 @@ fn test_address_add_alias_addr_a() {
 fn test_address_add_alias_a_a() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&["a", "a", "10.0.0.2/24", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -171,7 +165,6 @@ fn test_address_add_alias_a_a() {
 fn test_address_add_alias_addr_ad() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&["addr", "ad", "10.0.0.3/24", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -187,7 +180,6 @@ fn test_address_mixed_add_ip_rs_and_system() {
             DUMMY_NAME,
         ]);
         ns.exec_cmd(&["ip", "addr", "add", "10.0.0.2/24", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }

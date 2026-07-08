@@ -29,14 +29,7 @@ fn strip_metric(output: String) -> String {
 #[test]
 fn test_address_add_simple_ipv4() {
     with_dummy_iface_empty(|ns| {
-        ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
-        ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        ns.ip_rs_exec_cmd(&["address", "add", "10.0.0.1/24", "dev", DUMMY_NAME]);
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -45,15 +38,9 @@ fn test_address_add_simple_ipv4() {
 fn test_address_add_ipv4_with_label() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
-            "label",
+            "address", "add", "10.0.0.1/24", "dev", DUMMY_NAME, "label",
             "test-label",
         ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -77,7 +64,6 @@ fn test_address_add_ipv4_with_all_options() {
             "proto",
             "kernel_ra",
         ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -86,14 +72,9 @@ fn test_address_add_ipv4_with_all_options() {
 fn test_address_add_noprefixroute_flag() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
+            "address", "add", "10.0.0.1/24", "dev", DUMMY_NAME,
             "noprefixroute",
         ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -102,15 +83,9 @@ fn test_address_add_noprefixroute_flag() {
 fn test_address_add_with_scope_link() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "169.254.0.1/16",
-            "dev",
-            DUMMY_NAME,
-            "scope",
+            "address", "add", "169.254.0.1/16", "dev", DUMMY_NAME, "scope",
             "link",
         ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -119,15 +94,8 @@ fn test_address_add_with_scope_link() {
 fn test_address_add_metric() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
-            "metric",
-            "42",
+            "address", "add", "10.0.0.1/24", "dev", DUMMY_NAME, "metric", "42",
         ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output_map(&["address", "show", DUMMY_NAME], strip_metric);
     });
 }
@@ -136,15 +104,9 @@ fn test_address_add_metric() {
 fn test_address_add_priority_alias() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.2/24",
-            "dev",
-            DUMMY_NAME,
-            "priority",
+            "address", "add", "10.0.0.2/24", "dev", DUMMY_NAME, "priority",
             "100",
         ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output_map(&["address", "show", DUMMY_NAME], strip_metric);
     });
 }
@@ -153,15 +115,9 @@ fn test_address_add_priority_alias() {
 fn test_address_add_preference_alias() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.3/24",
-            "dev",
-            DUMMY_NAME,
-            "preference",
+            "address", "add", "10.0.0.3/24", "dev", DUMMY_NAME, "preference",
             "200",
         ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output_map(&["address", "show", DUMMY_NAME], strip_metric);
     });
 }
@@ -170,12 +126,7 @@ fn test_address_add_preference_alias() {
 fn test_address_add_peer() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.1/24",
-            "peer",
-            "10.0.0.2",
-            "dev",
+            "address", "add", "10.0.0.1/24", "peer", "10.0.0.2", "dev",
             DUMMY_NAME,
         ]);
     });
@@ -185,12 +136,7 @@ fn test_address_add_peer() {
 fn test_address_add_peer_remote_alias() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.3/24",
-            "remote",
-            "10.0.0.4",
-            "dev",
+            "address", "add", "10.0.0.3/24", "remote", "10.0.0.4", "dev",
             DUMMY_NAME,
         ]);
     });
@@ -215,7 +161,6 @@ fn test_address_add_multiple_options_combined() {
             "kernel_ra",
             "noprefixroute",
         ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output_map(&["address", "show", DUMMY_NAME], strip_metric);
     });
 }
@@ -224,14 +169,8 @@ fn test_address_add_multiple_options_combined() {
 fn test_address_add_local_keyword() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "local",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
+            "address", "add", "local", "10.0.0.1/24", "dev", DUMMY_NAME,
         ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -240,7 +179,6 @@ fn test_address_add_local_keyword() {
 fn test_address_add_without_prefix_v4() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&["address", "add", "10.0.0.1", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -249,15 +187,9 @@ fn test_address_add_without_prefix_v4() {
 fn test_address_add_broadcast_plus() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.0/24",
-            "dev",
-            DUMMY_NAME,
-            "broadcast",
+            "address", "add", "10.0.0.0/24", "dev", DUMMY_NAME, "broadcast",
             "+",
         ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -266,15 +198,9 @@ fn test_address_add_broadcast_plus() {
 fn test_address_add_broadcast_minus() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.0/24",
-            "dev",
-            DUMMY_NAME,
-            "broadcast",
+            "address", "add", "10.0.0.0/24", "dev", DUMMY_NAME, "broadcast",
             "-",
         ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -283,15 +209,9 @@ fn test_address_add_broadcast_minus() {
 fn test_address_add_explicit_broadcast() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "add",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
-            "brd",
+            "address", "add", "10.0.0.1/24", "dev", DUMMY_NAME, "brd",
             "10.0.0.255",
         ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -300,17 +220,10 @@ fn test_address_add_explicit_broadcast() {
 fn test_address_change_scope() {
     with_dummy_iface_empty(|ns| {
         ns.exec_cmd(&["ip", "addr", "add", "10.0.0.1/24", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "change",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
-            "scope",
+            "address", "change", "10.0.0.1/24", "dev", DUMMY_NAME, "scope",
             "host",
         ]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -319,17 +232,10 @@ fn test_address_change_scope() {
 fn test_address_change_chg_alias() {
     with_dummy_iface_empty(|ns| {
         ns.exec_cmd(&["ip", "addr", "add", "10.0.0.2/24", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "chg",
-            "10.0.0.2/24",
-            "dev",
-            DUMMY_NAME,
-            "scope",
+            "address", "chg", "10.0.0.2/24", "dev", DUMMY_NAME, "scope",
             "host",
         ]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -338,17 +244,10 @@ fn test_address_change_chg_alias() {
 fn test_address_change_label() {
     with_dummy_iface_empty(|ns| {
         ns.exec_cmd(&["ip", "addr", "add", "10.0.0.3/24", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "change",
-            "10.0.0.3/24",
-            "dev",
-            DUMMY_NAME,
-            "label",
+            "address", "change", "10.0.0.3/24", "dev", DUMMY_NAME, "label",
             "changed-label",
         ]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -357,58 +256,8 @@ fn test_address_change_label() {
 fn test_address_replace_create_new() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address",
-            "replace",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
+            "address", "replace", "10.0.0.1/24", "dev", DUMMY_NAME,
         ]);
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
-fn test_address_delete() {
-    with_dummy_iface_empty(|ns| {
-        ns.exec_cmd(&["ip", "addr", "add", "10.0.0.1/24", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        ns.ip_rs_exec_cmd(&[
-            "address",
-            "delete",
-            "10.0.0.1/24",
-            "dev",
-            DUMMY_NAME,
-        ]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
-fn test_address_delete_del_alias() {
-    with_dummy_iface_empty(|ns| {
-        ns.exec_cmd(&["ip", "addr", "add", "10.0.0.2/24", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        ns.ip_rs_exec_cmd(&[
-            "address",
-            "del",
-            "10.0.0.2/24",
-            "dev",
-            DUMMY_NAME,
-        ]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
-    });
-}
-
-#[test]
-fn test_address_delete_d_alias() {
-    with_dummy_iface_empty(|ns| {
-        ns.exec_cmd(&["ip", "addr", "add", "10.0.0.3/24", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        ns.ip_rs_exec_cmd(&["address", "d", "10.0.0.3/24", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -417,7 +266,6 @@ fn test_address_delete_d_alias() {
 fn test_address_replace_modify_existing() {
     with_dummy_iface_empty(|ns| {
         ns.exec_cmd(&["ip", "addr", "add", "10.0.0.1/24", "dev", DUMMY_NAME]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
         ns.ip_rs_exec_cmd(&[
             "address",
             "replace",
@@ -428,7 +276,35 @@ fn test_address_replace_modify_existing() {
             "host",
             "noprefixroute",
         ]);
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_delete() {
+    with_dummy_iface_empty(|ns| {
+        ns.exec_cmd(&["ip", "addr", "add", "10.0.0.1/24", "dev", DUMMY_NAME]);
+        ns.ip_rs_exec_cmd(&[
+            "address", "delete", "10.0.0.1/24", "dev", DUMMY_NAME,
+        ]);
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_delete_del_alias() {
+    with_dummy_iface_empty(|ns| {
+        ns.exec_cmd(&["ip", "addr", "add", "10.0.0.2/24", "dev", DUMMY_NAME]);
+        ns.ip_rs_exec_cmd(&["address", "del", "10.0.0.2/24", "dev", DUMMY_NAME]);
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_delete_d_alias() {
+    with_dummy_iface_empty(|ns| {
+        ns.exec_cmd(&["ip", "addr", "add", "10.0.0.3/24", "dev", DUMMY_NAME]);
+        ns.ip_rs_exec_cmd(&["address", "d", "10.0.0.3/24", "dev", DUMMY_NAME]);
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
