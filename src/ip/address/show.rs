@@ -165,6 +165,9 @@ impl std::fmt::Display for CliAddressInfo {
             },
             if self.preferred_life_time == u32::MAX {
                 "forever".to_string()
+            } else if self.flags.get("deprecated") == Some(&true) {
+                // Deprecated addresses can have negative preferred_lft
+                format!("{}sec", self.preferred_life_time as i32)
             } else {
                 format!("{}sec", self.preferred_life_time)
             }
