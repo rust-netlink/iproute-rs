@@ -371,13 +371,23 @@ fn compute_auto_broadcast(
     }
 }
 
+fn default_scope(addr: &std::net::IpAddr) -> AddressScope {
+    if let std::net::IpAddr::V4(v4) = addr {
+        let octets = v4.octets();
+        if octets[0] == 127 {
+            return AddressScope::Host;
+        }
+    }
+    AddressScope::Universe
+}
+
 fn build_address_message(
     cfg: &AddressAddConfig,
 ) -> Result<AddressMessage, CliError> {
     let mut msg = AddressMessage::default();
     msg.header.family = cfg.family;
     msg.header.prefix_len = cfg.prefix_len;
-    msg.header.scope = cfg.scope.unwrap_or(AddressScope::Universe);
+    msg.header.scope = cfg.scope.unwrap_or_else(|| default_scope(&cfg.local));
 
     msg.attributes.push(AddressAttribute::Local(cfg.local));
 
