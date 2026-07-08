@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    add::{handle_add, handle_delete, handle_modify, AddressModifyOp},
-    save::{handle_restore, handle_save},
+    add::{AddressModifyOp, handle_add, handle_delete, handle_modify},
+    save::{handle_flush, handle_restore, handle_save, handle_showdump},
     show::handle_show,
 };
 use crate::{CliError, link::CliLinkInfo};
@@ -98,6 +98,22 @@ impl AddressCommand {
                     .alias("restor")
                     .about("restore protocol address from stdin"),
             )
+            .subcommand(
+                clap::Command::new("showdump")
+                    .alias("showdum")
+                    .about("display addresses from a dump file"),
+            )
+            .subcommand(
+                clap::Command::new("flush")
+                    .alias("flu")
+                    .alias("flus")
+                    .about("flush protocol addresses")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
+            )
     }
 
     pub(crate) async fn handle(
@@ -140,6 +156,17 @@ impl AddressCommand {
             Ok(vec![])
         } else if matches.subcommand_matches("restore").is_some() {
             handle_restore().await?;
+            Ok(vec![])
+        } else if matches.subcommand_matches("showdump").is_some() {
+            handle_showdump().await?;
+            Ok(vec![])
+        } else if let Some(matches) = matches.subcommand_matches("flush") {
+            let opts: Vec<String> = matches
+                .get_many::<String>("options")
+                .unwrap_or_default()
+                .map(|o| o.to_string())
+                .collect();
+            handle_flush(&opts).await?;
             Ok(vec![])
         } else if let Some(matches) = matches.subcommand_matches("show") {
             let opts: Vec<&str> = matches

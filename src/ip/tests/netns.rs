@@ -38,6 +38,12 @@ impl NetnsGuard {
     }
 
     pub fn exec_cmd(&self, args: &[&str]) -> String {
+        let raw = self.exec_cmd_raw(args);
+        String::from_utf8(raw)
+            .expect("Failed to convert command output to String")
+    }
+
+    pub fn exec_cmd_raw(&self, args: &[&str]) -> Vec<u8> {
         let mut full_args = vec!["netns", "exec", &self.name];
         full_args.extend_from_slice(args);
         let output = Command::new("ip")
@@ -52,8 +58,7 @@ impl NetnsGuard {
             panic!("Command failed: {args:?}\nstderr: {stderr}");
         }
 
-        String::from_utf8(output.stdout)
-            .expect("Failed to convert command output to String")
+        output.stdout
     }
 
     pub fn ip_rs_exec_cmd(&self, args: &[&str]) -> String {
@@ -88,6 +93,53 @@ impl NetnsGuard {
         }
 
         output.stdout
+    }
+
+    pub fn ip_rs_exec_cmd_with_stdin(
+        &self,
+        args: &[&str],
+        stdin_data: &[u8],
+    ) -> String {
+        let mut cur_exec_path =
+            std::env::current_exe().expect("No current exec path");
+        cur_exec_path.pop();
+        cur_exec_path.pop();
+
+        let ip_rs_pathbuf = cur_exec_path.join("ip-rs");
+        let ip_rs_path = ip_rs_pathbuf.to_str().expect("Not UTF-8 string");
+
+        let mut full_args = vec!["netns", "exec", &self.name];
+        full_args.push(ip_rs_path);
+        full_args.extend_from_slice(args);
+
+        let mut cmd = Command::new("ip");
+        cmd.args(&full_args);
+        cmd.stdin(std::process::Stdio::piped());
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+
+        let mut child = cmd.spawn().unwrap_or_else(|e| {
+            panic!("failed to spawn ip-rs command {args:?}: {e}")
+        });
+
+        use std::io::Write;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(stdin_data)
+            .expect("failed to write stdin");
+        let output = child.wait_with_output().unwrap_or_else(|e| {
+            panic!("failed to wait for ip-rs command {args:?}: {e}")
+        });
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            panic!("Command failed: {args:?}\nstderr: {stderr}");
+        }
+
+        String::from_utf8(output.stdout)
+            .expect("Failed to convert command output to String")
     }
 
     pub fn assert_alias_output(

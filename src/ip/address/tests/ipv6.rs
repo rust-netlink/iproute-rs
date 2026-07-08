@@ -8,7 +8,11 @@ const DUMMY_NAME: &str = "test-dummy";
 fn test_address_add_simple_ipv6() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address", "add", "2001:db8::1/64", "dev", DUMMY_NAME,
+            "address",
+            "add",
+            "2001:db8::1/64",
+            "dev",
+            DUMMY_NAME,
         ]);
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
@@ -60,7 +64,11 @@ fn test_address_add_home_flag() {
 fn test_address_add_without_prefix_v6() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address", "add", "2001:db8::1", "dev", DUMMY_NAME,
+            "address",
+            "add",
+            "2001:db8::1",
+            "dev",
+            DUMMY_NAME,
         ]);
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
@@ -78,10 +86,20 @@ fn test_address_add_alias_a_ad() {
 fn test_address_change_ipv6_scope() {
     with_dummy_iface_empty(|ns| {
         ns.exec_cmd(&[
-            "ip", "addr", "add", "2001:db8::1/64", "dev", DUMMY_NAME,
+            "ip",
+            "addr",
+            "add",
+            "2001:db8::1/64",
+            "dev",
+            DUMMY_NAME,
         ]);
         ns.ip_rs_exec_cmd(&[
-            "address", "change", "2001:db8::1/64", "dev", DUMMY_NAME, "scope",
+            "address",
+            "change",
+            "2001:db8::1/64",
+            "dev",
+            DUMMY_NAME,
+            "scope",
             "host",
         ]);
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
@@ -92,10 +110,19 @@ fn test_address_change_ipv6_scope() {
 fn test_address_delete_ipv6() {
     with_dummy_iface_empty(|ns| {
         ns.exec_cmd(&[
-            "ip", "addr", "add", "2001:db8::1/64", "dev", DUMMY_NAME,
+            "ip",
+            "addr",
+            "add",
+            "2001:db8::1/64",
+            "dev",
+            DUMMY_NAME,
         ]);
         ns.ip_rs_exec_cmd(&[
-            "address", "delete", "2001:db8::1/64", "dev", DUMMY_NAME,
+            "address",
+            "delete",
+            "2001:db8::1/64",
+            "dev",
+            DUMMY_NAME,
         ]);
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
@@ -105,7 +132,11 @@ fn test_address_delete_ipv6() {
 fn test_address_replace_ipv6_create_new() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&[
-            "address", "replace", "2001:db8::1/64", "dev", DUMMY_NAME,
+            "address",
+            "replace",
+            "2001:db8::1/64",
+            "dev",
+            DUMMY_NAME,
         ]);
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });

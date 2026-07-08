@@ -11,7 +11,14 @@ where
     with_netns(|ns| {
         ns.exec_cmd(&["ip", "link", "add", DUMMY_NAME, "type", "dummy"]);
         ns.exec_cmd(&["ip", "link", "set", DUMMY_NAME, "up"]);
-        ns.exec_cmd(&["ip", "addr", "add", "192.168.1.1/24", "dev", DUMMY_NAME]);
+        ns.exec_cmd(&[
+            "ip",
+            "addr",
+            "add",
+            "192.168.1.1/24",
+            "dev",
+            DUMMY_NAME,
+        ]);
         test(ns);
     });
 }
@@ -44,6 +51,63 @@ fn test_address_save_output_contains_addresses() {
             bytes.len() > 36,
             "save output too short to contain address messages: {} bytes",
             bytes.len()
+        );
+    });
+}
+
+#[test]
+fn test_address_flush_all() {
+    with_dummy_iface(|ns| {
+        // Add extra addresses
+        ns.exec_cmd(&["ip", "addr", "add", "10.0.0.1/24", "dev", DUMMY_NAME]);
+        ns.exec_cmd(&["ip", "addr", "add", "10.0.0.2/24", "dev", DUMMY_NAME]);
+        // Flush all addresses on the interface
+        ns.ip_rs_exec_cmd(&["address", "flush", "dev", DUMMY_NAME]);
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_flush_flu_alias() {
+    with_dummy_iface(|ns| {
+        ns.exec_cmd(&["ip", "addr", "add", "10.0.0.1/24", "dev", DUMMY_NAME]);
+        ns.ip_rs_exec_cmd(&["address", "flu", "dev", DUMMY_NAME]);
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_save_restore_roundtrip() {
+    with_dummy_iface(|ns| {
+        // Save addresses from system ip
+        let save_data = ns.exec_cmd_raw(&["ip", "address", "save"]);
+
+        // Remove all addresses
+        ns.exec_cmd(&["ip", "addr", "flush", "dev", DUMMY_NAME]);
+
+        // Restore using ip-rs with the saved data
+        ns.ip_rs_exec_cmd_with_stdin(&["address", "restore"], &save_data);
+
+        // Verify addresses match
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_save_showdump_roundtrip() {
+    with_dummy_iface(|ns| {
+        // Save addresses using ip-rs
+        let save_data = ns.ip_rs_exec_cmd_raw(&["address", "save"]);
+
+        // Pipe through showdump using ip-rs
+        let showdump_output =
+            ns.ip_rs_exec_cmd_with_stdin(&["address", "showdump"], &save_data);
+
+        // Verify showdump output contains our address
+        assert!(
+            showdump_output.contains("192.168.1.1"),
+            "showdump output should contain saved address: {}",
+            showdump_output
         );
     });
 }

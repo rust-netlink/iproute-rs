@@ -200,7 +200,7 @@ fn get_address_flags(
     ret
 }
 
-fn parse_nl_msg_to_address(
+pub(crate) fn parse_nl_msg_to_address(
     nl_msg: AddressMessage,
 ) -> Result<CliAddressInfo, CliError> {
     let index = nl_msg.header.index;
