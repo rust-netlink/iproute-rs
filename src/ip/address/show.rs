@@ -22,6 +22,10 @@ pub(crate) struct CliAddressInfo {
     prefixlen: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
     broadcast: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    anycast: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    multicast: Option<String>,
     scope: String,
     #[serde(flatten, skip_serializing_if = "IndexMap::is_empty")]
     flags: IndexMap<String, bool>,
@@ -31,6 +35,8 @@ pub(crate) struct CliAddressInfo {
     label: String,
     valid_life_time: u32,
     preferred_life_time: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metric: Option<u32>,
 }
 
 #[derive(Clone, Copy)]
@@ -116,12 +122,28 @@ impl std::fmt::Display for CliAddressInfo {
                 broadcast
             )?;
         }
-        write!(f, " scope {} ", self.scope)?;
+        if let Some(anycast) = &self.anycast {
+            write!(f, " anycast ")?;
+            write_with_color!(
+                f,
+                CliColor::address_color(&self.family),
+                "{}",
+                anycast
+            )?;
+        }
+        write!(f, " scope {}", self.scope)?;
+        if let Some(ref mcast) = self.multicast {
+            write!(f, " mcast {mcast}")?;
+        }
+        write!(f, " ")?;
         self.write_flags(f)?;
         if !self.protocol.is_empty() {
             write!(f, "proto {} ", self.protocol)?;
         }
         write!(f, "{}", self.label)?;
+        if let Some(m) = self.metric {
+            write!(f, " metric {m}")?;
+        }
         write!(
             f,
             "\n       valid_lft {} preferred_lft {}",
@@ -204,6 +226,9 @@ pub(crate) fn parse_nl_msg_to_address(
     let mut local = String::new();
     let prefixlen = nl_msg.header.prefix_len;
     let mut broadcast = None;
+    let mut anycast = None;
+    let mut multicast = None;
+    let mut metric = None;
     let scope = addr_scope_to_cli_string(&nl_msg.header.scope);
     let mut flags =
         AddressFlags::from_bits_retain(nl_msg.header.flags.bits().into());
@@ -219,6 +244,9 @@ pub(crate) fn parse_nl_msg_to_address(
                 local = a.to_string()
             }
             AddressAttribute::Broadcast(a) => broadcast = Some(a.to_string()),
+            AddressAttribute::Anycast(a) => anycast = Some(a.to_string()),
+            AddressAttribute::Multicast(a) => multicast = Some(a.to_string()),
+            AddressAttribute::RoutePriority(m) => metric = Some(m),
             AddressAttribute::Label(s) => label = s,
             AddressAttribute::CacheInfo(c) => {
                 valid_life_time = c.ifa_valid;
@@ -236,12 +264,15 @@ pub(crate) fn parse_nl_msg_to_address(
         local,
         prefixlen,
         broadcast,
+        anycast,
+        multicast,
         scope,
         flags: get_address_flags(nl_msg.header.family, flags),
         label,
         valid_life_time,
         preferred_life_time,
         protocol,
+        metric,
     };
 
     Ok(cli_addr_info)
@@ -332,10 +363,10 @@ impl AddressShowFilter {
                 | "nomaster" | "novf" | "name" => {
                     // Link-level options: pass through
                     link_opts.push(arg.to_string());
-                    if let Some(val) = iter.peek() {
-                        if !val.starts_with('-') {
-                            link_opts.push(iter.next().unwrap().to_string());
-                        }
+                    if let Some(val) = iter.peek()
+                        && !val.starts_with('-')
+                    {
+                        link_opts.push(iter.next().unwrap().to_string());
                     }
                 }
                 _ => {
@@ -429,10 +460,10 @@ impl AddressShowFilter {
             }
         }
 
-        if let Some(ref label_pat) = self.label {
-            if !addr.label.contains(label_pat.as_str()) {
-                return false;
-            }
+        if let Some(ref label_pat) = self.label
+            && !addr.label.contains(label_pat.as_str())
+        {
+            return false;
         }
 
         if let Some(p) = self.proto {

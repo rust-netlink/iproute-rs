@@ -4,28 +4,6 @@ use super::address::with_dummy_iface_empty;
 
 const DUMMY_NAME: &str = "test-dummy";
 
-fn strip_metric(output: String) -> String {
-    output
-        .lines()
-        .map(|line| {
-            let mut result = String::new();
-            let mut words = line.split_whitespace();
-            while let Some(word) = words.next() {
-                if word == "metric" {
-                    words.next();
-                    continue;
-                }
-                if !result.is_empty() {
-                    result.push(' ');
-                }
-                result.push_str(word);
-            }
-            result
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 #[test]
 fn test_address_add_simple_ipv4() {
     with_dummy_iface_empty(|ns| {
@@ -122,7 +100,7 @@ fn test_address_add_metric() {
             "metric",
             "42",
         ]);
-        ns.assert_eq_output_map(&["address", "show", DUMMY_NAME], strip_metric);
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
 
@@ -138,7 +116,7 @@ fn test_address_add_priority_alias() {
             "priority",
             "100",
         ]);
-        ns.assert_eq_output_map(&["address", "show", DUMMY_NAME], strip_metric);
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
 
@@ -154,7 +132,7 @@ fn test_address_add_preference_alias() {
             "preference",
             "200",
         ]);
-        ns.assert_eq_output_map(&["address", "show", DUMMY_NAME], strip_metric);
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
 
@@ -207,7 +185,27 @@ fn test_address_add_multiple_options_combined() {
             "kernel_ra",
             "noprefixroute",
         ]);
-        ns.assert_eq_output_map(&["address", "show", DUMMY_NAME], strip_metric);
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_add_metric_displayed_correctly() {
+    with_dummy_iface_empty(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "add",
+            "10.0.0.5/24",
+            "dev",
+            DUMMY_NAME,
+            "metric",
+            "42",
+        ]);
+        let output = ns.ip_rs_exec_cmd(&["address", "show", DUMMY_NAME]);
+        assert!(
+            output.contains("metric 42"),
+            "metric should be displayed in output, got: {output}"
+        );
     });
 }
 
