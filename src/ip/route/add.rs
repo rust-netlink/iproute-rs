@@ -5,93 +5,33 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use futures_util::TryStreamExt;
 use rtnetlink::packet_route::{
     AddressFamily,
-    route::{
-        RouteAddress, RouteAttribute, RoutePreference, RouteProtocol,
-        RouteScope, RouteType, RouteVia,
-    },
+    route::{RouteProtocol, RouteScope, RouteType},
 };
 
 use crate::CliError;
 
-pub(crate) async fn handle_delete(
-    opts: &[String],
-    preferred_family: Option<AddressFamily>,
-) -> Result<(), CliError> {
-    let config = parse_route_config(opts, preferred_family)?;
-    let mut msg = build_route_message(&config)?;
-
-    let (connection, handle, _) = rtnetlink::new_connection()?;
-    tokio::spawn(connection);
-
-    if let Some(ref dev) = config.dev {
-        let index = resolve_ifindex(&handle, dev).await?;
-        msg.attributes.push(RouteAttribute::Oif(index));
-    }
-
-    handle
-        .route()
-        .del(msg)
-        .execute()
-        .await
-        .map_err(|e| CliError::from(format!("{e}")))?;
-
-    Ok(())
+pub(crate) struct RouteAddConfig {
+    pub(crate) dst: Option<IpAddr>,
+    pub(crate) dst_len: u8,
+    pub(crate) src: Option<IpAddr>,
+    pub(crate) src_len: u8,
+    pub(crate) via: Option<IpAddr>,
+    pub(crate) dev: Option<String>,
+    pub(crate) table: Option<u32>,
+    pub(crate) protocol: Option<RouteProtocol>,
+    pub(crate) scope: Option<RouteScope>,
+    pub(crate) kind: Option<RouteType>,
+    pub(crate) metric: Option<u32>,
+    pub(crate) prefsrc: Option<IpAddr>,
+    pub(crate) onlink: bool,
+    pub(crate) expires: Option<u32>,
+    pub(crate) mark: Option<u32>,
+    pub(crate) uid: Option<u32>,
+    pub(crate) preference: Option<u8>,
+    pub(crate) family: Option<AddressFamily>,
 }
 
-pub(crate) async fn handle_add(
-    opts: &[String],
-    preferred_family: Option<AddressFamily>,
-) -> Result<(), CliError> {
-    let config = parse_route_config(opts, preferred_family)?;
-    let mut msg = build_route_message(&config)?;
-
-    let (connection, handle, _) = rtnetlink::new_connection()?;
-    tokio::spawn(connection);
-
-    if let Some(ref dev) = config.dev {
-        let index = resolve_ifindex(&handle, dev).await?;
-        msg.attributes.push(RouteAttribute::Oif(index));
-    }
-
-    // Auto-set onlink when scope is link and via is specified (iproute2 compat)
-    let need_onlink = config.onlink
-        || (msg.header.scope == RouteScope::Link && config.via.is_some());
-    if need_onlink {
-        msg.header.flags |= rtnetlink::packet_route::route::RouteFlags::Onlink;
-    }
-
-    handle
-        .route()
-        .add(msg)
-        .execute()
-        .await
-        .map_err(|e| CliError::from(format!("{e}")))?;
-
-    Ok(())
-}
-
-struct RouteAddConfig {
-    dst: Option<IpAddr>,
-    dst_len: u8,
-    src: Option<IpAddr>,
-    src_len: u8,
-    via: Option<IpAddr>,
-    dev: Option<String>,
-    table: Option<u32>,
-    protocol: Option<RouteProtocol>,
-    scope: Option<RouteScope>,
-    kind: Option<RouteType>,
-    metric: Option<u32>,
-    prefsrc: Option<IpAddr>,
-    onlink: bool,
-    expires: Option<u32>,
-    mark: Option<u32>,
-    uid: Option<u32>,
-    preference: Option<u8>,
-    family: Option<AddressFamily>,
-}
-
-fn parse_route_config(
+pub(crate) fn parse_route_config(
     opts: &[String],
     preferred_family: Option<AddressFamily>,
 ) -> Result<RouteAddConfig, CliError> {
@@ -446,152 +386,7 @@ fn parse_mark_value(s: &str) -> Result<u32, CliError> {
     }
 }
 
-fn build_route_message(
-    config: &RouteAddConfig,
-) -> Result<RouteMessage, CliError> {
-    let mut msg = RouteMessage::default();
-
-    let family = config.family.unwrap_or(AddressFamily::Inet);
-    msg.header.address_family = family;
-
-    // Defaults from iproute2
-    msg.header.protocol = RouteProtocol::Boot;
-    msg.header.scope = RouteScope::Universe;
-    msg.header.kind = RouteType::Unicast;
-    msg.header.table = 254;
-
-    if let Some(proto) = config.protocol {
-        msg.header.protocol = proto;
-    }
-    if let Some(scope) = config.scope {
-        msg.header.scope = scope;
-    }
-    if let Some(kind) = config.kind {
-        msg.header.kind = kind;
-    }
-    if let Some(table) = config.table {
-        if table > 255 {
-            msg.attributes.push(RouteAttribute::Table(table));
-        } else {
-            msg.header.table = table as u8;
-        }
-    }
-
-    if let Some(ref addr) = config.dst {
-        msg.header.destination_prefix_length = config.dst_len;
-        let rta = match addr {
-            IpAddr::V4(a) => {
-                RouteAttribute::Destination(RouteAddress::Inet(*a))
-            }
-            IpAddr::V6(a) => {
-                RouteAttribute::Destination(RouteAddress::Inet6(*a))
-            }
-        };
-        msg.attributes.push(rta);
-    }
-
-    if let Some(ref addr) = config.src {
-        msg.header.source_prefix_length = config.src_len;
-        let rta = match addr {
-            IpAddr::V4(a) => RouteAttribute::Source(RouteAddress::Inet(*a)),
-            IpAddr::V6(a) => RouteAttribute::Source(RouteAddress::Inet6(*a)),
-        };
-        msg.attributes.push(rta);
-    }
-
-    if let Some(ref addr) = config.via {
-        let use_via = matches!(
-            (family, addr),
-            (AddressFamily::Inet, IpAddr::V6(_))
-                | (AddressFamily::Inet6, IpAddr::V4(_))
-        );
-        let rta = if use_via {
-            match addr {
-                IpAddr::V4(a) => RouteAttribute::Via(RouteVia::Inet(*a)),
-                IpAddr::V6(a) => RouteAttribute::Via(RouteVia::Inet6(*a)),
-            }
-        } else {
-            match addr {
-                IpAddr::V4(a) => {
-                    RouteAttribute::Gateway(RouteAddress::Inet(*a))
-                }
-                IpAddr::V6(a) => {
-                    RouteAttribute::Gateway(RouteAddress::Inet6(*a))
-                }
-            }
-        };
-        msg.attributes.push(rta);
-    }
-
-    if let Some(ref addr) = config.prefsrc {
-        let rta = match addr {
-            IpAddr::V4(a) => RouteAttribute::PrefSource(RouteAddress::Inet(*a)),
-            IpAddr::V6(a) => {
-                RouteAttribute::PrefSource(RouteAddress::Inet6(*a))
-            }
-        };
-        msg.attributes.push(rta);
-    }
-
-    if let Some(m) = config.metric {
-        msg.attributes.push(RouteAttribute::Priority(m));
-    }
-
-    if let Some(e) = config.expires {
-        msg.attributes.push(RouteAttribute::Expires(e));
-    }
-
-    #[cfg(not(target_os = "android"))]
-    if let Some(m) = config.mark {
-        msg.attributes.push(RouteAttribute::Mark(m));
-    }
-
-    if let Some(u) = config.uid {
-        msg.attributes.push(RouteAttribute::Uid(u));
-    }
-
-    if let Some(p) = config.preference {
-        msg.attributes
-            .push(RouteAttribute::Preference(RoutePreference::from(p)));
-    }
-
-    // Auto-set scope for special route types
-    let kind = msg.header.kind;
-    let scope_set = config.scope.is_some();
-    if (kind == RouteType::Local || kind == RouteType::Nat) && !scope_set {
-        msg.header.scope = RouteScope::Host;
-    } else if (kind == RouteType::Broadcast
-        || kind == RouteType::Multicast
-        || kind == RouteType::Anycast)
-        && !scope_set
-    {
-        msg.header.scope = RouteScope::Link;
-    } else if (kind == RouteType::Unicast || kind == RouteType::Unspec)
-        && config.via.is_none()
-        && config.dev.is_none()
-        && config.preference.is_none()
-        && !scope_set
-    {
-        // Routes without gateway/device default to link-local scope
-        msg.header.scope = RouteScope::Link;
-    }
-
-    // Auto-set table for local/broadcast/anycast/nat
-    if (kind == RouteType::Local
-        || kind == RouteType::Broadcast
-        || kind == RouteType::Nat
-        || kind == RouteType::Anycast)
-        && config.table.is_none()
-    {
-        msg.header.table = 255;
-    }
-
-    Ok(msg)
-}
-
-use rtnetlink::packet_route::route::RouteMessage;
-
-async fn resolve_ifindex(
+pub(crate) async fn resolve_ifindex(
     handle: &rtnetlink::Handle,
     name: &str,
 ) -> Result<u32, CliError> {

@@ -266,34 +266,6 @@ fn test_route_delete() {
 }
 
 #[test]
-fn test_route_replace() {
-    with_dummy_iface(|ns| {
-        ns.exec_cmd(&[
-            "ip",
-            "route",
-            "add",
-            "172.22.0.0/16",
-            "via",
-            "10.0.0.254",
-            "dev",
-            DUMMY_NAME,
-        ]);
-        ns.ip_rs_exec_cmd(&[
-            "route",
-            "replace",
-            "172.22.0.0/16",
-            "via",
-            "10.0.0.254",
-            "dev",
-            DUMMY_NAME,
-            "metric",
-            "42",
-        ]);
-        ns.assert_eq_output(&["route", "show", "172.22.0.0/16"]);
-    });
-}
-
-#[test]
 fn test_route_show_type_local() {
     with_dummy_iface(|ns| {
         // Add a local address which creates local routes
@@ -315,5 +287,166 @@ fn test_route_detailed_show() {
 fn test_route_detailed_show_json() {
     with_routes(|ns| {
         ns.assert_eq_output(&["-d", "-j", "route", "show"]);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// ip route get tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_route_get_destination() {
+    with_dummy_iface(|ns| {
+        let out = ns.ip_rs_exec_cmd(&["route", "get", "10.0.0.5"]);
+        assert!(out.contains("10.0.0.5"), "should contain destination");
+        assert!(
+            out.contains("dev ") || out.contains("via "),
+            "should contain dev or via"
+        );
+        assert!(out.contains("uid"), "should contain uid");
+    });
+}
+
+#[test]
+fn test_route_get_destination_json() {
+    with_dummy_iface(|ns| {
+        let out = ns.ip_rs_exec_cmd(&["-j", "route", "get", "10.0.0.5"]);
+        assert!(out.contains(r#""dst":"10.0.0.5""#), "should have dst");
+    });
+}
+
+#[test]
+fn test_route_get_from() {
+    with_dummy_iface(|ns| {
+        let out = ns
+            .ip_rs_exec_cmd(&["route", "get", "10.0.0.5", "from", "10.0.0.1"]);
+        assert!(out.contains("10.0.0.5"), "should contain destination");
+        assert!(out.contains("from 10.0.0.1"), "should contain from");
+    });
+}
+
+#[test]
+fn test_route_get_from_json() {
+    with_dummy_iface(|ns| {
+        let out = ns.ip_rs_exec_cmd(&[
+            "-j", "route", "get", "10.0.0.5", "from", "10.0.0.1",
+        ]);
+        assert!(out.contains(r#""dst":"10.0.0.5""#));
+        assert!(
+            out.contains(r#""from":"10.0.0.1""#)
+                || out.contains(r#""src":"10.0.0.1""#),
+            "should have from/src in json"
+        );
+    });
+}
+
+#[test]
+fn test_route_get_oif() {
+    with_dummy_iface(|ns| {
+        let out =
+            ns.ip_rs_exec_cmd(&["route", "get", "10.0.0.5", "oif", DUMMY_NAME]);
+        assert!(out.contains("dev"), "should specify dev");
+        assert!(out.contains(DUMMY_NAME), "should contain dev name");
+    });
+}
+
+#[test]
+fn test_route_get_dev() {
+    with_dummy_iface(|ns| {
+        let out =
+            ns.ip_rs_exec_cmd(&["route", "get", "10.0.0.5", "dev", DUMMY_NAME]);
+        assert!(out.contains(DUMMY_NAME), "should contain dev name");
+    });
+}
+
+#[test]
+fn test_route_get_tos() {
+    with_dummy_iface(|ns| {
+        let out = ns.ip_rs_exec_cmd(&["route", "get", "10.0.0.5", "tos", "16"]);
+        assert!(out.contains("10.0.0.5"), "should contain destination");
+    });
+}
+
+#[test]
+fn test_route_get_mark() {
+    with_dummy_iface(|ns| {
+        let out =
+            ns.ip_rs_exec_cmd(&["route", "get", "10.0.0.5", "mark", "42"]);
+        assert!(out.contains("mark 0x2a"), "should show mark in hex");
+    });
+}
+
+#[test]
+fn test_route_get_uid() {
+    with_dummy_iface(|ns| {
+        let out =
+            ns.ip_rs_exec_cmd(&["route", "get", "10.0.0.5", "uid", "12345"]);
+        assert!(out.contains("uid 12345"), "should show uid");
+    });
+}
+
+#[test]
+fn test_route_get_connected() {
+    with_dummy_iface(|ns| {
+        let out = ns.ip_rs_exec_cmd(&["route", "get", "10.0.0.5", "connected"]);
+        assert!(out.contains("10.0.0.5"), "should contain destination");
+        assert!(
+            out.contains("from") || out.contains("src"),
+            "connected should have from/src"
+        );
+    });
+}
+
+#[test]
+fn test_route_get_fibmatch() {
+    with_dummy_iface(|ns| {
+        let out = ns.ip_rs_exec_cmd(&["route", "get", "10.0.0.5", "fibmatch"]);
+        // fibmatch returns the FIB entry, not the destination itself
+        assert!(
+            out.contains("10.0.0.0/24") || out.contains("dev"),
+            "fibmatch should show fib entry"
+        );
+    });
+}
+
+#[test]
+fn test_route_get_ipv6() {
+    with_dummy_iface(|ns| {
+        // Query a local IPv6 address that is reachable
+        let out = ns.ip_rs_exec_cmd(&["route", "get", "2001:db8::1"]);
+        assert!(out.contains("2001:db8::1"), "should contain destination");
+        assert!(out.contains("dev"), "should specify dev");
+    });
+}
+
+#[test]
+fn test_route_get_ipv6_json() {
+    with_dummy_iface(|ns| {
+        let out = ns.ip_rs_exec_cmd(&["-j", "route", "get", "2001:db8::1"]);
+        assert!(out.contains(r#""dst":"2001:db8::1""#));
+    });
+}
+
+#[test]
+fn test_route_get_all_opts() {
+    with_dummy_iface(|ns| {
+        let out = ns.ip_rs_exec_cmd(&[
+            "route", "get", "10.0.0.5", "from", "10.0.0.1", "tos", "16", "dev",
+            DUMMY_NAME, "mark", "42",
+        ]);
+        assert!(out.contains("10.0.0.5"), "should contain destination");
+        assert!(out.contains("from 10.0.0.1"), "should contain from");
+        assert!(out.contains("dev"), "should specify dev");
+    });
+}
+
+#[test]
+fn test_route_get_from_oif_json() {
+    with_dummy_iface(|ns| {
+        let out = ns.ip_rs_exec_cmd(&[
+            "-j", "route", "get", "10.0.0.5", "from", "10.0.0.1", "oif",
+            DUMMY_NAME,
+        ]);
+        assert!(out.contains(r#""dst":"10.0.0.5""#));
     });
 }

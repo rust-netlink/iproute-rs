@@ -3,7 +3,9 @@
 use rtnetlink::packet_route::AddressFamily;
 
 use super::{
-    add::{handle_add, handle_delete},
+    delete::handle_delete,
+    get::handle_get,
+    modify::{handle_modify_add, handle_modify_change, handle_modify_replace},
     show::{CliRouteInfo, handle_show},
 };
 use crate::CliError;
@@ -81,6 +83,17 @@ impl RouteCommand {
                     ),
             )
             .subcommand(
+                clap::Command::new("get")
+                    .about("get a single route")
+                    .alias("g")
+                    .alias("ge")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
+            )
+            .subcommand(
                 clap::Command::new("help")
                     .about("print help message")
                     .alias("h")
@@ -99,7 +112,7 @@ impl RouteCommand {
                 .unwrap_or_default()
                 .map(|o| o.to_string())
                 .collect();
-            handle_add(&opts, preferred_family).await?;
+            handle_modify_add(&opts, preferred_family).await?;
             Ok(vec![])
         } else if let Some(matches) = matches.subcommand_matches("delete") {
             let opts: Vec<String> = matches
@@ -115,7 +128,7 @@ impl RouteCommand {
                 .unwrap_or_default()
                 .map(|o| o.to_string())
                 .collect();
-            handle_add(&opts, preferred_family).await?;
+            handle_modify_change(&opts, preferred_family).await?;
             Ok(vec![])
         } else if let Some(matches) = matches.subcommand_matches("replace") {
             let opts: Vec<String> = matches
@@ -123,8 +136,15 @@ impl RouteCommand {
                 .unwrap_or_default()
                 .map(|o| o.to_string())
                 .collect();
-            handle_add(&opts, preferred_family).await?;
+            handle_modify_replace(&opts, preferred_family).await?;
             Ok(vec![])
+        } else if let Some(matches) = matches.subcommand_matches("get") {
+            let opts: Vec<String> = matches
+                .get_many::<String>("options")
+                .unwrap_or_default()
+                .map(|o| o.to_string())
+                .collect();
+            handle_get(&opts, preferred_family).await
         } else if matches.subcommand_matches("help").is_some() {
             let msg = concat!(
                 "Usage: ip route { list | flush } SELECTOR\n",

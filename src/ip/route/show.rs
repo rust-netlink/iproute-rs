@@ -24,6 +24,8 @@ fn hex_encode(data: &[u8]) -> String {
 pub(crate) struct CliRouteInfo {
     #[serde(skip)]
     family: AddressFamily,
+    #[serde(skip)]
+    cloned: bool,
     #[serde(skip_serializing_if = "Option::is_none", rename = "type")]
     kind: Option<String>,
     dst: String,
@@ -74,7 +76,8 @@ struct CliRouteNextHop {
     oif: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     weight: Option<u32>,
-    flags: Vec<&'static str>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    flags: String,
 }
 
 const ROUTE_FLAG_DATA: &[(&str, RouteFlags)] = &[
@@ -202,32 +205,8 @@ fn route_table_to_string(table: u8) -> String {
     }
 }
 
-fn route_next_hop_flags_to_strings(
-    flags: RouteNextHopFlags,
-) -> Vec<&'static str> {
-    let mut result = Vec::new();
-    if flags.contains(RouteNextHopFlags::Dead) {
-        result.push("dead");
-    }
-    if flags.contains(RouteNextHopFlags::Onlink) {
-        result.push("onlink");
-    }
-    if flags.contains(RouteNextHopFlags::Pervasive) {
-        result.push("pervasive");
-    }
-    if flags.contains(RouteNextHopFlags::Offload) {
-        result.push("offload");
-    }
-    if flags.contains(RouteNextHopFlags::Linkdown) {
-        result.push("linkdown");
-    }
-    if flags.contains(RouteNextHopFlags::Unresolved) {
-        result.push("unresolved");
-    }
-    if flags.contains(RouteNextHopFlags::Trap) {
-        result.push("trap");
-    }
-    result
+fn route_next_hop_flags_to_strings(flags: RouteNextHopFlags) -> String {
+    flags.to_string()
 }
 
 pub(crate) fn parse_nl_msg_to_route(
@@ -450,8 +429,10 @@ pub(crate) fn parse_nl_msg_to_route(
 
     info.flags = route_flags_to_strings(nl_msg.header.flags);
 
-    // Only show cache info for cloned routes or with -d
     let is_cloned = nl_msg.header.flags.contains(RouteFlags::Cloned);
+    info.cloned = is_cloned;
+
+    // Only show cache info for cloned routes or with -d
     if !is_cloned && !show_details {
         info.cache_info = None;
     }
@@ -502,19 +483,19 @@ impl std::fmt::Display for CliRouteInfo {
             write!(buf, "dev {dev} ")?;
         }
 
-        // Table
-        if let Some(ref table) = self.table {
-            write!(buf, "table {table} ")?;
-        }
+        // Skip table/protocol/scope for cloned routes (matching iproute2)
+        if !self.cloned {
+            if let Some(ref table) = self.table {
+                write!(buf, "table {table} ")?;
+            }
 
-        // Protocol
-        if let Some(ref proto) = self.protocol {
-            write!(buf, "proto {proto} ")?;
-        }
+            if let Some(ref proto) = self.protocol {
+                write!(buf, "proto {proto} ")?;
+            }
 
-        // Scope
-        if let Some(ref scope) = self.scope {
-            write!(buf, "scope {scope} ")?;
+            if let Some(ref scope) = self.scope {
+                write!(buf, "scope {scope} ")?;
+            }
         }
 
         // Preferred source
@@ -606,8 +587,8 @@ impl std::fmt::Display for CliRouteInfo {
             if let Some(w) = nh.weight {
                 write!(buf, " weight {w}")?;
             }
-            for flag in &nh.flags {
-                write!(buf, " {flag}")?;
+            if !nh.flags.is_empty() {
+                write!(buf, " {}", nh.flags)?;
             }
         }
 

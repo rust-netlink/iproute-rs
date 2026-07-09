@@ -2,6 +2,9 @@
 
 mod add;
 mod cli;
+mod delete;
+mod get;
+mod modify;
 mod show;
 
 #[cfg(test)]
