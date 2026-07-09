@@ -302,7 +302,7 @@ impl std::fmt::Display for CliLinkInfo {
                 for addr in addr_info {
                     write!(f, " {}", addr)?;
                 }
-                write!(f, "\n")?;
+                writeln!(f)?;
             } else {
                 for addr in addr_info {
                     write!(f, "\n    {}", addr)?;

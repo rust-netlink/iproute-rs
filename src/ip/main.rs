@@ -3,6 +3,7 @@
 mod address;
 mod link;
 mod neighbour;
+mod route;
 
 #[cfg(test)]
 mod tests;
@@ -12,7 +13,9 @@ use std::io::IsTerminal;
 use iproute_rs::{CliColor, CliError, OutputFormat, print_result_and_exit};
 use rtnetlink::packet_route::AddressFamily;
 
-use self::{address::AddressCommand, link::LinkCommand};
+use self::{
+    address::AddressCommand, link::LinkCommand, route::RouteCommand,
+};
 use crate::neighbour::NeighbourCommand;
 
 pub(crate) fn resolve_preferred_family(
@@ -200,7 +203,8 @@ async fn main() -> Result<(), CliError> {
         .subcommand_required(true)
         .subcommand(LinkCommand::gen_command())
         .subcommand(AddressCommand::gen_command())
-        .subcommand(NeighbourCommand::gen_command());
+        .subcommand(NeighbourCommand::gen_command())
+        .subcommand(RouteCommand::gen_command());
 
     let matches = app.get_matches_mut();
 
@@ -235,6 +239,13 @@ async fn main() -> Result<(), CliError> {
         matches.subcommand_matches(NeighbourCommand::CMD)
     {
         print_result_and_exit(NeighbourCommand::handle(matches).await, fmt);
+    } else if let Some(matches) = matches.subcommand_matches(RouteCommand::CMD)
+    {
+        let preferred_family = resolve_preferred_family(matches);
+        print_result_and_exit(
+            RouteCommand::handle(matches, preferred_family).await,
+            fmt,
+        );
     } else {
         app.print_help()?;
         println!();
