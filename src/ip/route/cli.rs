@@ -4,6 +4,7 @@ use rtnetlink::packet_route::AddressFamily;
 
 use super::{
     delete::handle_delete,
+    flush::handle_flush,
     get::handle_get,
     modify::{
         handle_modify_add, handle_modify_append, handle_modify_change,
@@ -34,6 +35,16 @@ impl RouteCommand {
                     .alias("ls")
                     .alias("sh")
                     .alias("sho")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
+            )
+            .subcommand(
+                clap::Command::new("flush")
+                    .about("flush routing table")
+                    .alias("f")
                     .arg(
                         clap::Arg::new("options")
                             .action(clap::ArgAction::Append)
@@ -281,6 +292,19 @@ impl RouteCommand {
             Ok(vec![])
         } else if matches.subcommand_matches("help").is_some() {
             Self::print_help();
+            Ok(vec![])
+        } else if let Some(matches) = matches.subcommand_matches("flush") {
+            let opts: Vec<String> = matches
+                .get_many::<String>("options")
+                .unwrap_or_default()
+                .map(|o| o.to_string())
+                .collect();
+            handle_flush(
+                &opts,
+                preferred_family,
+                matches.get_count("DETAILS") > 0,
+            )
+            .await?;
             Ok(vec![])
         } else if let Some(matches) = matches.subcommand_matches("show") {
             let opts: Vec<&str> = matches

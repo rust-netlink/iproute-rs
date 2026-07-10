@@ -27,57 +27,57 @@ pub(crate) struct CliRouteInfo {
     #[serde(skip)]
     cloned: bool,
     #[serde(skip_serializing_if = "Option::is_none", rename = "type")]
-    kind: Option<String>,
-    dst: String,
+    pub(crate) kind: Option<String>,
+    pub(crate) dst: String,
     #[serde(skip)]
-    dst_len: u8,
+    pub(crate) dst_len: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
-    src: Option<String>,
+    pub(crate) src: Option<String>,
     #[serde(skip)]
-    src_len: u8,
+    pub(crate) src_len: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
-    gateway: Option<String>,
+    pub(crate) gateway: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "dev")]
-    oif: Option<String>,
+    pub(crate) oif: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    table: Option<String>,
+    pub(crate) table: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    protocol: Option<String>,
+    pub(crate) protocol: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    scope: Option<String>,
+    pub(crate) scope: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    prefsrc: Option<String>,
+    pub(crate) prefsrc: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    metric: Option<u32>,
-    flags: Vec<&'static str>,
+    pub(crate) metric: Option<u32>,
+    pub(crate) flags: Vec<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    mark: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    uid: Option<u32>,
+    pub(crate) mark: Option<u32>,
     #[serde(skip)]
-    cache_info: Option<RouteCacheInfo>,
+    pub(crate) uid: Option<u32>,
+    #[serde(skip)]
+    pub(crate) cache_info: Option<RouteCacheInfo>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "pref")]
-    preference: Option<String>,
+    pub(crate) preference: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tos: Option<u8>,
+    pub(crate) tos: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    iif: Option<String>,
+    pub(crate) iif: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    ttl_propagate: Option<bool>,
+    pub(crate) ttl_propagate: Option<bool>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    nexthops: Vec<CliRouteNextHop>,
+    pub(crate) nexthops: Vec<CliRouteNextHop>,
 }
 
 #[derive(Serialize, Default)]
-struct CliRouteNextHop {
+pub(crate) struct CliRouteNextHop {
     #[serde(skip_serializing_if = "Option::is_none")]
-    gateway: Option<String>,
+    pub(crate) gateway: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "dev")]
-    oif: Option<String>,
+    pub(crate) oif: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    weight: Option<u32>,
+    pub(crate) weight: Option<u32>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    flags: String,
+    pub(crate) flags: String,
 }
 
 const ROUTE_FLAG_DATA: &[(&str, RouteFlags)] = &[

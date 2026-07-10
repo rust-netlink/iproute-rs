@@ -3,6 +3,7 @@
 mod add;
 mod cli;
 mod delete;
+mod flush;
 mod get;
 mod modify;
 mod save;
