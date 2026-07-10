@@ -24,6 +24,7 @@ enum RouteModifyOp {
     Add,
     Append,
     Change,
+    Prepend,
     Replace,
 }
 
@@ -40,6 +41,7 @@ async fn send_route_request(
         RouteModifyOp::Append => {
             NLM_F_REQUEST | NLM_F_ACK | NLM_F_APPEND | NLM_F_CREATE
         }
+        RouteModifyOp::Prepend => NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE,
         RouteModifyOp::Change => NLM_F_REQUEST | NLM_F_ACK | NLM_F_REPLACE,
         RouteModifyOp::Replace => {
             NLM_F_REQUEST | NLM_F_ACK | NLM_F_REPLACE | NLM_F_CREATE
@@ -240,6 +242,13 @@ pub(crate) async fn handle_modify_change(
     preferred_family: Option<AddressFamily>,
 ) -> Result<(), CliError> {
     handle_modify(opts, preferred_family, RouteModifyOp::Change).await
+}
+
+pub(crate) async fn handle_modify_prepend(
+    opts: &[String],
+    preferred_family: Option<AddressFamily>,
+) -> Result<(), CliError> {
+    handle_modify(opts, preferred_family, RouteModifyOp::Prepend).await
 }
 
 pub(crate) async fn handle_modify_replace(

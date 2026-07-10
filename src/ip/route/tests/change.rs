@@ -155,6 +155,55 @@ fn test_route_append_onlink() {
 }
 
 #[test]
+fn test_route_prepend() {
+    with_dummy_iface(|ns| {
+        // Prepend a new route (no existing route)
+        ns.ip_rs_exec_cmd(&[
+            "route",
+            "prepend",
+            "172.30.0.0/16",
+            "via",
+            "10.0.0.254",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        ns.assert_eq_output(&["route", "show", "172.30.0.0/16"]);
+    });
+}
+
+#[test]
+fn test_route_prepend_existing() {
+    with_dummy_iface(|ns| {
+        // Add a route first
+        ns.exec_cmd(&[
+            "ip",
+            "route",
+            "add",
+            "172.31.0.0/16",
+            "via",
+            "10.0.0.254",
+            "dev",
+            DUMMY_NAME,
+            "metric",
+            "100",
+        ]);
+        // Prepend a route with same key but different metric
+        ns.ip_rs_exec_cmd(&[
+            "route",
+            "prepend",
+            "172.31.0.0/16",
+            "via",
+            "10.0.0.254",
+            "dev",
+            DUMMY_NAME,
+            "metric",
+            "200",
+        ]);
+        ns.assert_eq_output(&["route", "show", "172.31.0.0/16"]);
+    });
+}
+
+#[test]
 fn test_route_change() {
     with_dummy_iface(|ns| {
         ns.exec_cmd(&[

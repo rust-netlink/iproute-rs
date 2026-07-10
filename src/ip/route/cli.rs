@@ -8,7 +8,7 @@ use super::{
     get::handle_get,
     modify::{
         handle_modify_add, handle_modify_append, handle_modify_change,
-        handle_modify_replace,
+        handle_modify_prepend, handle_modify_replace,
     },
     save::{handle_restore, handle_save, handle_showdump},
     show::{CliRouteInfo, handle_show},
@@ -91,6 +91,19 @@ impl RouteCommand {
                     .alias("repl")
                     .alias("repla")
                     .alias("replac")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
+            )
+            .subcommand(
+                clap::Command::new("prepend")
+                    .about("prepend a route")
+                    .alias("prep")
+                    .alias("prepe")
+                    .alias("prepen")
+                    .alias("pre")
                     .arg(
                         clap::Arg::new("options")
                             .action(clap::ArgAction::Append)
@@ -256,6 +269,18 @@ impl RouteCommand {
                 return Ok(vec![]);
             }
             handle_modify_append(&opts, preferred_family).await?;
+            Ok(vec![])
+        } else if let Some(matches) = matches.subcommand_matches("prepend") {
+            let opts: Vec<String> = matches
+                .get_many::<String>("options")
+                .unwrap_or_default()
+                .map(|o| o.to_string())
+                .collect();
+            if opts.is_empty() {
+                Self::print_help();
+                return Ok(vec![]);
+            }
+            handle_modify_prepend(&opts, preferred_family).await?;
             Ok(vec![])
         } else if let Some(matches) = matches.subcommand_matches("replace") {
             let opts: Vec<String> = matches
