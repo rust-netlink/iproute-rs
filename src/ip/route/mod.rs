@@ -5,6 +5,7 @@ mod cli;
 mod delete;
 mod get;
 mod modify;
+mod save;
 mod show;
 
 #[cfg(test)]

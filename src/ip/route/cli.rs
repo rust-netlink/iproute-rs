@@ -5,7 +5,11 @@ use rtnetlink::packet_route::AddressFamily;
 use super::{
     delete::handle_delete,
     get::handle_get,
-    modify::{handle_modify_add, handle_modify_change, handle_modify_replace},
+    modify::{
+        handle_modify_add, handle_modify_append, handle_modify_change,
+        handle_modify_replace,
+    },
+    save::{handle_restore, handle_save, handle_showdump},
     show::{CliRouteInfo, handle_show},
 };
 use crate::CliError;
@@ -94,6 +98,41 @@ impl RouteCommand {
                     ),
             )
             .subcommand(
+                clap::Command::new("append")
+                    .about("append a route")
+                    .alias("ap")
+                    .alias("app")
+                    .alias("appe")
+                    .alias("appen")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
+            )
+            .subcommand(
+                clap::Command::new("save")
+                    .about("save routing table to stdout")
+                    .alias("sav")
+                    .arg(
+                        clap::Arg::new("options")
+                            .action(clap::ArgAction::Append)
+                            .trailing_var_arg(true),
+                    ),
+            )
+            .subcommand(
+                clap::Command::new("restore")
+                    .about("restore routing table from stdin")
+                    .alias("rest")
+                    .alias("resto")
+                    .alias("restor"),
+            )
+            .subcommand(
+                clap::Command::new("showdump")
+                    .alias("showdum")
+                    .about("display routes from a dump file"),
+            )
+            .subcommand(
                 clap::Command::new("help")
                     .about("print help message")
                     .alias("h")
@@ -111,10 +150,10 @@ impl RouteCommand {
             "       ip route get ROUTE_GET_ROUTE_ID\n",
             "       ip route { add | del | change | replace | prepend } \
              ROUTE\n",
-            "SELECTOR := [ root PREFIX ] [ match PREFIX ] [ exact PREFIX ] \
-             [ table TABLE_ID ]\n",
-            "           [ vrf NAME ] [ proto RTPROTO ] [ type TYPE ] [ \
-             scope SCOPE ]\n",
+            "SELECTOR := [ root PREFIX ] [ match PREFIX ] [ exact PREFIX ] [ \
+             table TABLE_ID ]\n",
+            "           [ vrf NAME ] [ proto RTPROTO ] [ type TYPE ] [ scope \
+             SCOPE ]\n",
             "ROUTE := NODE_SPEC [ INFO_SPEC ]\n",
             "NODE_SPEC := [ TYPE ] PREFIX [ tos TOS ]\n",
             "            [ table TABLE_ID ] [ proto RTPROTO ]\n",
@@ -123,15 +162,16 @@ impl RouteCommand {
             "NH := [ encap ENCAP ] [ via [ FAMILY ] ADDRESS ]\n",
             "           [ dev DEV ] [ weight NUMBER ] [ onlink ]\n",
             "           [ nhflags FLAGS ]\n",
-            "PATH := [ via [ FAMILY ] ADDRESS ] [ dev DEV ] [ weight NUMBER ]\n",
+            "PATH := [ via [ FAMILY ] ADDRESS ] [ dev DEV ] [ weight NUMBER \
+             ]\n",
             "        [ nhflags FLAGS ]\n",
             "       nexthop via [ FAMILY ] ADDRESS dev DEV [ weight NUMBER ]\n",
             "OPTIONS := [ FLAG-LIST ] [ mtu NUMBER ] [ window NUMBER ]\n",
             "           [ rtt TIME ] [ rttvar TIME ] [ reordering NUMBER ]\n",
             "           [ rto_min TIME ] [ hoplimit NUMBER ] [ initcwnd \
              NUMBER ]\n",
-            "           [ initrwnd NUMBER ] [ features FEATURES ] [ \
-             quickack 1|0 ]\n",
+            "           [ initrwnd NUMBER ] [ features FEATURES ] [ quickack \
+             1|0 ]\n",
             "           [ congctl NAME ] [ pref low | medium | high ]\n",
             "           [ expires TIME ] [ fastopen_no_cookie 1|0 ]\n",
             "           [ FH ] [ encap ENCAP ]\n",
@@ -144,8 +184,8 @@ impl RouteCommand {
             "FLAG := [ onlink ]\n",
             "FH := [ mpls LABEL ] [ ttl NUMBER ]\n",
             "ENCAP := [ ENCAP_TYPE ] ENCAP_INFO\n",
-            "ENCAP_TYPE := [ mpls | ip | ip6 | seg6 | seg6local | rpl | \
-             ioam6 | xfrm ]\n",
+            "ENCAP_TYPE := [ mpls | ip | ip6 | seg6 | seg6local | rpl | ioam6 \
+             | xfrm ]\n",
             "ENCAP_INFO := [ MPLS_OPTS | SEG6_OPTS | ... ]\n",
             "MPLS_OPTS := mpls LABEL [ ttl NUMBER ]\n",
             "SEG6_OPTS := mode SRTYPE segs SEG_LIST\n",
@@ -194,6 +234,18 @@ impl RouteCommand {
             }
             handle_modify_change(&opts, preferred_family).await?;
             Ok(vec![])
+        } else if let Some(matches) = matches.subcommand_matches("append") {
+            let opts: Vec<String> = matches
+                .get_many::<String>("options")
+                .unwrap_or_default()
+                .map(|o| o.to_string())
+                .collect();
+            if opts.is_empty() {
+                Self::print_help();
+                return Ok(vec![]);
+            }
+            handle_modify_append(&opts, preferred_family).await?;
+            Ok(vec![])
         } else if let Some(matches) = matches.subcommand_matches("replace") {
             let opts: Vec<String> = matches
                 .get_many::<String>("options")
@@ -213,6 +265,20 @@ impl RouteCommand {
                 .map(|o| o.to_string())
                 .collect();
             handle_get(&opts, preferred_family).await
+        } else if let Some(matches) = matches.subcommand_matches("save") {
+            let opts: Vec<String> = matches
+                .get_many::<String>("options")
+                .unwrap_or_default()
+                .map(|o| o.to_string())
+                .collect();
+            handle_save(&opts).await?;
+            Ok(vec![])
+        } else if matches.subcommand_matches("restore").is_some() {
+            handle_restore().await?;
+            Ok(vec![])
+        } else if matches.subcommand_matches("showdump").is_some() {
+            handle_showdump().await?;
+            Ok(vec![])
         } else if matches.subcommand_matches("help").is_some() {
             Self::print_help();
             Ok(vec![])
