@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use std::{collections::HashMap, fmt::Write};
 
 use futures_util::stream::{StreamExt, TryStreamExt};
