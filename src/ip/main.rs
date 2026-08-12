@@ -5,9 +5,6 @@ mod link;
 mod neighbour;
 mod route;
 
-#[cfg(test)]
-mod tests;
-
 use std::io::IsTerminal;
 
 use iproute_rs::{CliColor, CliError, OutputFormat, print_result_and_exit};

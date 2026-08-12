@@ -14,9 +14,6 @@ mod show;
 mod xdp;
 mod xstats;
 
-#[cfg(test)]
-mod tests;
-
 pub(crate) use self::{
     add::LinkBaseConf,
     cli::LinkCommand,

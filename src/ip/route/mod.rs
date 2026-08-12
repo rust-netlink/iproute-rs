@@ -9,7 +9,4 @@ mod modify;
 mod save;
 mod show;
 
-#[cfg(test)]
-mod tests;
-
 pub(crate) use self::cli::RouteCommand;
