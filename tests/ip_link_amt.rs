@@ -30,15 +30,9 @@ fn run_ip_rs_cmd_in_ns(
     ns: &NetnsGuard,
     args: &[&str],
 ) -> (String, String, Option<i32>) {
-    let ip_rs = std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("ip-rs");
+    let ip_rs = env!("CARGO_BIN_EXE_ip-rs");
     let mut full_args = vec!["netns", "exec", &ns.name];
-    full_args.push(ip_rs.to_str().unwrap());
+    full_args.push(ip_rs);
     full_args.extend_from_slice(args);
     let output = Command::new("ip")
         .args(&full_args)

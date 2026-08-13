@@ -5,8 +5,8 @@ use rtnetlink::{
     LinkBridge, LinkMessageBuilder,
     packet_route::link::{
         BridgeBooleanOptionFlags as BoolOptFlags, BridgeMulticastRouterType,
-        BridgePortState, BridgeQuerierState, InfoBridge, InfoBridgePort,
-        InfoPortData, InfoPortKind, LinkInfo,
+        BridgePortState, BridgeQuerierState, BridgeStpMode, InfoBridge,
+        InfoBridgePort, InfoPortData, InfoPortKind, LinkInfo,
     },
 };
 use serde::Serialize;
@@ -24,6 +24,8 @@ pub(crate) struct CliLinkInfoDataBridge {
     max_age: u32,
     ageing_time: u32,
     stp_state: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stp_mode: Option<String>,
     priority: u16,
     vlan_filtering: u8,
     vlan_protocol: String,
@@ -99,6 +101,7 @@ impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
         let mut max_age = 0;
         let mut ageing_time = 0;
         let mut stp_state = 0;
+        let mut stp_mode = None;
         let mut priority = 0;
         let mut vlan_filtering = 0;
         let mut vlan_protocol = String::new();
@@ -154,6 +157,14 @@ impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
                 InfoBridge::MaxAge(v) => max_age = *v,
                 InfoBridge::AgeingTime(v) => ageing_time = *v,
                 InfoBridge::StpState(v) => stp_state = (*v).into(),
+                InfoBridge::StpMode(v) => {
+                    stp_mode = Some(match *v {
+                        BridgeStpMode::Auto => "auto".to_string(),
+                        BridgeStpMode::User => "user".to_string(),
+                        BridgeStpMode::Kernel => "kernel".to_string(),
+                        _ => "(unknown)".to_string(),
+                    });
+                }
                 InfoBridge::Priority(v) => priority = *v,
                 InfoBridge::VlanFiltering(v) => {
                     vlan_filtering = if *v { 1 } else { 0 }
@@ -298,6 +309,7 @@ impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
             max_age,
             ageing_time,
             stp_state,
+            stp_mode,
             priority,
             vlan_filtering,
             vlan_protocol,
@@ -356,6 +368,9 @@ impl std::fmt::Display for CliLinkInfoDataBridge {
         write!(f, " max_age {}", self.max_age)?;
         write!(f, " ageing_time {}", self.ageing_time)?;
         write!(f, " stp_state {}", self.stp_state)?;
+        if let Some(v) = &self.stp_mode {
+            write!(f, " stp_mode {v}")?;
+        }
         write!(f, " priority {}", self.priority)?;
         write!(f, " vlan_filtering {}", self.vlan_filtering)?;
         write!(f, " vlan_protocol {}", self.vlan_protocol)?;
@@ -507,6 +522,8 @@ pub(crate) struct CliLinkInfoDataBridgePort {
     neigh_suppress: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     neigh_vlan_suppress: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    neigh_forward_grat: Option<bool>,
     group_fwd_mask: String,
     group_fwd_mask_str: String,
     vlan_tunnel: bool,
@@ -546,6 +563,7 @@ impl From<&[InfoBridgePort]> for CliLinkInfoDataBridgePort {
         let mut mcast_to_unicast = false;
         let mut neigh_suppress = false;
         let mut neigh_vlan_suppress = None;
+        let mut neigh_forward_grat = None;
         let mut group_fwd_mask: u16 = 0;
         let mut vlan_tunnel = false;
         let mut isolated = false;
@@ -602,6 +620,9 @@ impl From<&[InfoBridgePort]> for CliLinkInfoDataBridgePort {
                 InfoBridgePort::NeighVlanSuppress(v) => {
                     neigh_vlan_suppress = Some(*v)
                 }
+                InfoBridgePort::NeighForwardGrat(v) => {
+                    neigh_forward_grat = Some(*v)
+                }
                 InfoBridgePort::GroupFwdMask(v) => group_fwd_mask = *v,
                 InfoBridgePort::VlanTunnel(v) => vlan_tunnel = *v,
                 InfoBridgePort::Isolated(v) => isolated = *v,
@@ -648,6 +669,7 @@ impl From<&[InfoBridgePort]> for CliLinkInfoDataBridgePort {
             mcast_to_unicast,
             neigh_suppress,
             neigh_vlan_suppress,
+            neigh_forward_grat,
             group_fwd_mask: group_fwd_mask_string,
             group_fwd_mask_str,
             vlan_tunnel,
@@ -707,6 +729,9 @@ impl std::fmt::Display for CliLinkInfoDataBridgePort {
         } else {
             write!(f, " neigh_vlan_suppress off")?;
         }
+        if let Some(v) = self.neigh_forward_grat {
+            write!(f, " neigh_forward_grat {}", on_off(v))?;
+        }
         write!(f, " group_fwd_mask {}", self.group_fwd_mask)?;
         write!(f, " group_fwd_mask_str {}", self.group_fwd_mask_str)?;
         write!(f, " vlan_tunnel {}", on_off(self.vlan_tunnel))?;
@@ -752,6 +777,9 @@ fn apply_bridge_args<'a>(
             }
             "stp_state" | "stp" => {
                 builder = builder.stp_state(parse_from_str(v, "stp_state")?);
+            }
+            "stp_mode" => {
+                builder = builder.stp_mode(parse_from_str(v, "stp_mode")?);
             }
             "priority" => {
                 builder = builder.priority(parse_u32(v, "priority")? as u16);
@@ -1031,6 +1059,11 @@ fn apply_bridge_port_args(
                     parse_on_off_01(v.as_ref())?,
                 ));
             }
+            "neigh_forward_grat" => {
+                port_data.push(InfoBridgePort::NeighForwardGrat(
+                    parse_on_off_01(v.as_ref())?,
+                ));
+            }
             "vlan_tunnel" => {
                 port_data.push(InfoBridgePort::VlanTunnel(parse_on_off_01(
                     v.as_ref(),
@@ -1106,6 +1139,7 @@ impl IfaceBridgePort {
                         [ group_fwd_mask MASK ]
                         [ neigh_suppress {on | off} ]
                         [ neigh_vlan_suppress {on | off} ]
+                        [ neigh_forward_grat {on | off} ]
                         [ vlan_tunnel {on | off} ]
                         [ isolated {on | off} ]
                         [ locked {on | off} ]
@@ -1156,6 +1190,7 @@ impl IfaceBridge {
                   [ max_age MAX_AGE ]
                   [ ageing_time AGEING_TIME ]
                   [ stp_state STP_STATE ]
+                  [ stp_mode STP_MODE ]
                   [ mst_enabled MST_ENABLED ]
                   [ priority PRIORITY ]
                   [ group_fwd_mask MASK ]
@@ -1192,6 +1227,7 @@ impl IfaceBridge {
                   [ mdb_offload_fail_notification MDB_OFFLOAD_FAIL_NOTIFICATION ]
 
 Where: VLAN_PROTOCOL := { 802.1Q | 802.1ad }
+       STP_MODE := { auto | user | kernel }
 "
     }
 }

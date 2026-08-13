@@ -415,8 +415,7 @@ fn build_xstats_info(
                                 }
                                 stp = Some(build_bridge_stp(s));
                             }
-                            BridgeXstat::Vlan(_) | BridgeXstat::Other(_) => {
-                            }
+                            BridgeXstat::Vlan(_) | BridgeXstat::Other(_) => {}
                             _ => {}
                         }
                     }

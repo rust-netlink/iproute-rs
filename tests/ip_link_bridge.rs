@@ -204,6 +204,27 @@ fn test_bridge_create_stp_state() {
 }
 
 #[test]
+fn test_bridge_create_stp_mode() {
+    with_netns(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "add",
+            BRIDGE_NAME2,
+            "type",
+            "bridge",
+            "stp_mode",
+            "user",
+        ]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
+
+        let outputs = ns.assert_eq_output_map(
+            &["-d", "link", "show", BRIDGE_NAME2],
+            normalize_timers,
+        );
+    });
+}
+
+#[test]
 fn test_bridge_create_vlan_filtering() {
     with_netns(|ns| {
         ns.ip_rs_exec_cmd(&[
@@ -577,6 +598,27 @@ fn test_bridge_port_set_priority() {
             normalize_timers,
         );
         assert!(outputs.expected.contains("priority 48"));
+    });
+}
+
+#[test]
+fn test_bridge_port_set_neigh_forward_grat() {
+    with_bridge_iface(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bridge_slave",
+            "neigh_forward_grat",
+            "on",
+        ]);
+
+        ns.assert_eq_output_map(
+            &["-d", "link", "show", DUMMY_NAME],
+            normalize_timers,
+        );
     });
 }
 

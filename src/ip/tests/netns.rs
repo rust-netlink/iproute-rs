@@ -74,13 +74,7 @@ impl NetnsGuard {
     }
 
     pub fn ip_rs_exec_cmd_raw(&self, args: &[&str]) -> Vec<u8> {
-        let mut cur_exec_path =
-            std::env::current_exe().expect("No current exec path");
-        cur_exec_path.pop();
-        cur_exec_path.pop();
-
-        let ip_rs_pathbuf = cur_exec_path.join("ip-rs");
-        let ip_rs_path = ip_rs_pathbuf.to_str().expect("Not UTF-8 string");
+        let ip_rs_path = std::env!("CARGO_BIN_EXE_ip-rs");
 
         let mut full_args = vec!["netns", "exec", &self.name];
         full_args.push(ip_rs_path);
@@ -106,13 +100,7 @@ impl NetnsGuard {
         args: &[&str],
         stdin_data: &[u8],
     ) -> String {
-        let mut cur_exec_path =
-            std::env::current_exe().expect("No current exec path");
-        cur_exec_path.pop();
-        cur_exec_path.pop();
-
-        let ip_rs_pathbuf = cur_exec_path.join("ip-rs");
-        let ip_rs_path = ip_rs_pathbuf.to_str().expect("Not UTF-8 string");
+        let ip_rs_path = std::env!("CARGO_BIN_EXE_ip-rs");
 
         let mut full_args = vec!["netns", "exec", &self.name];
         full_args.push(ip_rs_path);
@@ -149,13 +137,7 @@ impl NetnsGuard {
     }
 
     pub fn ip_rs_exec_cmd_with_stderr(&self, args: &[&str]) -> CmdOutput {
-        let mut cur_exec_path =
-            std::env::current_exe().expect("No current exec path");
-        cur_exec_path.pop();
-        cur_exec_path.pop();
-
-        let ip_rs_pathbuf = cur_exec_path.join("ip-rs");
-        let ip_rs_path = ip_rs_pathbuf.to_str().expect("Not UTF-8 string");
+        let ip_rs_path = std::env!("CARGO_BIN_EXE_ip-rs");
 
         let mut full_args = vec!["netns", "exec", &self.name];
         full_args.push(ip_rs_path);

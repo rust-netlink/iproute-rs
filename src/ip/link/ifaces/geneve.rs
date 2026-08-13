@@ -21,6 +21,10 @@ pub(crate) struct CliLinkInfoDataGeneve {
     remote: Option<Ipv4Addr>,
     #[serde(skip_serializing_if = "Option::is_none")]
     remote6: Option<Ipv6Addr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    local: Option<Ipv4Addr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    local6: Option<Ipv6Addr>,
     ttl: u8,
     #[serde(skip_serializing_if = "is_false")]
     ttl_inherit: bool,
@@ -49,6 +53,8 @@ impl From<&[InfoGeneve]> for CliLinkInfoDataGeneve {
         let mut id = 0;
         let mut remote = None;
         let mut remote6 = None;
+        let mut local = None;
+        let mut local6 = None;
         let mut ttl = 0;
         let mut ttl_inherit = false;
         let mut tos = 0;
@@ -65,6 +71,8 @@ impl From<&[InfoGeneve]> for CliLinkInfoDataGeneve {
                 InfoGeneve::Id(v) => id = *v,
                 InfoGeneve::Remote(v) => remote = Some(*v),
                 InfoGeneve::Remote6(v) => remote6 = Some(*v),
+                InfoGeneve::Local(v) => local = Some(*v),
+                InfoGeneve::Local6(v) => local6 = Some(*v),
                 InfoGeneve::Ttl(v) => ttl = *v,
                 InfoGeneve::Tos(v) => tos = *v,
                 InfoGeneve::Port(v) => port = *v,
@@ -85,6 +93,8 @@ impl From<&[InfoGeneve]> for CliLinkInfoDataGeneve {
             id,
             remote,
             remote6,
+            local,
+            local6,
             ttl,
             ttl_inherit,
             tos,
@@ -110,6 +120,13 @@ impl std::fmt::Display for CliLinkInfoDataGeneve {
         }
         if let Some(v) = &self.remote6 {
             write!(f, " remote {v}")?;
+        }
+        if let Some(v) = self.local {
+            write!(f, " local {v}")?;
+        } else if let Some(v) = &self.local6
+            && !v.is_unspecified()
+        {
+            write!(f, " local {v}")?;
         }
         if self.ttl_inherit {
             write!(f, " ttl inherit")?;
@@ -197,6 +214,22 @@ fn parse_geneve_args<'a>(
                 } else {
                     return Err(CliError::from(format!(
                         "Invalid GENEVE remote address: {v}"
+                    )));
+                }
+            }
+            "local" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(
+                        "GENEVE local requires a value",
+                    ));
+                };
+                if let Ok(addr) = v.parse::<Ipv4Addr>() {
+                    builder = builder.local(addr);
+                } else if let Ok(addr) = v.parse::<Ipv6Addr>() {
+                    builder = builder.local6(addr);
+                } else {
+                    return Err(CliError::from(format!(
+                        "Invalid GENEVE local address: {v}"
                     )));
                 }
             }
@@ -336,6 +369,7 @@ impl IfaceGeneve {
     pub(crate) fn print_help() -> &'static str {
         r"Usage: ... geneve id VNI
                 remote ADDR
+                [ local ADDR ]
                 [ ttl TTL ]
                 [ tos TOS ]
                 [ df DF ]

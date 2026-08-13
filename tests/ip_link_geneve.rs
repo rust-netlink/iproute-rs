@@ -75,6 +75,41 @@ fn test_geneve_dstport() {
     });
 }
 
+#[test]
+fn test_geneve_local() {
+    with_geneve_iface(&["local", "192.168.0.1"], |ns| {
+        ns.assert_eq_output(&["-d", "link", "show", GENEVE_NAME]);
+    });
+}
+
+#[test]
+fn test_geneve_local6() {
+    with_netns(|ns| {
+        let parent_name = format!("p{GENEVE_NAME}");
+        ns.ip_rs_exec_cmd(&["link", "add", &parent_name, "type", "dummy"]);
+        ns.ip_rs_exec_cmd(&["link", "set", &parent_name, "up"]);
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "add",
+            "link",
+            &parent_name,
+            "name",
+            GENEVE_NAME,
+            "type",
+            "geneve",
+            "id",
+            "100",
+            "remote",
+            "::1",
+            "local",
+            "2001:9292::1",
+        ]);
+        ns.ip_rs_exec_cmd(&["link", "set", GENEVE_NAME, "up"]);
+
+        ns.assert_eq_output(&["-d", "link", "show", GENEVE_NAME]);
+    });
+}
+
 fn with_geneve_iface<T>(opts: &[&str], test: T)
 where
     T: FnOnce(&NetnsGuard),

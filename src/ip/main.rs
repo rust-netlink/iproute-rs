@@ -10,9 +10,7 @@ use std::io::IsTerminal;
 use iproute_rs::{CliColor, CliError, OutputFormat, print_result_and_exit};
 use rtnetlink::packet_route::AddressFamily;
 
-use self::{
-    address::AddressCommand, link::LinkCommand, route::RouteCommand,
-};
+use self::{address::AddressCommand, link::LinkCommand, route::RouteCommand};
 use crate::neighbour::NeighbourCommand;
 
 pub(crate) fn resolve_preferred_family(

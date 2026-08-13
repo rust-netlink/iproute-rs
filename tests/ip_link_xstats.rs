@@ -60,16 +60,7 @@ where
 }
 
 fn ip_rs_path() -> String {
-    std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("ip-rs")
-        .to_str()
-        .unwrap()
-        .to_string()
+    env!("CARGO_BIN_EXE_ip-rs").to_string()
 }
 
 // ===== Bridge xstats tests =====

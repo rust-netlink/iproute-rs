@@ -108,15 +108,7 @@ fn test_link_del_nonexistent() {
                 "netns",
                 "exec",
                 &ns.name,
-                std::env::current_exe()
-                    .unwrap()
-                    .parent()
-                    .unwrap()
-                    .parent()
-                    .unwrap()
-                    .join("ip-rs")
-                    .to_str()
-                    .unwrap(),
+                env!("CARGO_BIN_EXE_ip-rs"),
                 "link",
                 "del",
                 "nonexistent-device",
