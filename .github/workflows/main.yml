@@ -14,16 +14,11 @@ on:
 jobs:
   ci:
     name: CI (stable)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install necessary dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y "linux-modules-extra-$(uname -r)"
-          sudo modprobe vrf
       - name: Install iproute2 lastest git build
         run: |
           sudo apt-get -y remove iproute2
