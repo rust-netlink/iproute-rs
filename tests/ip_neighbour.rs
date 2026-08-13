@@ -384,7 +384,9 @@ fn normalize_stats(output: String) -> String {
 fn trimmed_assert_eq(expected: &str, actual: &str) {
     let expected: Vec<_> = expected.lines().map(|l| l.trim_end()).collect();
     let mut expected = expected.join("\n");
-    expected.push('\n');
+    if !expected.is_empty() {
+        expected.push('\n');
+    }
 
     pretty_assertions::assert_eq!(expected, actual);
 }

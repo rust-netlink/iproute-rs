@@ -217,7 +217,7 @@ fn test_bridge_create_stp_mode() {
         ]);
         ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
 
-        let outputs = ns.assert_eq_output_map(
+        let _outputs = ns.assert_eq_output_map(
             &["-d", "link", "show", BRIDGE_NAME2],
             normalize_timers,
         );

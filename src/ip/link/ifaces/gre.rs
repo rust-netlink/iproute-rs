@@ -117,7 +117,7 @@ impl From<&[InfoGre]> for CliLinkInfoDataGre {
                 InfoGre::OFlags(v) => oflags = *v,
                 InfoGre::IKey(v) => ikey = Some(*v),
                 InfoGre::OKey(v) => okey = Some(*v),
-                InfoGre::FwMask(v) => fwmark = Some(v.to_be()),
+                InfoGre::FwMask(v) => fwmark = Some(*v),
                 InfoGre::EncapType(v) => encap_type = Some(*v),
                 InfoGre::EncapFlags(v) => encap_flags = Some(*v),
                 InfoGre::SourcePort(v) => encap_sport = Some(*v),
@@ -705,7 +705,7 @@ async fn build_gre_opts(
                 let mark = mark.map_err(|_| {
                     CliError::from(format!("invalid fwmark: {v}"))
                 })?;
-                builder = builder.fwmark(mark.to_be());
+                builder = builder.fwmark(mark);
             }
             "ignore-df" | "noignore-df" => {}
             "erspan" => {
@@ -987,7 +987,7 @@ async fn build_gre_entries_set(
                 let mark = mark.map_err(|_| {
                     CliError::from(format!("invalid fwmark: {v}"))
                 })?;
-                builder = builder.fwmark(mark.to_be());
+                builder = builder.fwmark(mark);
             }
             "ignore-df" | "noignore-df" => {}
             "erspan" => {
