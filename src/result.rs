@@ -12,7 +12,7 @@ pub trait CanDisplay: serde::Serialize + Sized {
     }
 
     fn to_yaml_string(&self) -> String {
-        serde_yaml::to_string(self).expect("Failed to generate JSON string")
+        rmsd_yaml::to_string(self).expect("Failed to generate YAML string")
     }
 }
 
