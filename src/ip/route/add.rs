@@ -3,9 +3,14 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use futures_util::TryStreamExt;
-use rtnetlink::packet_route::{
-    AddressFamily,
-    route::{RouteProtocol, RouteScope, RouteType},
+use rtnetlink::{
+    packet_core::DefaultNla,
+    packet_route::{
+        AddressFamily,
+        route::{
+            RouteMetric, RouteProtocol, RouteRealm, RouteScope, RouteType,
+        },
+    },
 };
 
 use crate::CliError;
@@ -29,6 +34,8 @@ pub(crate) struct RouteAddConfig {
     pub(crate) uid: Option<u32>,
     pub(crate) preference: Option<u8>,
     pub(crate) family: Option<AddressFamily>,
+    pub(crate) metrics: Vec<RouteMetric>,
+    pub(crate) realm: Option<RouteRealm>,
 }
 
 pub(crate) fn parse_route_config(
@@ -53,6 +60,8 @@ pub(crate) fn parse_route_config(
     let mut uid: Option<u32> = None;
     let mut preference: Option<u8> = None;
     let mut family: Option<AddressFamily> = preferred_family;
+    let mut metrics: Vec<RouteMetric> = Vec::new();
+    let mut realm: Option<RouteRealm> = None;
     let mut positional_prefix_seen = false;
 
     let mut iter = opts.iter().peekable();
@@ -177,6 +186,166 @@ pub(crate) fn parse_route_config(
                     }
                 });
             }
+            "mtu" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"mtu\" requires a value")
+                })?;
+                metrics.push(RouteMetric::Mtu(parse_u32_any_base(val)?));
+            }
+            "advmss" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"advmss\" requires a value")
+                })?;
+                metrics.push(RouteMetric::Advmss(parse_u32_any_base(val)?));
+            }
+            "rtt" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"rtt\" requires a value")
+                })?;
+                let (value, raw) = parse_time_rtt(val)?;
+                let value = if raw {
+                    value
+                } else {
+                    value.checked_mul(8).ok_or_else(|| {
+                        CliError::from(format!("invalid rtt value: {val}"))
+                    })?
+                };
+                metrics.push(RouteMetric::Rtt(value));
+            }
+            "rttvar" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"rttvar\" requires a value")
+                })?;
+                let (value, raw) = parse_time_rtt(val)?;
+                let value = if raw {
+                    value
+                } else {
+                    value.checked_mul(4).ok_or_else(|| {
+                        CliError::from(format!("invalid rttvar value: {val}"))
+                    })?
+                };
+                metrics.push(RouteMetric::RttVar(value));
+            }
+            "reordering" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"reordering\" requires a value")
+                })?;
+                metrics.push(RouteMetric::Reordering(parse_u32_any_base(val)?));
+            }
+            "window" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"window\" requires a value")
+                })?;
+                metrics.push(RouteMetric::Window(parse_u32_any_base(val)?));
+            }
+            "cwnd" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"cwnd\" requires a value")
+                })?;
+                metrics.push(RouteMetric::Cwnd(parse_u32_any_base(val)?));
+            }
+            "initcwnd" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"initcwnd\" requires a value")
+                })?;
+                metrics.push(RouteMetric::InitCwnd(parse_u32_any_base(val)?));
+            }
+            "initrwnd" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"initrwnd\" requires a value")
+                })?;
+                metrics.push(RouteMetric::InitRwnd(parse_u32_any_base(val)?));
+            }
+            "ssthresh" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"ssthresh\" requires a value")
+                })?;
+                metrics.push(RouteMetric::SsThresh(parse_u32_any_base(val)?));
+            }
+            "hoplimit" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"hoplimit\" requires a value")
+                })?;
+                let value = parse_u32_any_base(val)?;
+                if value > 255 {
+                    return Err(CliError::from(format!(
+                        "invalid hoplimit value: {val}"
+                    )));
+                }
+                metrics.push(RouteMetric::Hoplimit(value));
+            }
+            "rto_min" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"rto_min\" requires a value")
+                })?;
+                let (value, _) = parse_time_rtt(val)?;
+                metrics.push(RouteMetric::RtoMin(value));
+            }
+            "features" => {
+                let mut features = 0u32;
+                let mut count = 0u32;
+                while let Some(feature) = iter.peek() {
+                    let bit = match feature.as_str() {
+                        "ecn" => 1,
+                        "tcp_usec_ts" => 16,
+                        _ => break,
+                    };
+                    features |= bit;
+                    count += 1;
+                    iter.next();
+                }
+                if count == 0 {
+                    return Err(CliError::from(
+                        "\"features\" requires at least one feature",
+                    ));
+                }
+                metrics.push(RouteMetric::Features(features));
+            }
+            "quickack" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"quickack\" requires a value")
+                })?;
+                let value = parse_u32_any_base(val)?;
+                if value > 1 {
+                    return Err(CliError::from(
+                        "\"quickack\" value should be 0 or 1",
+                    ));
+                }
+                metrics.push(RouteMetric::QuickAck(value));
+            }
+            "congctl" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"congctl\" requires a value")
+                })?;
+                // netlink-packet-route's `CcAlgo` variant currently models
+                // RTAX_CC_ALGO as u32; emit the string payload via `Other`
+                // until that crate is fixed.
+                metrics.push(RouteMetric::Other(DefaultNla::new(
+                    16,
+                    val.as_bytes().to_vec(),
+                )));
+            }
+            "fastopen_no_cookie" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"fastopen_no_cookie\" requires a value")
+                })?;
+                let value = parse_u32_any_base(val)?;
+                if value > 1 {
+                    return Err(CliError::from(
+                        "\"fastopen_no_cookie\" value should be 0 or 1",
+                    ));
+                }
+                metrics.push(RouteMetric::FastopenNoCookie(value));
+            }
+            "realms" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"realms\" requires a value")
+                })?;
+                realm = Some(parse_realm(val)?);
+            }
+            "as" => {
+                return Err(CliError::from(format!("invalid argument: {arg}")));
+            }
             _ => {
                 if !positional_prefix_seen {
                     if let Ok(rt) = parse_route_type(arg) {
@@ -222,7 +391,87 @@ pub(crate) fn parse_route_config(
         uid,
         preference,
         family,
+        metrics,
+        realm,
     })
+}
+
+fn parse_u32_any_base(s: &str) -> Result<u32, CliError> {
+    let (radix, digits) = if let Some(hex) =
+        s.strip_prefix("0x").or_else(|| s.strip_prefix("0X"))
+    {
+        (16, hex)
+    } else if s.len() > 1 && s.starts_with('0') {
+        (8, &s[1..])
+    } else {
+        (10, s)
+    };
+    u32::from_str_radix(digits, radix)
+        .map_err(|_| CliError::from(format!("invalid number: {s}")))
+}
+
+fn parse_time_rtt(s: &str) -> Result<(u32, bool), CliError> {
+    let lower = s.to_ascii_lowercase();
+    let (num, multiplier, has_suffix) =
+        if let Some(num) = lower.strip_suffix("msecs") {
+            (num, 1.0, true)
+        } else if let Some(num) = lower.strip_suffix("msec") {
+            (num, 1.0, true)
+        } else if let Some(num) = lower.strip_suffix("ms") {
+            (num, 1.0, true)
+        } else if let Some(num) = lower.strip_suffix("secs") {
+            (num, 1000.0, true)
+        } else if let Some(num) = lower.strip_suffix("sec") {
+            (num, 1000.0, true)
+        } else if let Some(num) = lower.strip_suffix("s") {
+            (num, 1000.0, true)
+        } else {
+            (lower.as_str(), 1.0, false)
+        };
+
+    if num.is_empty() {
+        return Err(CliError::from(format!("invalid time value: {s}")));
+    }
+
+    let value = if num.contains('.') {
+        let t: f64 = num
+            .parse()
+            .map_err(|_| CliError::from(format!("invalid time value: {s}")))?;
+        if t < 0.0 || !t.is_finite() {
+            return Err(CliError::from(format!("invalid time value: {s}")));
+        }
+        t * multiplier
+    } else {
+        parse_u32_any_base(num)? as f64 * multiplier
+    };
+
+    if value > u32::MAX as f64 {
+        return Err(CliError::from(format!("invalid time value: {s}")));
+    }
+    Ok((value.ceil() as u32, !has_suffix))
+}
+
+fn parse_realm(s: &str) -> Result<RouteRealm, CliError> {
+    if let Some((from, to)) = s.split_once('/') {
+        Ok(RouteRealm {
+            source: parse_realm_component(from)?,
+            destination: parse_realm_component(to)?,
+        })
+    } else {
+        let value = parse_u32_any_base(s)?;
+        Ok(RouteRealm {
+            source: (value >> 16) as u16,
+            destination: value as u16,
+        })
+    }
+}
+
+fn parse_realm_component(s: &str) -> Result<u16, CliError> {
+    let value = parse_u32_any_base(s)?;
+    if value > u16::MAX as u32 {
+        return Err(CliError::from(format!("invalid realm value: {s}")));
+    }
+    Ok(value as u16)
 }
 
 fn addr_to_family(addr: &IpAddr) -> Option<AddressFamily> {
@@ -395,4 +644,147 @@ pub(crate) async fn resolve_ifindex(
         CliError::from(format!("Device \"{name}\" does not exist"))
     })?;
     Ok(link.header.index)
+}
+
+#[cfg(test)]
+mod tests {
+    use rtnetlink::packet_route::route::RouteAttribute;
+
+    use super::*;
+
+    fn opts(args: &[&str]) -> Vec<String> {
+        args.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn test_parse_route_metric_options() {
+        let config = parse_route_config(
+            &opts(&[
+                "10.0.0.0/8",
+                "via",
+                "192.0.2.1",
+                "mtu",
+                "1500",
+                "advmss",
+                "1400",
+                "rtt",
+                "100ms",
+                "rttvar",
+                "100ms",
+                "reordering",
+                "10",
+                "window",
+                "100",
+                "cwnd",
+                "10",
+                "initcwnd",
+                "10",
+                "initrwnd",
+                "10",
+                "ssthresh",
+                "100",
+                "hoplimit",
+                "64",
+                "rto_min",
+                "200ms",
+                "features",
+                "ecn",
+                "tcp_usec_ts",
+                "quickack",
+                "1",
+                "congctl",
+                "cubic",
+                "fastopen_no_cookie",
+                "1",
+                "realms",
+                "10/20",
+            ]),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.metrics,
+            vec![
+                RouteMetric::Mtu(1500),
+                RouteMetric::Advmss(1400),
+                RouteMetric::Rtt(800),
+                RouteMetric::RttVar(400),
+                RouteMetric::Reordering(10),
+                RouteMetric::Window(100),
+                RouteMetric::Cwnd(10),
+                RouteMetric::InitCwnd(10),
+                RouteMetric::InitRwnd(10),
+                RouteMetric::SsThresh(100),
+                RouteMetric::Hoplimit(64),
+                RouteMetric::RtoMin(200),
+                RouteMetric::Features(17),
+                RouteMetric::QuickAck(1),
+                RouteMetric::Other(DefaultNla::new(16, b"cubic".to_vec(),)),
+                RouteMetric::FastopenNoCookie(1),
+            ]
+        );
+        assert_eq!(
+            config.realm,
+            Some(RouteRealm {
+                source: 10,
+                destination: 20,
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_route_time_metrics_raw() {
+        let config = parse_route_config(
+            &opts(&[
+                "10.0.0.0/8",
+                "rtt",
+                "100",
+                "rttvar",
+                "50",
+                "rto_min",
+                "200",
+            ]),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.metrics,
+            vec![
+                RouteMetric::Rtt(100),
+                RouteMetric::RttVar(50),
+                RouteMetric::RtoMin(200),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_route_as_rejected() {
+        let result = parse_route_config(
+            &opts(&["10.0.0.0/8", "as", "to", "192.0.2.1"]),
+            None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_build_route_metric_message() {
+        let config = parse_route_config(
+            &opts(&["10.0.0.0/8", "mtu", "1500", "realms", "1/2"]),
+            None,
+        )
+        .unwrap();
+        let msg = super::super::modify::build_route_message(&config).unwrap();
+
+        assert!(
+            msg.attributes.contains(&RouteAttribute::Metrics(vec![
+                RouteMetric::Mtu(1500)
+            ]))
+        );
+        assert!(msg.attributes.contains(&RouteAttribute::Realm(RouteRealm {
+            source: 1,
+            destination: 2,
+        })));
+    }
 }

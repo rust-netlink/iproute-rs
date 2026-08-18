@@ -190,10 +190,12 @@ impl RouteCommand {
              ]\n",
             "        [ nhflags FLAGS ]\n",
             "       nexthop via [ FAMILY ] ADDRESS dev DEV [ weight NUMBER ]\n",
-            "OPTIONS := [ FLAG-LIST ] [ mtu NUMBER ] [ window NUMBER ]\n",
+            "OPTIONS := [ FLAG-LIST ] [ mtu NUMBER ] [ advmss NUMBER ]\n",
             "           [ rtt TIME ] [ rttvar TIME ] [ reordering NUMBER ]\n",
-            "           [ rto_min TIME ] [ hoplimit NUMBER ] [ initcwnd \
-             NUMBER ]\n",
+            "           [ window NUMBER ] [ cwnd NUMBER ] [ initcwnd NUMBER \
+             ]\n",
+            "           [ ssthresh NUMBER ] [ realms REALM ] [ rto_min TIME ] \
+             [ hoplimit NUMBER ]\n",
             "           [ initrwnd NUMBER ] [ features FEATURES ] [ quickack \
              1|0 ]\n",
             "           [ congctl NAME ] [ pref low | medium | high ]\n",

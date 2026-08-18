@@ -177,6 +177,15 @@ pub(crate) fn build_route_message(
         msg.attributes.push(RouteAttribute::Priority(m));
     }
 
+    if !config.metrics.is_empty() {
+        msg.attributes
+            .push(RouteAttribute::Metrics(config.metrics.clone()));
+    }
+
+    if let Some(realm) = config.realm {
+        msg.attributes.push(RouteAttribute::Realm(realm));
+    }
+
     if let Some(e) = config.expires {
         msg.attributes.push(RouteAttribute::Expires(e));
     }

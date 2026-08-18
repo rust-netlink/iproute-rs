@@ -2,10 +2,6 @@
 
 ## `ip route`
 
-- add/del/change/replace/append/prepend: support metric options (`mtu`,
-  `advmss`, `rtt`, `rttvar`, `reordering`, `window`, `cwnd`, `initcwnd`,
-  `initrwnd`, `ssthresh`, `hoplimit`, `rto_min`, `features`, `quickack`,
-  `congctl`, `fastopen_no_cookie`, `realms`, `as`) — `src/ip/route/add.rs`
 - add/del/change/replace/append/prepend: support multipath (`nexthop ...`,
   `weight`), `nhid ID`, and the `pervasive` next-hop flag —
   `src/ip/route/add.rs`, `src/ip/route/modify.rs`
@@ -23,6 +19,7 @@
   `ipproto`/`sport`/`dport`/`flowlabel`; populate `ttl_propagate` from the
   dump — `src/ip/route/show.rs` (`parse_nl_msg_to_route`)
 - tests: add coverage for the above (`tests/ip_route*.rs`)
+- MPLS support
 
 ## `ip link`
 
