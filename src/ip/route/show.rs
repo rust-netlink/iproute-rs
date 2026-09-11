@@ -36,6 +36,8 @@ pub(crate) struct CliRouteInfo {
     #[serde(skip)]
     pub(crate) src_len: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) nhid: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) gateway: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "dev")]
     pub(crate) oif: Option<String>,
@@ -309,6 +311,7 @@ pub(crate) fn parse_nl_msg_to_route(
                     _ => None,
                 };
             }
+            RouteAttribute::NhId(id) => info.nhid = Some(id),
             RouteAttribute::Priority(p) => info.metric = Some(p),
             RouteAttribute::Oif(idx) => oif_index = Some(idx),
             RouteAttribute::Iif(idx) => iif_index = Some(idx),
@@ -469,6 +472,11 @@ impl std::fmt::Display for CliRouteInfo {
         // Source
         if let Some(ref src) = self.src {
             write!(buf, "from {src} ")?;
+        }
+
+        // Nexthop ID
+        if let Some(nhid) = self.nhid {
+            write!(buf, "nhid {nhid} ")?;
         }
 
         // Gateway (via)
