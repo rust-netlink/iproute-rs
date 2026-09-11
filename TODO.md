@@ -2,16 +2,16 @@
 
 ## `ip route`
 
-- add/del/change/replace/append/prepend: support `encap seg6local`, `encap rpl`
-  and `encap ioam6` — `src/ip/route/add.rs`, `src/ip/route/modify.rs`
+- add/del/change/replace/append/prepend: support `encap rpl` and
+  `encap ioam6` — `src/ip/route/add.rs`, `src/ip/route/modify.rs`
 - add/del/change/replace/append/prepend: support `encap ip geneve_opts`,
   `encap ip vxlan_opts`, `encap ip erspan_opts`, `encap ip6 geneve_opts`,
   `encap ip6 vxlan_opts`, `encap ip6 erspan_opts`, `encap seg6 tunsrc`,
   `encap seg6 hmac` and `encap seg6 lookup` — `src/ip/route/add.rs`
-- `netlink-packet-route`: support `LWTUNNEL_ENCAP_SEG6_LOCAL`,
-  `LWTUNNEL_ENCAP_RPL` and `LWTUNNEL_ENCAP_IOAM6` encapsulation
-- show: display `seg6local`, `rpl` and `ioam6` encapsulation —
-  `src/ip/route/show.rs`
+- `netlink-packet-route`: support `LWTUNNEL_ENCAP_RPL` and
+  `LWTUNNEL_ENCAP_IOAM6` encapsulation, and spell the
+  `LWTUNNEL_ENCAP_SEG6_LOCAL` encapsulation type `seg6local` like iproute2
+- show: display `rpl` and `ioam6` encapsulation — `src/ip/route/show.rs`
 
 ## `ip link`
 
