@@ -46,6 +46,11 @@ pub(crate) struct CliRouteInfo {
     pub(crate) newdst: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) encap: Option<CliRouteEncap>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serializer_dsfield"
+    )]
+    pub(crate) tos: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) gateway: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -79,8 +84,6 @@ pub(crate) struct CliRouteInfo {
     pub(crate) metrics: Option<Vec<CliRouteMetrics>>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "pref")]
     pub(crate) preference: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) tos: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) iif: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "ttl-propogate")]
@@ -644,6 +647,47 @@ fn host_len(family: AddressFamily) -> u8 {
     }
 }
 
+// Names of `/usr/share/iproute2/rt_dsfield`, as iproute2 prints them.
+fn dsfield_to_string(value: u8) -> String {
+    match value {
+        0x00 => "default".to_string(),
+        0x28 => "AF11".to_string(),
+        0x30 => "AF12".to_string(),
+        0x38 => "AF13".to_string(),
+        0x48 => "AF21".to_string(),
+        0x50 => "AF22".to_string(),
+        0x58 => "AF23".to_string(),
+        0x68 => "AF31".to_string(),
+        0x70 => "AF32".to_string(),
+        0x78 => "AF33".to_string(),
+        0x88 => "AF41".to_string(),
+        0x90 => "AF42".to_string(),
+        0x98 => "AF43".to_string(),
+        0x20 => "CS1".to_string(),
+        0x40 => "CS2".to_string(),
+        0x60 => "CS3".to_string(),
+        0x80 => "CS4".to_string(),
+        0xa0 => "CS5".to_string(),
+        0xc0 => "CS6".to_string(),
+        0xe0 => "CS7".to_string(),
+        0xb8 => "EF".to_string(),
+        _ => format!("0x{value:02x}"),
+    }
+}
+
+fn serializer_dsfield<S>(
+    tos: &Option<u8>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match tos {
+        Some(tos) => serializer.serialize_str(&dsfield_to_string(*tos)),
+        None => serializer.serialize_none(),
+    }
+}
+
 fn af_family_to_string(family: AddressFamily) -> String {
     match family {
         AddressFamily::Inet => "inet".to_string(),
@@ -955,6 +999,10 @@ pub(crate) fn parse_nl_msg_to_route(
 
     info.flags = route_flags_to_strings(nl_msg.header.flags);
 
+    if nl_msg.header.tos != 0 {
+        info.tos = Some(nl_msg.header.tos);
+    }
+
     let is_cloned = nl_msg.header.flags.contains(RouteFlags::Cloned);
     info.cloned = is_cloned;
 
@@ -1011,6 +1059,11 @@ impl std::fmt::Display for CliRouteInfo {
             buf.push_str(&route_encap_to_string(encap));
         }
 
+        // TOS
+        if let Some(tos) = self.tos {
+            write!(buf, "tos {} ", dsfield_to_string(tos))?;
+        }
+
         // Gateway (via)
         if let Some(ref gw) = self.gateway {
             write!(buf, "via ")?;
@@ -1028,12 +1081,12 @@ impl std::fmt::Display for CliRouteInfo {
             write!(buf, "dev {dev} ")?;
         }
 
-        // Skip table/protocol/scope for cloned routes (matching iproute2)
-        if !self.cloned {
-            if let Some(ref table) = self.table {
-                write!(buf, "table {table} ")?;
-            }
+        if let Some(ref table) = self.table {
+            write!(buf, "table {table} ")?;
+        }
 
+        // Skip protocol/scope for cloned routes (matching iproute2)
+        if !self.cloned {
             if let Some(ref proto) = self.protocol {
                 write!(buf, "proto {proto} ")?;
             }
@@ -1058,11 +1111,6 @@ impl std::fmt::Display for CliRouteInfo {
         // Flags
         for flag in &self.flags {
             write!(buf, "{flag} ")?;
-        }
-
-        // TOS
-        if let Some(tos) = self.tos {
-            write!(buf, "tos {tos} ")?;
         }
 
         // Mark
@@ -1178,6 +1226,16 @@ pub(crate) struct RouteShowFilter {
     pub(crate) rprefsrc: Option<IpAddr>,
     pub(crate) rdst: Option<(IpAddr, u8)>,
     pub(crate) rsrc: Option<(IpAddr, u8)>,
+    /// Routes inside the subtree of the prefix, `root PREFIX`.
+    pub(crate) root_dst: Option<(IpAddr, u8)>,
+    /// Routes covering the prefix, `match PREFIX`.
+    pub(crate) match_dst: Option<(IpAddr, u8)>,
+    /// Source address variant of `root PREFIX`.
+    pub(crate) root_src: Option<(IpAddr, u8)>,
+    /// Source address variant of `match PREFIX`.
+    pub(crate) match_src: Option<(IpAddr, u8)>,
+    /// Name of the VRF device, resolved to a table ID before dumping.
+    pub(crate) vrf: Option<String>,
     pub(crate) dev_name: Option<String>,
 }
 
@@ -1201,6 +1259,11 @@ impl RouteShowFilter {
         let mut rprefsrc: Option<IpAddr> = None;
         let mut rdst: Option<(IpAddr, u8)> = None;
         let mut rsrc: Option<(IpAddr, u8)> = None;
+        let mut root_dst: Option<(IpAddr, u8)> = None;
+        let mut match_dst: Option<(IpAddr, u8)> = None;
+        let mut root_src: Option<(IpAddr, u8)> = None;
+        let mut match_src: Option<(IpAddr, u8)> = None;
+        let mut vrf: Option<String> = None;
         let mut dev_name: Option<String> = None;
         let mut link_opts: Vec<String> = Vec::new();
 
@@ -1298,13 +1361,81 @@ impl RouteShowFilter {
                     let val = iter.next().ok_or_else(|| {
                         CliError::from("\"from\" requires a value")
                     })?;
-                    rsrc = Some(parse_prefix_val(val)?);
+                    match *val {
+                        "root" => {
+                            let val = iter.next().ok_or_else(|| {
+                                CliError::from("\"from root\" requires a value")
+                            })?;
+                            root_src = Some(parse_prefix_val(val)?);
+                        }
+                        "match" => {
+                            let val = iter.next().ok_or_else(|| {
+                                CliError::from(
+                                    "\"from match\" requires a value",
+                                )
+                            })?;
+                            match_src = Some(parse_prefix_val(val)?);
+                        }
+                        "exact" => {
+                            let val = iter.next().ok_or_else(|| {
+                                CliError::from(
+                                    "\"from exact\" requires a value",
+                                )
+                            })?;
+                            rsrc = Some(parse_prefix_val(val)?);
+                        }
+                        v => rsrc = Some(parse_prefix_val(v)?),
+                    }
                 }
                 "to" => {
                     let val = iter.next().ok_or_else(|| {
                         CliError::from("\"to\" requires a value")
                     })?;
+                    match *val {
+                        "root" => {
+                            let val = iter.next().ok_or_else(|| {
+                                CliError::from("\"to root\" requires a value")
+                            })?;
+                            root_dst = Some(parse_prefix_val(val)?);
+                        }
+                        "match" => {
+                            let val = iter.next().ok_or_else(|| {
+                                CliError::from("\"to match\" requires a value")
+                            })?;
+                            match_dst = Some(parse_prefix_val(val)?);
+                        }
+                        "exact" => {
+                            let val = iter.next().ok_or_else(|| {
+                                CliError::from("\"to exact\" requires a value")
+                            })?;
+                            rdst = Some(parse_prefix_val(val)?);
+                        }
+                        v => rdst = Some(parse_prefix_val(v)?),
+                    }
+                }
+                "root" => {
+                    let val = iter.next().ok_or_else(|| {
+                        CliError::from("\"root\" requires a value")
+                    })?;
+                    root_dst = Some(parse_prefix_val(val)?);
+                }
+                "match" => {
+                    let val = iter.next().ok_or_else(|| {
+                        CliError::from("\"match\" requires a value")
+                    })?;
+                    match_dst = Some(parse_prefix_val(val)?);
+                }
+                "exact" => {
+                    let val = iter.next().ok_or_else(|| {
+                        CliError::from("\"exact\" requires a value")
+                    })?;
                     rdst = Some(parse_prefix_val(val)?);
+                }
+                "vrf" => {
+                    let val = iter.next().ok_or_else(|| {
+                        CliError::from("\"vrf\" requires a value")
+                    })?;
+                    vrf = Some(val.to_string());
                 }
                 _ => {
                     if rdst.is_none() && !arg.starts_with('-') {
@@ -1344,26 +1475,26 @@ impl RouteShowFilter {
                 rprefsrc,
                 rdst,
                 rsrc,
+                root_dst,
+                match_dst,
+                root_src,
+                match_src,
+                vrf,
                 dev_name,
             },
             link_opts,
         ))
     }
 
-    fn parse_dst(s: &str) -> Option<(IpAddr, u8)> {
-        if s == "default" {
-            return Some((IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)), 0));
-        }
-        let (addr_str, plen_str) = s.split_once('/').unwrap_or((s, "32"));
-        let addr = addr_str.parse::<IpAddr>().ok()?;
-        let plen = if s.contains('/') {
-            plen_str.parse::<u8>().ok()?
-        } else if addr.is_ipv4() {
-            32
-        } else {
-            128
-        };
-        Some((addr, plen))
+    /// Destination prefix of a dumped route, `None` when it cannot be
+    /// parsed as an address.
+    fn route_dst_prefix(route: &CliRouteInfo) -> Option<(IpAddr, u8)> {
+        parse_route_prefix(&route.dst, route.family, route.dst_len)
+    }
+
+    /// Source prefix of a dumped route.
+    fn route_src_prefix(route: &CliRouteInfo) -> Option<(IpAddr, u8)> {
+        parse_route_prefix(route.src.as_deref()?, route.family, route.src_len)
     }
 
     pub(crate) fn matches(&self, route: &CliRouteInfo) -> bool {
@@ -1503,26 +1634,74 @@ impl RouteShowFilter {
             }
         }
 
-        if let Some((ref dst_addr, _dst_plen)) = self.rdst {
-            if let Some((route_addr, _)) = Self::parse_dst(&route.dst) {
-                if route_addr != *dst_addr {
-                    return false;
-                }
-            } else {
-                return false;
+        // `root PREFIX` selects the routes inside the subtree of the prefix.
+        if let Some((ref addr, plen)) = self.root_dst {
+            match Self::route_dst_prefix(route) {
+                Some((route_addr, route_plen))
+                    if route.family == ip_addr_family(addr)
+                        && route_plen >= plen
+                        && prefix_match(&route_addr, addr, plen) => {}
+                _ => return false,
             }
         }
 
-        if let Some((ref src_addr, _src_plen)) = self.rsrc {
-            if let Some(ref src) = route.src {
-                if let Ok(addr) = src.parse::<IpAddr>() {
-                    if addr != *src_addr {
-                        return false;
-                    }
-                } else {
-                    return false;
-                }
-            } else {
+        // `match PREFIX` selects the routes covering the prefix.
+        if let Some((ref addr, plen)) = self.match_dst {
+            match Self::route_dst_prefix(route) {
+                Some((route_addr, route_plen))
+                    if route.family == ip_addr_family(addr)
+                        && route_plen <= plen
+                        && prefix_match(&route_addr, addr, route_plen) => {}
+                _ => return false,
+            }
+        }
+
+        // `exact PREFIX` and a plain prefix select one exact prefix.
+        if let Some((ref addr, plen)) = self.rdst {
+            match Self::route_dst_prefix(route) {
+                Some((route_addr, route_plen))
+                    if route.family == ip_addr_family(addr)
+                        && route_plen == plen
+                        && prefix_match(&route_addr, addr, plen) => {}
+                _ => return false,
+            }
+        }
+
+        if let Some((ref addr, plen)) = self.root_src {
+            match Self::route_src_prefix(route) {
+                Some((route_addr, route_plen))
+                    if route.family == ip_addr_family(addr)
+                        && route_plen >= plen
+                        && prefix_match(&route_addr, addr, plen) => {}
+                _ => return false,
+            }
+        }
+
+        if let Some((ref addr, plen)) = self.match_src {
+            match Self::route_src_prefix(route) {
+                Some((route_addr, route_plen))
+                    if route.family == ip_addr_family(addr)
+                        && route_plen <= plen
+                        && prefix_match(&route_addr, addr, route_plen) => {}
+                _ => return false,
+            }
+        }
+
+        if let Some((ref addr, plen)) = self.rsrc {
+            match Self::route_src_prefix(route) {
+                Some((route_addr, route_plen))
+                    if route.family == ip_addr_family(addr)
+                        && route_plen == plen
+                        && prefix_match(&route_addr, addr, plen) => {}
+                _ => return false,
+            }
+        }
+
+        // `vrf NAME` also filters out the local and broadcast routes of the
+        // VRF table, matching iproute2.
+        if self.vrf.is_some() {
+            let kind = route.kind.as_deref().unwrap_or("unicast");
+            if kind == "local" || kind == "broadcast" {
                 return false;
             }
         }
@@ -1561,7 +1740,109 @@ impl RouteShowFilter {
         if self.rdst.is_some() {
             // Don't strip 'dst' - it's always shown
         }
+        if matches!(self.tb, Some(tb) if tb != 0) {
+            // The table filter is not shown by iproute2.
+            route.table = None;
+        }
     }
+}
+
+/// Address family of a parsed address.
+fn ip_addr_family(addr: &IpAddr) -> AddressFamily {
+    match addr {
+        IpAddr::V4(_) => AddressFamily::Inet,
+        IpAddr::V6(_) => AddressFamily::Inet6,
+    }
+}
+
+/// Compare the first `plen` bits of two addresses of the same family.
+fn prefix_match(prefix: &IpAddr, addr: &IpAddr, plen: u8) -> bool {
+    match (prefix, addr) {
+        (IpAddr::V4(prefix), IpAddr::V4(addr)) => {
+            let plen = plen.min(32);
+            let mask = if plen == 0 {
+                0
+            } else {
+                u32::MAX << (32 - u32::from(plen))
+            };
+            (u32::from(*prefix) & mask) == (u32::from(*addr) & mask)
+        }
+        (IpAddr::V6(prefix), IpAddr::V6(addr)) => {
+            let plen = plen.min(128);
+            let mask = if plen == 0 {
+                0
+            } else {
+                u128::MAX << (128 - u32::from(plen))
+            };
+            (u128::from(*prefix) & mask) == (u128::from(*addr) & mask)
+        }
+        _ => false,
+    }
+}
+
+/// Prefix of a route address as displayed, e.g. `10.1.0.0/16` or `default`.
+fn parse_route_prefix(
+    addr: &str,
+    family: AddressFamily,
+    prefix_len: u8,
+) -> Option<(IpAddr, u8)> {
+    let (addr_str, plen_str) = match addr.split_once('/') {
+        Some((addr_str, plen_str)) => (addr_str, Some(plen_str)),
+        None => (addr, None),
+    };
+    let addr = match addr_str {
+        "default" | "0" => match family {
+            AddressFamily::Inet6 => IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED),
+            _ => IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
+        },
+        v => v.parse::<IpAddr>().ok()?,
+    };
+    let plen = match plen_str {
+        Some(plen_str) => plen_str.parse::<u8>().ok()?,
+        None => match family {
+            AddressFamily::Inet => 32,
+            AddressFamily::Inet6 => 128,
+            _ => prefix_len,
+        },
+    };
+    Some((addr, plen))
+}
+
+/// Routing table ID of a VRF device.
+pub(crate) async fn vrf_table_id(
+    handle: &rtnetlink::Handle,
+    name: &str,
+) -> Result<u32, CliError> {
+    let mut links = handle.link().get().match_name(name.to_string()).execute();
+    let link = links.try_next().await?.ok_or_else(|| {
+        CliError::from(format!(
+            "Error: argument \"{name}\" is wrong: Invalid VRF"
+        ))
+    })?;
+    for attr in &link.attributes {
+        if let rtnetlink::packet_route::link::LinkAttribute::LinkInfo(infos) =
+            attr
+        {
+            for info in infos {
+                if let rtnetlink::packet_route::link::LinkInfo::Data(
+                    rtnetlink::packet_route::link::InfoData::Vrf(nlas),
+                ) = info
+                {
+                    for nla in nlas {
+                        if let rtnetlink::packet_route::link::InfoVrf::TableId(
+                            table_id,
+                        ) = nla
+                        {
+                            return Ok(*table_id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Err(CliError::from(format!(
+        "Error: argument \"{name}\" is wrong: Invalid VRF"
+    )))
 }
 
 fn parse_table_id(s: &str) -> Result<u32, CliError> {
@@ -1673,7 +1954,7 @@ pub(crate) async fn handle_show(
     preferred_family: Option<AddressFamily>,
     show_details: bool,
 ) -> Result<Vec<CliRouteInfo>, CliError> {
-    let (filter, _link_opts) = RouteShowFilter::parse(opts)?;
+    let (mut filter, _link_opts) = RouteShowFilter::parse(opts)?;
 
     let show_all_tables = filter.tb == Some(0);
 
@@ -1699,6 +1980,11 @@ pub(crate) async fn handle_show(
             })
             .unwrap_or_else(|| format!("if{}", link.header.index));
         link_map.insert(link.header.index, ifname);
+    }
+
+    // `vrf NAME` selects the routing table of the VRF device.
+    if let Some(ref vrf_name) = filter.vrf {
+        filter.tb = Some(vrf_table_id(&handle, vrf_name).await?);
     }
 
     let msg = RouteMessage::default();
@@ -1727,7 +2013,8 @@ pub(crate) async fn handle_show(
             route.table.as_deref(),
             None | Some("main") | Some("254") | Some("unspec") | Some("0")
         );
-        if !show_all_tables && !is_main_table {
+        // A table selector restricts the output to that table.
+        if !show_all_tables && filter.tb.is_none() && !is_main_table {
             continue;
         }
 
