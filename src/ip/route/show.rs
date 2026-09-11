@@ -11,7 +11,8 @@ use rtnetlink::packet_route::{
         RouteIp6Tunnel, RouteIpTunnel, RouteLwEnCapType, RouteLwTunnelEncap,
         RouteMessage, RouteMetric, RouteMplsIpTunnel, RouteMplsTtlPropagation,
         RouteNextHopFlags, RoutePreference, RouteProtocol, RouteScope,
-        RouteSeg6IpTunnel, RouteType, RouteVia, RouteXfrmTunnel, Seg6Mode,
+        RouteSeg6IpTunnel, RouteSeg6LocalTunnel, RouteType, RouteVia,
+        RouteXfrmTunnel, Seg6LocalAction, Seg6Mode,
     },
 };
 use serde::Serialize;
@@ -129,6 +130,22 @@ pub(crate) struct CliRouteVia {
 pub(crate) struct CliRouteEncap {
     pub(crate) encap_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) srh: Option<CliRouteEncapSrh>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) table: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) vrftable: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) nh4: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) nh6: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) iif: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) oif: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) if_id: Option<u64>,
@@ -160,10 +177,47 @@ pub(crate) struct CliRouteEncap {
     pub(crate) segs: Option<Vec<String>>,
 }
 
+/// `SEG6_LOCAL_SRH` of a `seg6local` encapsulation.
+#[derive(Serialize, Default)]
+pub(crate) struct CliRouteEncapSrh {
+    pub(crate) segs: Vec<String>,
+}
+
 fn seg6_mode_to_string(mode: Seg6Mode) -> String {
     match mode {
         Seg6Mode::Inline => "inline".to_string(),
         Seg6Mode::Encap => "encap".to_string(),
+        _ => "<unknown>".to_string(),
+    }
+}
+
+fn encap_type_to_string(encap_type: &RouteLwEnCapType) -> String {
+    match encap_type {
+        // iproute2 spells the SRv6 local encapsulation `seg6local`.
+        RouteLwEnCapType::Seg6Local => "seg6local".to_string(),
+        _ => encap_type.to_string(),
+    }
+}
+
+fn seg6local_action_to_string(action: Seg6LocalAction) -> String {
+    match action {
+        Seg6LocalAction::Unspec => "unspec".to_string(),
+        Seg6LocalAction::End => "End".to_string(),
+        Seg6LocalAction::EndX => "End.X".to_string(),
+        Seg6LocalAction::EndT => "End.T".to_string(),
+        Seg6LocalAction::EndDx2 => "End.DX2".to_string(),
+        Seg6LocalAction::EndDx6 => "End.DX6".to_string(),
+        Seg6LocalAction::EndDx4 => "End.DX4".to_string(),
+        Seg6LocalAction::EndDt6 => "End.DT6".to_string(),
+        Seg6LocalAction::EndDt4 => "End.DT4".to_string(),
+        Seg6LocalAction::EndB6 => "End.B6".to_string(),
+        Seg6LocalAction::EndB6Encap => "End.B6.Encaps".to_string(),
+        Seg6LocalAction::EndBm => "End.BM".to_string(),
+        Seg6LocalAction::EndS => "End.S".to_string(),
+        Seg6LocalAction::EndAs => "End.AS".to_string(),
+        Seg6LocalAction::EndAm => "End.AM".to_string(),
+        Seg6LocalAction::EndBpf => "End.BPF".to_string(),
+        Seg6LocalAction::EndDt46 => "End.DT46".to_string(),
         _ => "<unknown>".to_string(),
     }
 }
@@ -175,7 +229,7 @@ impl CliRouteEncap {
         link_map: &HashMap<u32, String>,
     ) -> Self {
         let mut ret = Self {
-            encap_type: encap_type.to_string(),
+            encap_type: encap_type_to_string(encap_type),
             ..Default::default()
         };
         for item in encap {
@@ -251,6 +305,57 @@ impl CliRouteEncap {
                             .unwrap_or_else(|| format!("if{index}")),
                     )
                 }
+                RouteLwTunnelEncap::Seg6Local(
+                    RouteSeg6LocalTunnel::Action(action),
+                ) => ret.action = Some(seg6local_action_to_string(*action)),
+                RouteLwTunnelEncap::Seg6Local(RouteSeg6LocalTunnel::Srh(
+                    srh,
+                )) => {
+                    // iproute2 prints the segments from the first segment
+                    // down to the last one.
+                    let count = usize::from(srh.first_segment) + 1;
+                    ret.srh = Some(CliRouteEncapSrh {
+                        segs: srh
+                            .segments
+                            .iter()
+                            .take(count)
+                            .rev()
+                            .map(|segment| segment.to_string())
+                            .collect(),
+                    });
+                }
+                RouteLwTunnelEncap::Seg6Local(RouteSeg6LocalTunnel::Table(
+                    table,
+                )) => ret.table = Some(route_table_u32_to_string(*table)),
+                RouteLwTunnelEncap::Seg6Local(
+                    RouteSeg6LocalTunnel::VrfTable(table),
+                ) => ret.vrftable = Some(route_table_u32_to_string(*table)),
+                RouteLwTunnelEncap::Seg6Local(RouteSeg6LocalTunnel::Nh4(
+                    addr,
+                )) => ret.nh4 = Some(addr.to_string()),
+                RouteLwTunnelEncap::Seg6Local(RouteSeg6LocalTunnel::Nh6(
+                    addr,
+                )) => ret.nh6 = Some(addr.to_string()),
+                RouteLwTunnelEncap::Seg6Local(RouteSeg6LocalTunnel::Iif(
+                    index,
+                )) => {
+                    ret.iif = Some(
+                        link_map
+                            .get(index)
+                            .cloned()
+                            .unwrap_or_else(|| format!("if{index}")),
+                    )
+                }
+                RouteLwTunnelEncap::Seg6Local(RouteSeg6LocalTunnel::Oif(
+                    index,
+                )) => {
+                    ret.oif = Some(
+                        link_map
+                            .get(index)
+                            .cloned()
+                            .unwrap_or_else(|| format!("if{index}")),
+                    )
+                }
                 _ => (),
             }
         }
@@ -280,6 +385,34 @@ fn route_encap_to_string(encap: &CliRouteEncap) -> String {
 
     let mut buf = String::new();
     let _ = write!(buf, " encap {} ", encap.encap_type);
+    if let Some(ref action) = encap.action {
+        let _ = write!(buf, "action {action} ");
+    }
+    if let Some(ref srh) = encap.srh {
+        let _ = write!(buf, "segs {} [ ", srh.segs.len());
+        for segment in &srh.segs {
+            let _ = write!(buf, "{segment} ");
+        }
+        buf.push_str("] ");
+    }
+    if let Some(ref table) = encap.table {
+        let _ = write!(buf, "table {table} ");
+    }
+    if let Some(ref vrftable) = encap.vrftable {
+        let _ = write!(buf, "vrftable {vrftable} ");
+    }
+    if let Some(ref nh4) = encap.nh4 {
+        let _ = write!(buf, "nh4 {nh4} ");
+    }
+    if let Some(ref nh6) = encap.nh6 {
+        let _ = write!(buf, "nh6 {nh6} ");
+    }
+    if let Some(ref iif) = encap.iif {
+        let _ = write!(buf, "iif {iif} ");
+    }
+    if let Some(ref oif) = encap.oif {
+        let _ = write!(buf, "oif {oif} ");
+    }
     if let Some(ref mode) = encap.mode {
         let _ = write!(buf, "mode {mode} ");
     }

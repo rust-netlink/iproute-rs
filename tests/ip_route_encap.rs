@@ -363,3 +363,85 @@ fn test_route_replace_and_delete_encap() {
         assert_eq!(ns.ip_rs_exec_cmd(&["route", "show", "10.122.0.0/16"]), "");
     });
 }
+
+// SRv6 local encapsulation with an `End` action.
+#[test]
+fn test_route_show_encap_seg6local_end() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        ns.exec_cmd(&[
+            "ip",
+            "-6",
+            "route",
+            "add",
+            "2001:db8:7::/64",
+            "encap",
+            "seg6local",
+            "action",
+            "End",
+            "dev",
+            DUMMY_NAME,
+        ]);
+
+        assert_route_show_eq(ns, &["-6", "route", "show", "2001:db8:7::/64"]);
+    });
+}
+
+// SRv6 local encapsulation with `nh4`, `nh6` and `table` options.
+#[test]
+fn test_route_show_encap_seg6local_options() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        for (prefix, action, extra) in [
+            ("2001:db8:8::/64", "End.DX4", vec!["nh4", "10.0.0.2"]),
+            ("2001:db8:9::/64", "End.DX6", vec!["nh6", "2001:db8::2"]),
+            ("2001:db8:a::/64", "End.DT6", vec!["table", "100"]),
+            // `vrftable` is not tested here: the kernel rejects it without
+            // the VRF strict mode and a VRF device of that table.
+        ] {
+            let mut add_args = vec![
+                "ip",
+                "-6",
+                "route",
+                "add",
+                prefix,
+                "encap",
+                "seg6local",
+                "action",
+                action,
+            ];
+            add_args.extend_from_slice(&extra);
+            add_args.push("dev");
+            add_args.push(DUMMY_NAME);
+            ns.exec_cmd(&add_args);
+
+            assert_route_show_eq(ns, &["-6", "route", "show", prefix]);
+        }
+    });
+}
+
+// SRv6 local encapsulation with a segment routing header, `ip-rs` must
+// build the same SRH as iproute2.
+#[test]
+fn test_route_show_encap_seg6local_srh() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        ns.ip_rs_exec_cmd(&[
+            "-6",
+            "route",
+            "add",
+            "2001:db8:c::/64",
+            "encap",
+            "seg6local",
+            "action",
+            "End.B6.Encaps",
+            "srh",
+            "segs",
+            "2001:db8::2,2001:db8::3",
+            "dev",
+            DUMMY_NAME,
+        ]);
+
+        assert_route_show_eq(ns, &["-6", "route", "show", "2001:db8:c::/64"]);
+    });
+}

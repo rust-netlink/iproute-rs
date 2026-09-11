@@ -9,7 +9,8 @@ use rtnetlink::{
         AddressFamily,
         route::{
             MplsLabel, RouteIp6TunnelFlags, RouteIpTunnelFlags, RouteMetric,
-            RouteProtocol, RouteRealm, RouteScope, RouteType, Seg6Mode,
+            RouteProtocol, RouteRealm, RouteScope, RouteType, Seg6LocalAction,
+            Seg6LocalSrh, Seg6Mode,
         },
     },
 };
@@ -56,6 +57,16 @@ pub(crate) enum RouteEncapConfig {
     Xfrm {
         if_id: u32,
         link_dev: Option<String>,
+    },
+    Seg6Local {
+        action: Seg6LocalAction,
+        table: Option<u32>,
+        vrftable: Option<u32>,
+        nh4: Option<Ipv4Addr>,
+        nh6: Option<Ipv6Addr>,
+        iif: Option<String>,
+        oif: Option<String>,
+        srh: Option<Seg6LocalSrh>,
     },
 }
 
@@ -551,6 +562,7 @@ fn parse_encap<'a>(
         "ip" => parse_encap_ip(iter),
         "ip6" => parse_encap_ip6(iter),
         "seg6" => parse_encap_seg6(iter),
+        "seg6local" => parse_encap_seg6local(iter),
         "xfrm" => parse_encap_xfrm(iter),
         other => {
             Err(CliError::from(format!("unsupported encap type: {other}")))
@@ -848,6 +860,143 @@ fn parse_encap_seg6<'a>(
     Ok(RouteEncapConfig::Seg6 {
         mode,
         segs: segs.unwrap_or_default(),
+    })
+}
+
+fn parse_seg6local_action(action: &str) -> Result<Seg6LocalAction, CliError> {
+    Ok(match action {
+        "End" => Seg6LocalAction::End,
+        "End.X" => Seg6LocalAction::EndX,
+        "End.T" => Seg6LocalAction::EndT,
+        "End.DX2" => Seg6LocalAction::EndDx2,
+        "End.DX6" => Seg6LocalAction::EndDx6,
+        "End.DX4" => Seg6LocalAction::EndDx4,
+        "End.DT6" => Seg6LocalAction::EndDt6,
+        "End.DT4" => Seg6LocalAction::EndDt4,
+        "End.B6" => Seg6LocalAction::EndB6,
+        "End.B6.Encaps" => Seg6LocalAction::EndB6Encap,
+        "End.BM" => Seg6LocalAction::EndBm,
+        "End.S" => Seg6LocalAction::EndS,
+        "End.AS" => Seg6LocalAction::EndAs,
+        "End.AM" => Seg6LocalAction::EndAm,
+        "End.BPF" => Seg6LocalAction::EndBpf,
+        "End.DT46" => Seg6LocalAction::EndDt46,
+        _ => {
+            return Err(CliError::from(format!(
+                "invalid seg6local action: {action}"
+            )));
+        }
+    })
+}
+
+/// Builds the SRH of `encap seg6local srh segs ...` like iproute2 does:
+/// the segments are stored in the reversed order and every action but
+/// `End.B6.Encaps` gets an extra zeroed segment.
+fn build_seg6local_srh(
+    action: Seg6LocalAction,
+    mut segments: Vec<Ipv6Addr>,
+) -> Seg6LocalSrh {
+    if action != Seg6LocalAction::EndB6Encap {
+        segments.push(Ipv6Addr::UNSPECIFIED);
+    }
+    let segment_count = segments.len() as u8;
+    let mut srh = Seg6LocalSrh::default();
+    srh.routing_type = 4;
+    srh.segments_left = segment_count - 1;
+    srh.first_segment = segment_count - 1;
+    srh.segments = segments.into_iter().rev().collect();
+    srh
+}
+
+fn parse_encap_seg6local<'a>(
+    iter: &mut std::iter::Peekable<impl Iterator<Item = &'a String>>,
+) -> Result<RouteEncapConfig, CliError> {
+    let mut action: Option<Seg6LocalAction> = None;
+    let mut table: Option<u32> = None;
+    let mut vrftable: Option<u32> = None;
+    let mut nh4: Option<Ipv4Addr> = None;
+    let mut nh6: Option<Ipv6Addr> = None;
+    let mut iif: Option<String> = None;
+    let mut oif: Option<String> = None;
+    let mut srh: Option<Seg6LocalSrh> = None;
+
+    while let Some(raw_arg) = iter.peek() {
+        let arg = raw_arg.to_string();
+        match arg.as_str() {
+            "action" => {
+                iter.next();
+                let val = encap_arg(iter, "action")?;
+                action = Some(parse_seg6local_action(&val)?);
+            }
+            "table" => {
+                iter.next();
+                let val = encap_arg(iter, "table")?;
+                table = Some(parse_table_id(&val)?);
+            }
+            "vrftable" => {
+                iter.next();
+                let val = encap_arg(iter, "vrftable")?;
+                vrftable = Some(parse_table_id(&val)?);
+            }
+            "nh4" => {
+                iter.next();
+                let val = encap_arg(iter, "nh4")?;
+                nh4 = Some(parse_encap_ipv4(&val)?);
+            }
+            "nh6" => {
+                iter.next();
+                let val = encap_arg(iter, "nh6")?;
+                nh6 = Some(parse_encap_ipv6(&val)?);
+            }
+            "iif" => {
+                iter.next();
+                iif = Some(encap_arg(iter, "iif")?);
+            }
+            "oif" => {
+                iter.next();
+                oif = Some(encap_arg(iter, "oif")?);
+            }
+            "srh" => {
+                iter.next();
+                let val = encap_arg(iter, "srh")?;
+                if val != "segs" {
+                    return Err(CliError::from(
+                        "encap seg6local srh requires \"segs\"",
+                    ));
+                }
+                let val = encap_arg(iter, "segs")?;
+                let mut segments = Vec::new();
+                for segment in val.split(',') {
+                    segments.push(parse_encap_ipv6(segment)?);
+                }
+                let selected = action.ok_or_else(|| {
+                    CliError::from(
+                        "encap seg6local requires an \"action\" before \"srh\"",
+                    )
+                })?;
+                srh = Some(build_seg6local_srh(selected, segments));
+            }
+            // `count`, `flavors` and `endpoint` are not supported yet.
+            "count" | "flavors" | "endpoint" => {
+                return Err(CliError::from(format!(
+                    "encap seg6local {arg} is not supported"
+                )));
+            }
+            _ => break,
+        }
+    }
+
+    Ok(RouteEncapConfig::Seg6Local {
+        action: action.ok_or_else(|| {
+            CliError::from("encap seg6local requires an \"action\" value")
+        })?,
+        table,
+        vrftable,
+        nh4,
+        nh6,
+        iif,
+        oif,
+        srh,
     })
 }
 
@@ -1243,6 +1392,12 @@ pub(crate) async fn resolve_route_ifindexes(
         .chain(config.encap.iter().filter_map(|encap| match encap {
             RouteEncapConfig::Xfrm { link_dev, .. } => link_dev.as_ref(),
             _ => None,
+        }))
+        .chain(config.encap.iter().flat_map(|encap| match encap {
+            RouteEncapConfig::Seg6Local { iif, oif, .. } => {
+                [iif.as_ref(), oif.as_ref()].into_iter().flatten()
+            }
+            _ => [None, None].into_iter().flatten(),
         }));
     for name in dev_names {
         if indexes.contains_key(name) {

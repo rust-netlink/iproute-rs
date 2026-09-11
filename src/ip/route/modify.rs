@@ -18,8 +18,8 @@ use rtnetlink::{
             RouteAddress, RouteAttribute, RouteIp6Tunnel, RouteIpTunnel,
             RouteLwEnCapType, RouteLwTunnelEncap, RouteMessage,
             RouteMplsIpTunnel, RouteMplsTtlPropagation, RoutePreference,
-            RouteProtocol, RouteScope, RouteSeg6IpTunnel, RouteType, RouteVia,
-            RouteXfrmTunnel, Seg6Header, Seg6Mode,
+            RouteProtocol, RouteScope, RouteSeg6IpTunnel, RouteSeg6LocalTunnel,
+            RouteType, RouteVia, RouteXfrmTunnel, Seg6Header, Seg6Mode,
         },
     },
 };
@@ -203,6 +203,61 @@ fn build_encap(
                 )));
             }
             RouteLwEnCapType::Xfrm
+        }
+        RouteEncapConfig::Seg6Local {
+            action,
+            table,
+            vrftable,
+            nh4,
+            nh6,
+            iif,
+            oif,
+            srh,
+        } => {
+            attrs.push(RouteLwTunnelEncap::Seg6Local(
+                RouteSeg6LocalTunnel::Action(*action),
+            ));
+            if let Some(srh) = srh {
+                attrs.push(RouteLwTunnelEncap::Seg6Local(
+                    RouteSeg6LocalTunnel::Srh(srh.clone()),
+                ));
+            }
+            if let Some(table) = table {
+                attrs.push(RouteLwTunnelEncap::Seg6Local(
+                    RouteSeg6LocalTunnel::Table(*table),
+                ));
+            }
+            if let Some(vrftable) = vrftable {
+                attrs.push(RouteLwTunnelEncap::Seg6Local(
+                    RouteSeg6LocalTunnel::VrfTable(*vrftable),
+                ));
+            }
+            if let Some(nh4) = nh4 {
+                attrs.push(RouteLwTunnelEncap::Seg6Local(
+                    RouteSeg6LocalTunnel::Nh4(*nh4),
+                ));
+            }
+            if let Some(nh6) = nh6 {
+                attrs.push(RouteLwTunnelEncap::Seg6Local(
+                    RouteSeg6LocalTunnel::Nh6(*nh6),
+                ));
+            }
+            for (name, is_input) in [(iif, true), (oif, false)] {
+                if let Some(name) = name {
+                    let index = *ifindexes.get(name).ok_or_else(|| {
+                        CliError::from(format!(
+                            "Device \"{name}\" does not exist"
+                        ))
+                    })?;
+                    let attr = if is_input {
+                        RouteSeg6LocalTunnel::Iif(index)
+                    } else {
+                        RouteSeg6LocalTunnel::Oif(index)
+                    };
+                    attrs.push(RouteLwTunnelEncap::Seg6Local(attr));
+                }
+            }
+            RouteLwEnCapType::Seg6Local
         }
     };
 
