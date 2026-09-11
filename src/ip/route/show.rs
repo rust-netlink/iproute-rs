@@ -54,6 +54,8 @@ pub(crate) struct CliRouteInfo {
     pub(crate) flags: Vec<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) mark: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) flow: Option<CliRouteFlow>,
     #[serde(skip)]
     pub(crate) uid: Option<u32>,
     #[serde(skip)]
@@ -68,6 +70,13 @@ pub(crate) struct CliRouteInfo {
     pub(crate) ttl_propagate: Option<bool>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) nexthops: Vec<CliRouteNextHop>,
+}
+
+#[derive(Serialize, Default)]
+pub(crate) struct CliRouteFlow {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) from: Option<String>,
+    pub(crate) to: String,
 }
 
 #[derive(Serialize, Default)]
@@ -324,6 +333,18 @@ pub(crate) fn parse_nl_msg_to_route(
                 }
             }
             RouteAttribute::Mark(m) => info.mark = Some(m),
+            // RTA_FLOW holds the realm as `source`/`destination` pair, which
+            // iproute2 displays as `realm TO` or `realms FROM/TO`.
+            RouteAttribute::Realm(realm) => {
+                info.flow = Some(CliRouteFlow {
+                    from: if realm.source == 0 {
+                        None
+                    } else {
+                        Some(realm.source.to_string())
+                    },
+                    to: realm.destination.to_string(),
+                })
+            }
             RouteAttribute::Uid(u) => info.uid = Some(u),
             RouteAttribute::Preference(p) => {
                 info.preference = Some(route_preference_to_string(p))
@@ -534,6 +555,14 @@ impl std::fmt::Display for CliRouteInfo {
                 write!(buf, "mark 0x{mark:x} ")?;
             } else {
                 write!(buf, "mark {mark} ")?;
+            }
+        }
+
+        // Realms
+        if let Some(ref flow) = self.flow {
+            match flow.from {
+                Some(ref from) => write!(buf, "realms {from}/{} ", flow.to)?,
+                None => write!(buf, "realm {} ", flow.to)?,
             }
         }
 
