@@ -8,8 +8,8 @@ use rtnetlink::packet_route::{
     AddressFamily,
     route::{
         RouteAttribute, RouteCacheInfo, RouteFlags, RouteHeader, RouteMessage,
-        RouteNextHopFlags, RoutePreference, RouteProtocol, RouteScope,
-        RouteType,
+        RouteMetric, RouteNextHopFlags, RoutePreference, RouteProtocol,
+        RouteScope, RouteType,
     },
 };
 use serde::Serialize;
@@ -65,6 +65,10 @@ pub(crate) struct CliRouteInfo {
     pub(crate) cache: Option<Vec<&'static str>>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub(crate) cache_info: Option<CliRouteCacheInfo>,
+    #[serde(skip)]
+    pub(crate) metrics_raw: Vec<RouteMetric>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) metrics: Option<Vec<CliRouteMetrics>>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "pref")]
     pub(crate) preference: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -107,6 +111,206 @@ pub(crate) struct CliRouteFlow {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) from: Option<String>,
     pub(crate) to: String,
+}
+
+/// `RTA_METRICS` values as shown by iproute2, the JSON object is emitted in
+/// the order of the `RTAX_*` attributes.
+#[derive(Serialize, Default)]
+pub(crate) struct CliRouteMetrics {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) mtu: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) window: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) rtt: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) rttvar: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) ssthresh: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) cwnd: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) advmss: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) reordering: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) hoplimit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) initcwnd: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) ecn: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tcp_usec_ts: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) features: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) rto_min: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) initrwnd: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) quickack: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) fastopen_no_cookie: Option<u32>,
+}
+
+// `RTAX_FEATURE_ECN` and `RTAX_FEATURE_TCP_USEC_TS`.
+const RTAX_FEATURE_ECN: u32 = 1 << 0;
+const RTAX_FEATURE_TCP_USEC_TS: u32 = 1 << 4;
+
+impl CliRouteMetrics {
+    fn new(metrics: &[RouteMetric]) -> Self {
+        let mut ret = Self::default();
+        for metric in metrics {
+            match metric {
+                RouteMetric::Mtu(v) => ret.mtu = Some(*v),
+                RouteMetric::Window(v) => ret.window = Some(*v),
+                // The kernel stores RTT in eighths of a millisecond and
+                // RTTVAR in quarters of a millisecond.
+                RouteMetric::Rtt(v) => ret.rtt = Some(v / 8),
+                RouteMetric::RttVar(v) => ret.rttvar = Some(v / 4),
+                RouteMetric::SsThresh(v) => ret.ssthresh = Some(*v),
+                RouteMetric::Cwnd(v) => ret.cwnd = Some(*v),
+                RouteMetric::Advmss(v) => ret.advmss = Some(*v),
+                RouteMetric::Reordering(v) => ret.reordering = Some(*v),
+                RouteMetric::Hoplimit(v) => {
+                    if *v != u32::MAX {
+                        ret.hoplimit = Some(*v);
+                    }
+                }
+                RouteMetric::InitCwnd(v) => ret.initcwnd = Some(*v),
+                RouteMetric::Features(v) => {
+                    if v & RTAX_FEATURE_ECN != 0 {
+                        ret.ecn = Some(true);
+                    }
+                    if v & RTAX_FEATURE_TCP_USEC_TS != 0 {
+                        ret.tcp_usec_ts = Some(true);
+                    }
+                    let remaining =
+                        v & !(RTAX_FEATURE_ECN | RTAX_FEATURE_TCP_USEC_TS);
+                    if remaining != 0 {
+                        ret.features = Some(format!("0x{remaining:x}"));
+                    }
+                }
+                RouteMetric::RtoMin(v) => ret.rto_min = Some(*v),
+                RouteMetric::InitRwnd(v) => ret.initrwnd = Some(*v),
+                RouteMetric::QuickAck(v) => ret.quickack = Some(*v),
+                RouteMetric::FastopenNoCookie(v) => {
+                    ret.fastopen_no_cookie = Some(*v)
+                }
+                _ => (),
+            }
+        }
+        ret
+    }
+}
+
+// `RTAX_*` attribute names and indices as used by iproute2.
+const ROUTE_METRIC_NAMES: &[(u16, &str)] = &[
+    (2, "mtu"),
+    (3, "window"),
+    (4, "rtt"),
+    (5, "rttvar"),
+    (6, "ssthresh"),
+    (7, "cwnd"),
+    (8, "advmss"),
+    (9, "reordering"),
+    (10, "hoplimit"),
+    (11, "initcwnd"),
+    (12, "features"),
+    (13, "rto_min"),
+    (14, "initrwnd"),
+    (15, "quickack"),
+    (16, "congctl"),
+    (17, "fastopen_no_cookie"),
+];
+
+fn push_route_metric_time(buf: &mut String, milliseconds: u32) {
+    use std::fmt::Write;
+
+    if milliseconds >= 1000 {
+        // iproute2 prints `%gs` for values of one second and more.
+        let _ = write!(buf, "{}s ", f64::from(milliseconds) / 1000.0);
+    } else {
+        let _ = write!(buf, "{milliseconds}ms ");
+    }
+}
+
+fn route_metric_index(metric: &RouteMetric) -> Option<(u16, u32)> {
+    Some(match metric {
+        RouteMetric::Mtu(value) => (2, *value),
+        RouteMetric::Window(value) => (3, *value),
+        RouteMetric::Rtt(value) => (4, *value),
+        RouteMetric::RttVar(value) => (5, *value),
+        RouteMetric::SsThresh(value) => (6, *value),
+        RouteMetric::Cwnd(value) => (7, *value),
+        RouteMetric::Advmss(value) => (8, *value),
+        RouteMetric::Reordering(value) => (9, *value),
+        RouteMetric::Hoplimit(value) => (10, *value),
+        RouteMetric::InitCwnd(value) => (11, *value),
+        RouteMetric::Features(value) => (12, *value),
+        RouteMetric::RtoMin(value) => (13, *value),
+        RouteMetric::InitRwnd(value) => (14, *value),
+        RouteMetric::QuickAck(value) => (15, *value),
+        RouteMetric::FastopenNoCookie(value) => (17, *value),
+        // `RTAX_LOCK` is handled separately, `RTAX_CC_ALGO` is a string and
+        // not supported yet.
+        RouteMetric::Lock(_)
+        | RouteMetric::CcAlgo(_)
+        | RouteMetric::Other(_)
+        | _ => return None,
+    })
+}
+
+fn route_metrics_to_string(metrics: &[RouteMetric]) -> String {
+    use std::fmt::Write;
+
+    let mut buf = String::new();
+    let lock = metrics.iter().find_map(|metric| match metric {
+        RouteMetric::Lock(value) => Some(*value),
+        _ => None,
+    });
+
+    for (index, name) in ROUTE_METRIC_NAMES {
+        let value = metrics.iter().find_map(|metric| {
+            route_metric_index(metric)
+                .filter(|(metric_index, _)| metric_index == index)
+                .map(|(_, value)| value)
+        });
+        let locked = lock.is_some_and(|lock| lock & (1 << index) != 0);
+        if value.is_none() && !locked {
+            continue;
+        }
+        let value = value.unwrap_or(0);
+        if *index == 10 && value == u32::MAX {
+            continue;
+        }
+        let _ = write!(buf, "{name} ");
+        if locked {
+            buf.push_str("lock ");
+        }
+        match index {
+            4 => push_route_metric_time(&mut buf, value / 8),
+            5 => push_route_metric_time(&mut buf, value / 4),
+            12 => {
+                if value & RTAX_FEATURE_ECN != 0 {
+                    buf.push_str("ecn ");
+                }
+                if value & RTAX_FEATURE_TCP_USEC_TS != 0 {
+                    buf.push_str("tcp_usec_ts ");
+                }
+                let remaining =
+                    value & !(RTAX_FEATURE_ECN | RTAX_FEATURE_TCP_USEC_TS);
+                if remaining != 0 {
+                    let _ = write!(buf, "0x{remaining:x} ");
+                }
+            }
+            13 => push_route_metric_time(&mut buf, value),
+            _ => {
+                let _ = write!(buf, "{value} ");
+            }
+        }
+    }
+    buf
 }
 
 #[derive(Serialize, Default)]
@@ -408,6 +612,10 @@ pub(crate) fn parse_nl_msg_to_route(
             RouteAttribute::CacheInfo(c) => {
                 info.cache_info = Some(CliRouteCacheInfo::new(&c))
             }
+            RouteAttribute::Metrics(metrics) => {
+                info.metrics = Some(vec![CliRouteMetrics::new(&metrics)]);
+                info.metrics_raw = metrics;
+            }
             RouteAttribute::MultiPath(nhs) => {
                 for nh in nhs {
                     let mut cli_nh = CliRouteNextHop {
@@ -646,6 +854,11 @@ impl std::fmt::Display for CliRouteInfo {
             if let Some(error) = ci.error {
                 write!(buf, "error {error} ")?;
             }
+        }
+
+        // Metrics
+        if !self.metrics_raw.is_empty() {
+            buf.push_str(&route_metrics_to_string(&self.metrics_raw));
         }
 
         // IIF
