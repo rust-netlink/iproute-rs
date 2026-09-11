@@ -2,8 +2,6 @@
 
 ## `ip route`
 
-- add/del/change/replace/append/prepend: support `tos TOS` and
-  `ttl-propagate` in NODE_SPEC
 - add/del/change/replace/append/prepend: support `encap`
   (`mpls | ip | ip6 | seg6 | seg6local | rpl | ioam6 | xfrm`)
 - add/del/change/replace/append/prepend: accept TIME values with `s`/`ms`

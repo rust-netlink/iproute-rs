@@ -12,8 +12,9 @@ use rtnetlink::{
     packet_route::{
         AddressFamily, RouteNetlinkMessage,
         route::{
-            RouteAddress, RouteAttribute, RouteMessage, RoutePreference,
-            RouteProtocol, RouteScope, RouteType, RouteVia,
+            RouteAddress, RouteAttribute, RouteMessage,
+            RouteMplsTtlPropagation, RoutePreference, RouteProtocol,
+            RouteScope, RouteType, RouteVia,
         },
     },
 };
@@ -108,6 +109,9 @@ pub(crate) fn build_route_message(
     if let Some(kind) = config.kind {
         msg.header.kind = kind;
     }
+    if let Some(tos) = config.tos {
+        msg.header.tos = tos;
+    }
     if let Some(table) = config.table {
         if table > 255 {
             msg.attributes.push(RouteAttribute::Table(table));
@@ -201,6 +205,16 @@ pub(crate) fn build_route_message(
     if let Some(p) = config.preference {
         msg.attributes
             .push(RouteAttribute::Preference(RoutePreference::from(p)));
+    }
+
+    if let Some(value) = config.ttl_propagate {
+        let propagation = if value {
+            RouteMplsTtlPropagation::Enabled
+        } else {
+            RouteMplsTtlPropagation::Disabled
+        };
+        msg.attributes
+            .push(RouteAttribute::TtlPropagate(propagation));
     }
 
     // `iproute2` adds `RTA_NH_ID` while parsing the `nhid` keyword, which

@@ -48,6 +48,8 @@ pub(crate) struct RouteAddConfig {
     pub(crate) realm: Option<RouteRealm>,
     pub(crate) nexthops: Vec<RouteNextHopConfig>,
     pub(crate) nhid: Option<u32>,
+    pub(crate) tos: Option<u8>,
+    pub(crate) ttl_propagate: Option<bool>,
 }
 
 pub(crate) fn parse_route_config(
@@ -76,6 +78,8 @@ pub(crate) fn parse_route_config(
     let mut realm: Option<RouteRealm> = None;
     let mut nexthops: Vec<RouteNextHopConfig> = Vec::new();
     let mut nhid: Option<u32> = None;
+    let mut tos: Option<u8> = None;
+    let mut ttl_propagate: Option<bool> = None;
     let mut positional_prefix_seen = false;
 
     let mut iter = opts.iter().peekable();
@@ -147,6 +151,26 @@ pub(crate) fn parse_route_config(
                     CliError::from("\"scope\" requires a value")
                 })?;
                 scope = Some(parse_route_scope(val)?);
+            }
+            "tos" | "dsfield" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"tos\" requires a value")
+                })?;
+                tos = Some(parse_dsfield(val)?);
+            }
+            "ttl-propagate" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"ttl-propagate\" requires a value")
+                })?;
+                ttl_propagate = Some(match val.as_str() {
+                    "enabled" => true,
+                    "disabled" => false,
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "invalid ttl-propagate value: {val}"
+                        )));
+                    }
+                });
             }
             "type" => {
                 let val = iter.next().ok_or_else(|| {
@@ -428,6 +452,8 @@ pub(crate) fn parse_route_config(
         realm,
         nexthops,
         nhid,
+        tos,
+        ttl_propagate,
     })
 }
 
@@ -689,6 +715,48 @@ fn parse_route_scope(s: &str) -> Result<RouteScope, CliError> {
     }
 }
 
+fn parse_dsfield(s: &str) -> Result<u8, CliError> {
+    let named = match s {
+        "default" => Some(0x00),
+        "CS1" => Some(0x20),
+        "CS2" => Some(0x40),
+        "CS3" => Some(0x60),
+        "CS4" => Some(0x80),
+        "CS5" => Some(0xa0),
+        "CS6" => Some(0xc0),
+        "CS7" => Some(0xe0),
+        "AF11" => Some(0x28),
+        "AF12" => Some(0x30),
+        "AF13" => Some(0x38),
+        "AF21" => Some(0x48),
+        "AF22" => Some(0x50),
+        "AF23" => Some(0x58),
+        "AF31" => Some(0x68),
+        "AF32" => Some(0x70),
+        "AF33" => Some(0x78),
+        "AF41" => Some(0x88),
+        "AF42" => Some(0x90),
+        "AF43" => Some(0x98),
+        "EF" => Some(0xb8),
+        _ => None,
+    };
+    if let Some(value) = named {
+        return Ok(value);
+    }
+
+    // iproute2 parses the numeric value as hexadecimal.
+    let digits = s
+        .strip_prefix("0x")
+        .or_else(|| s.strip_prefix("0X"))
+        .unwrap_or(s);
+    let value = u16::from_str_radix(digits, 16)
+        .map_err(|_| CliError::from(format!("invalid tos value: {s}")))?;
+    if value > u8::MAX as u16 {
+        return Err(CliError::from(format!("invalid tos value: {s}")));
+    }
+    Ok(value as u8)
+}
+
 fn parse_route_type(s: &str) -> Result<RouteType, CliError> {
     match s {
         "unspec" => Ok(RouteType::Unspec),
@@ -758,7 +826,7 @@ pub(crate) async fn resolve_route_ifindexes(
 #[cfg(test)]
 mod tests {
     use rtnetlink::packet_route::route::{
-        RouteAttribute, RouteNextHopFlags, RouteVia,
+        RouteAttribute, RouteMplsTtlPropagation, RouteNextHopFlags, RouteVia,
     };
 
     use super::*;
@@ -1086,5 +1154,78 @@ mod tests {
         )
         .unwrap();
         assert_eq!(config.family, Some(AddressFamily::Inet6));
+    }
+
+    #[test]
+    fn test_parse_route_dsfield() {
+        let config =
+            parse_route_config(&opts(&["10.0.0.0/8", "tos", "AF11"]), None)
+                .unwrap();
+        assert_eq!(config.tos, Some(0x28));
+
+        // iproute2 parses numeric DS fields as hexadecimal.
+        let config =
+            parse_route_config(&opts(&["10.0.0.0/8", "dsfield", "28"]), None)
+                .unwrap();
+        assert_eq!(config.tos, Some(0x28));
+
+        let config =
+            parse_route_config(&opts(&["10.0.0.0/8", "tos", "0xB8"]), None)
+                .unwrap();
+        assert_eq!(config.tos, Some(0xb8));
+
+        // iproute2 rejects lowercase names and values above 0xff.
+        assert!(
+            parse_route_config(&opts(&["10.0.0.0/8", "tos", "af11"]), None)
+                .is_err()
+        );
+        assert!(
+            parse_route_config(&opts(&["10.0.0.0/8", "tos", "0x100"]), None)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn test_parse_route_ttl_propagate() {
+        let config = parse_route_config(
+            &opts(&["10.0.0.0/8", "ttl-propagate", "enabled"]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(config.ttl_propagate, Some(true));
+
+        let config = parse_route_config(
+            &opts(&["10.0.0.0/8", "ttl-propagate", "disabled"]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(config.ttl_propagate, Some(false));
+
+        assert!(
+            parse_route_config(
+                &opts(&["10.0.0.0/8", "ttl-propagate", "foo"]),
+                None,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn test_build_route_tos_and_ttl_propagate_message() {
+        let config = parse_route_config(
+            &opts(&["10.0.0.0/8", "tos", "AF11", "ttl-propagate", "disabled"]),
+            None,
+        )
+        .unwrap();
+        let msg = super::super::modify::build_route_message(
+            &config,
+            &Default::default(),
+        )
+        .unwrap();
+
+        assert_eq!(msg.header.tos, 0x28);
+        assert!(msg.attributes.contains(&RouteAttribute::TtlPropagate(
+            RouteMplsTtlPropagation::Disabled
+        )));
     }
 }
