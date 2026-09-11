@@ -1284,13 +1284,18 @@ pub(crate) struct RouteShowFilter {
     pub(crate) match_src: Option<(IpAddr, u8)>,
     /// Name of the VRF device, resolved to a table ID before dumping.
     pub(crate) vrf: Option<String>,
+    /// MPLS label selector of `-f mpls route show LABEL`.
+    pub(crate) mpls_dst: Option<u32>,
     pub(crate) dev_name: Option<String>,
 }
 
 impl RouteShowFilter {
     pub(crate) fn parse(
         opts: &[&str],
+        family: Option<AddressFamily>,
     ) -> Result<(Self, Vec<String>), CliError> {
+        // `-f mpls` selects the routes by label instead of IP prefix.
+        let mpls = family == Some(AddressFamily::Mpls);
         let mut tb: Option<u32> = None;
         let mut cloned = false;
         let mut protocol: Option<u8> = None;
@@ -1312,6 +1317,7 @@ impl RouteShowFilter {
         let mut root_src: Option<(IpAddr, u8)> = None;
         let mut match_src: Option<(IpAddr, u8)> = None;
         let mut vrf: Option<String> = None;
+        let mut mpls_dst: Option<u32> = None;
         let mut dev_name: Option<String> = None;
         let mut link_opts: Vec<String> = Vec::new();
 
@@ -1444,40 +1450,81 @@ impl RouteShowFilter {
                             let val = iter.next().ok_or_else(|| {
                                 CliError::from("\"to root\" requires a value")
                             })?;
-                            root_dst = Some(parse_prefix_val(val)?);
+                            match parse_dst_selector(val, mpls)? {
+                                DstSelector::Ip(addr, plen) => {
+                                    root_dst = Some((addr, plen))
+                                }
+                                DstSelector::Mpls(label) => {
+                                    mpls_dst = Some(label)
+                                }
+                            }
                         }
                         "match" => {
                             let val = iter.next().ok_or_else(|| {
                                 CliError::from("\"to match\" requires a value")
                             })?;
-                            match_dst = Some(parse_prefix_val(val)?);
+                            match parse_dst_selector(val, mpls)? {
+                                DstSelector::Ip(addr, plen) => {
+                                    match_dst = Some((addr, plen))
+                                }
+                                DstSelector::Mpls(label) => {
+                                    mpls_dst = Some(label)
+                                }
+                            }
                         }
                         "exact" => {
                             let val = iter.next().ok_or_else(|| {
                                 CliError::from("\"to exact\" requires a value")
                             })?;
-                            rdst = Some(parse_prefix_val(val)?);
+                            match parse_dst_selector(val, mpls)? {
+                                DstSelector::Ip(addr, plen) => {
+                                    rdst = Some((addr, plen))
+                                }
+                                DstSelector::Mpls(label) => {
+                                    mpls_dst = Some(label)
+                                }
+                            }
                         }
-                        v => rdst = Some(parse_prefix_val(v)?),
+                        v => match parse_dst_selector(v, mpls)? {
+                            DstSelector::Ip(addr, plen) => {
+                                rdst = Some((addr, plen))
+                            }
+                            DstSelector::Mpls(label) => mpls_dst = Some(label),
+                        },
                     }
                 }
                 "root" => {
                     let val = iter.next().ok_or_else(|| {
                         CliError::from("\"root\" requires a value")
                     })?;
-                    root_dst = Some(parse_prefix_val(val)?);
+                    match parse_dst_selector(val, mpls)? {
+                        DstSelector::Ip(addr, plen) => {
+                            root_dst = Some((addr, plen))
+                        }
+                        DstSelector::Mpls(label) => mpls_dst = Some(label),
+                    }
                 }
                 "match" => {
                     let val = iter.next().ok_or_else(|| {
                         CliError::from("\"match\" requires a value")
                     })?;
-                    match_dst = Some(parse_prefix_val(val)?);
+                    match parse_dst_selector(val, mpls)? {
+                        DstSelector::Ip(addr, plen) => {
+                            match_dst = Some((addr, plen))
+                        }
+                        DstSelector::Mpls(label) => mpls_dst = Some(label),
+                    }
                 }
                 "exact" => {
                     let val = iter.next().ok_or_else(|| {
                         CliError::from("\"exact\" requires a value")
                     })?;
-                    rdst = Some(parse_prefix_val(val)?);
+                    match parse_dst_selector(val, mpls)? {
+                        DstSelector::Ip(addr, plen) => {
+                            rdst = Some((addr, plen))
+                        }
+                        DstSelector::Mpls(label) => mpls_dst = Some(label),
+                    }
                 }
                 "vrf" => {
                     let val = iter.next().ok_or_else(|| {
@@ -1486,12 +1533,24 @@ impl RouteShowFilter {
                     vrf = Some(val.to_string());
                 }
                 _ => {
-                    if rdst.is_none() && !arg.starts_with('-') {
+                    if rdst.is_none()
+                        && mpls_dst.is_none()
+                        && !arg.starts_with('-')
+                    {
                         // Try parsing as destination prefix first
-                        if let Ok(prefix) = parse_prefix_val(arg) {
-                            rdst = Some(prefix);
-                        } else if dev_name.is_none() {
-                            dev_name = Some(arg.to_string());
+                        match parse_dst_selector(arg, mpls) {
+                            Ok(DstSelector::Ip(addr, plen)) => {
+                                rdst = Some((addr, plen))
+                            }
+                            Ok(DstSelector::Mpls(label)) => {
+                                mpls_dst = Some(label)
+                            }
+                            Err(_) if dev_name.is_none() => {
+                                dev_name = Some(arg.to_string())
+                            }
+                            Err(_) => {
+                                link_opts.push(arg.to_string());
+                            }
                         }
                     } else {
                         link_opts.push(arg.to_string());
@@ -1528,6 +1587,7 @@ impl RouteShowFilter {
                 root_src,
                 match_src,
                 vrf,
+                mpls_dst,
                 dev_name,
             },
             link_opts,
@@ -1752,6 +1812,14 @@ impl RouteShowFilter {
             if kind == "local" || kind == "broadcast" {
                 return false;
             }
+        }
+
+        // `-f mpls route show LABEL` selects one label.
+        if let Some(label) = self.mpls_dst
+            && (route.family != AddressFamily::Mpls
+                || route.dst != label.to_string())
+        {
+            return false;
         }
 
         if let Some(ref dev_name) = self.dev_name
@@ -1997,12 +2065,39 @@ fn parse_prefix_val(s: &str) -> Result<(IpAddr, u8), CliError> {
     }
 }
 
+/// Destination selector of `ip route show`.
+enum DstSelector {
+    Ip(IpAddr, u8),
+    Mpls(u32),
+}
+
+/// Parses the destination selector as an MPLS label when the address family
+/// is `mpls`, as an IP prefix otherwise.
+fn parse_dst_selector(s: &str, mpls: bool) -> Result<DstSelector, CliError> {
+    if !mpls {
+        let (addr, plen) = parse_prefix_val(s)?;
+        return Ok(DstSelector::Ip(addr, plen));
+    }
+    let (radix, digits) =
+        match s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+            Some(digits) => (16, digits),
+            None => (10, s),
+        };
+    let label = u32::from_str_radix(digits, radix)
+        .map_err(|_| CliError::from(format!("invalid MPLS label: {s}")))?;
+    if label > 0xfffff {
+        return Err(CliError::from(format!("invalid MPLS label: {s}")));
+    }
+    Ok(DstSelector::Mpls(label))
+}
+
 pub(crate) async fn handle_show(
     opts: &[&str],
     preferred_family: Option<AddressFamily>,
     show_details: bool,
 ) -> Result<Vec<CliRouteInfo>, CliError> {
-    let (mut filter, _link_opts) = RouteShowFilter::parse(opts)?;
+    let (mut filter, _link_opts) =
+        RouteShowFilter::parse(opts, preferred_family)?;
 
     let show_all_tables = filter.tb == Some(0);
 

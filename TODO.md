@@ -12,8 +12,6 @@
   `LWTUNNEL_ENCAP_RPL` and `LWTUNNEL_ENCAP_IOAM6` encapsulation
 - show: display `seg6local`, `rpl` and `ioam6` encapsulation —
   `src/ip/route/show.rs`
-- `-f mpls route show PREFIX` ignores the prefix selector —
-  `src/ip/route/show.rs` (`RouteShowFilter::parse`)
 
 ## `ip link`
 

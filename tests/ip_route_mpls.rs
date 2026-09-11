@@ -104,6 +104,33 @@ fn test_route_add_mpls() {
     });
 }
 
+// `-f mpls route show LABEL` selects a single label.
+#[test]
+fn test_route_show_mpls_label_selector() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        for label in ["100", "200", "1000"] {
+            ns.exec_cmd(&[
+                "ip",
+                "-f",
+                "mpls",
+                "route",
+                "add",
+                label,
+                "dev",
+                DUMMY_NAME,
+                "ttl-propagate",
+                "enabled",
+            ]);
+        }
+
+        for label in ["100", "200", "1000", "300", "0x64"] {
+            ns.assert_eq_output(&["-f", "mpls", "route", "show", label]);
+            ns.assert_eq_output(&["-j", "-f", "mpls", "route", "show", label]);
+        }
+    });
+}
+
 #[test]
 fn test_route_replace_and_delete_mpls() {
     with_netns(|ns| {

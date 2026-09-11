@@ -14,7 +14,8 @@ pub(crate) async fn handle_flush(
     show_stats: bool,
 ) -> Result<(), CliError> {
     let opts_refs: Vec<&str> = opts.iter().map(String::as_str).collect();
-    let (mut filter, _link_opts) = RouteShowFilter::parse(&opts_refs)?;
+    let (mut filter, _link_opts) =
+        RouteShowFilter::parse(&opts_refs, preferred_family)?;
     drop(opts_refs);
 
     if opts.is_empty() {

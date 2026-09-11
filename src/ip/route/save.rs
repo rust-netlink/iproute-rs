@@ -22,7 +22,7 @@ pub(crate) async fn handle_save(opts: &[String]) -> Result<(), CliError> {
     }
 
     let opts_refs: Vec<&str> = opts.iter().map(String::as_str).collect();
-    let (filter, _link_opts) = RouteShowFilter::parse(&opts_refs)?;
+    let (filter, _link_opts) = RouteShowFilter::parse(&opts_refs, None)?;
     drop(opts_refs);
 
     let stdout = std::io::stdout();
