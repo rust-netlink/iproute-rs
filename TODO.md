@@ -8,9 +8,9 @@
   `encap ip vxlan_opts`, `encap ip erspan_opts`, `encap ip6 geneve_opts`,
   `encap ip6 vxlan_opts`, `encap ip6 erspan_opts`, `encap seg6 tunsrc`,
   `encap seg6 hmac` and `encap seg6 lookup` — `src/ip/route/add.rs`
-- `netlink-packet-route`: support `LWTUNNEL_ENCAP_RPL` and
-  `LWTUNNEL_ENCAP_IOAM6` encapsulation, and spell the
-  `LWTUNNEL_ENCAP_SEG6_LOCAL` encapsulation type `seg6local` like iproute2
+- `netlink-packet-route`: support the `geneve_opts`, `vxlan_opts` and
+  `erspan_opts` attributes of `LWTUNNEL_IP_OPTS`, and the `tunsrc`, `hmac`
+  and `lookup` attributes of `LWTUNNEL_ENCAP_SEG6`
 - show: display `rpl` and `ioam6` encapsulation — `src/ip/route/show.rs`
 
 ## `ip link`
