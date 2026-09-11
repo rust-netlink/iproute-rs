@@ -24,8 +24,6 @@
   `src/ip/link/show.rs`
 - add/set: audit per-type options against `ip link add type <TYPE> help`
   (candidates: vxlan, bond, bridge)
-- add/set: support the `lacp_strict` bond option —
-  `src/ip/link/ifaces/bond.rs`
 
 ## `ip address`
 
