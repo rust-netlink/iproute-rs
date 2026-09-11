@@ -636,6 +636,7 @@ impl IfaceBond {
                 [ ad_user_port_key PORTKEY ]
                 [ ad_actor_sys_prio SYSPRIO ]
                 [ ad_actor_system LLADDR ]
+                [ lacp_strict LACP_STRICT ]
                 [ arp_missed_max MISSED_MAX ]
 
 BONDMODE := balance-rr|active-backup|balance-xor|broadcast|802.3ad|balance-tlb|balance-alb
@@ -649,6 +650,7 @@ LACP_RATE := slow|fast
 AD_SELECT := stable|bandwidth|count
 COUPLED_CONTROL := off|on
 BROADCAST_NEIGHBOR := off|on
+LACP_STRICT := off|on
 "
     }
 }
