@@ -8,8 +8,8 @@ use rtnetlink::packet_route::{
     AddressFamily,
     route::{
         RouteAttribute, RouteCacheInfo, RouteFlags, RouteHeader,
-        RouteIp6Tunnel, RouteLwEnCapType, RouteLwTunnelEncap, RouteMessage,
-        RouteMetric, RouteMplsIpTunnel, RouteMplsTtlPropagation,
+        RouteIp6Tunnel, RouteIpTunnel, RouteLwEnCapType, RouteLwTunnelEncap,
+        RouteMessage, RouteMetric, RouteMplsIpTunnel, RouteMplsTtlPropagation,
         RouteNextHopFlags, RoutePreference, RouteProtocol, RouteScope,
         RouteSeg6IpTunnel, RouteType, RouteVia, Seg6Mode,
     },
@@ -215,6 +215,24 @@ impl CliRouteEncap {
                     ret.tc = Some(*tc)
                 }
                 RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Flags(flags)) => {
+                    set_encap_tunnel_flags(&mut ret, flags.bits())
+                }
+                RouteLwTunnelEncap::Ip(RouteIpTunnel::Id(id)) => {
+                    ret.id = Some(*id)
+                }
+                RouteLwTunnelEncap::Ip(RouteIpTunnel::Source(src)) => {
+                    ret.src = Some(src.to_string())
+                }
+                RouteLwTunnelEncap::Ip(RouteIpTunnel::Destination(dst)) => {
+                    ret.dst = Some(dst.to_string())
+                }
+                RouteLwTunnelEncap::Ip(RouteIpTunnel::Ttl(ttl)) => {
+                    ret.ttl = Some(*ttl)
+                }
+                RouteLwTunnelEncap::Ip(RouteIpTunnel::Tos(tos)) => {
+                    ret.tos = Some(*tos)
+                }
+                RouteLwTunnelEncap::Ip(RouteIpTunnel::Flags(flags)) => {
                     set_encap_tunnel_flags(&mut ret, flags.bits())
                 }
                 _ => (),

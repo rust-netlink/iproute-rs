@@ -89,3 +89,35 @@ fn test_route_show_encap_seg6() {
         assert_route_show_eq(ns, &["-6", "route", "show", "2001:db8:2::/64"]);
     });
 }
+
+// IPv4 encapsulation of an IPv4 route with tunnel flags.
+#[test]
+fn test_route_show_encap_ip() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        ns.exec_cmd(&[
+            "ip",
+            "route",
+            "add",
+            "10.115.0.0/16",
+            "encap",
+            "ip",
+            "id",
+            "200",
+            "src",
+            "10.0.0.1",
+            "dst",
+            "10.0.0.3",
+            "ttl",
+            "64",
+            "tos",
+            "8",
+            "key",
+            "csum",
+            "dev",
+            DUMMY_NAME,
+        ]);
+
+        assert_route_show_eq(ns, &["route", "show", "10.115.0.0/16"]);
+    });
+}
