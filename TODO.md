@@ -2,18 +2,21 @@
 
 ## `ip route`
 
-- add/del/change/replace/append/prepend: support `encap`
-  (`mpls | ip | ip6 | seg6 | seg6local | rpl | ioam6 | xfrm`)
-  — `src/ip/route/add.rs`, `src/ip/route/modify.rs`
+- add/del/change/replace/append/prepend: support `encap seg6local`, `encap rpl`
+  and `encap ioam6` — `src/ip/route/add.rs`, `src/ip/route/modify.rs`
+- add/del/change/replace/append/prepend: support `encap ip geneve_opts`,
+  `encap ip vxlan_opts`, `encap ip erspan_opts`, `encap ip6 geneve_opts`,
+  `encap ip6 vxlan_opts`, `encap ip6 erspan_opts`, `encap seg6 tunsrc`,
+  `encap seg6 hmac` and `encap seg6 lookup` — `src/ip/route/add.rs`
 - `netlink-packet-route`: support `LWTUNNEL_ENCAP_SEG6_LOCAL`,
   `LWTUNNEL_ENCAP_RPL` and `LWTUNNEL_ENCAP_IOAM6` encapsulation
-- show: display `xfrm`, `seg6local`, `rpl` and `ioam6` encapsulation —
+- show: display `seg6local`, `rpl` and `ioam6` encapsulation —
   `src/ip/route/show.rs`
 - `rtnetlink`: build a connection with `NETLINK_GET_STRICT_CHK` enabled so
   that unsupported attributes of `ip route get as ADDRESS` are rejected
   like iproute2 — `src/ip/route/get.rs`
-- add/del/change/replace/prepend: parse and emit MPLS routes —
-  `src/ip/route/add.rs`, `src/ip/route/modify.rs`
+- `-f mpls route show PREFIX` ignores the prefix selector —
+  `src/ip/route/show.rs` (`RouteShowFilter::parse`)
 
 ## `ip link`
 
