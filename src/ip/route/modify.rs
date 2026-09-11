@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use std::net::IpAddr;
+use std::{collections::HashMap, net::IpAddr};
 
 use futures_util::stream::StreamExt;
 use rtnetlink::{
+    RouteNextHopBuilder,
     packet_core::{
         NLM_F_ACK, NLM_F_APPEND, NLM_F_CREATE, NLM_F_EXCL, NLM_F_REPLACE,
         NLM_F_REQUEST, NetlinkMessage,
@@ -17,7 +18,7 @@ use rtnetlink::{
     },
 };
 
-use super::add::{RouteAddConfig, parse_route_config, resolve_ifindex};
+use super::add::{RouteAddConfig, parse_route_config, resolve_route_ifindexes};
 use crate::CliError;
 
 enum RouteModifyOp {
@@ -68,15 +69,12 @@ async fn handle_modify(
     op: RouteModifyOp,
 ) -> Result<(), CliError> {
     let config = parse_route_config(opts, preferred_family)?;
-    let mut msg = build_route_message(&config)?;
 
     let (connection, handle, _) = rtnetlink::new_connection()?;
     tokio::spawn(connection);
 
-    if let Some(ref dev) = config.dev {
-        let index = resolve_ifindex(&handle, dev).await?;
-        msg.attributes.push(RouteAttribute::Oif(index));
-    }
+    let ifindexes = resolve_route_ifindexes(&handle, &config).await?;
+    let mut msg = build_route_message(&config, &ifindexes)?;
 
     let need_onlink = config.onlink
         || (msg.header.scope == RouteScope::Link && config.via.is_some());
@@ -89,6 +87,7 @@ async fn handle_modify(
 
 pub(crate) fn build_route_message(
     config: &RouteAddConfig,
+    ifindexes: &HashMap<String, u32>,
 ) -> Result<RouteMessage, CliError> {
     let mut msg = RouteMessage::default();
 
@@ -204,6 +203,50 @@ pub(crate) fn build_route_message(
             .push(RouteAttribute::Preference(RoutePreference::from(p)));
     }
 
+    // `iproute2` adds `RTA_NH_ID` while parsing the `nhid` keyword, which
+    // precedes the `RTA_OIF` added for `dev` at the end of `iproute_modify()`.
+    if let Some(id) = config.nhid {
+        msg.attributes.push(RouteAttribute::NhId(id));
+    }
+
+    if let Some(ref dev) = config.dev {
+        let index = *ifindexes.get(dev).ok_or_else(|| {
+            CliError::from(format!("Device \"{dev}\" does not exist"))
+        })?;
+        msg.attributes.push(RouteAttribute::Oif(index));
+    }
+
+    if !config.nexthops.is_empty() {
+        let mut next_hops = Vec::with_capacity(config.nexthops.len());
+        for nh in &config.nexthops {
+            let mut builder = RouteNextHopBuilder::new(family);
+            if let Some(ref addr) = nh.via {
+                builder = builder
+                    .via(*addr)
+                    .map_err(|e| CliError::from(format!("{e}")))?;
+            }
+
+            if let Some(ref dev) = nh.dev {
+                let index = *ifindexes.get(dev).ok_or_else(|| {
+                    CliError::from(format!("Device \"{dev}\" does not exist"))
+                })?;
+                builder = builder.interface(index);
+            }
+
+            if let Some(weight) = nh.weight {
+                builder = builder.weight((weight - 1) as u8);
+            }
+
+            if nh.onlink {
+                builder = builder.onlink();
+            }
+            builder = builder.pervasive(nh.pervasive);
+
+            next_hops.push(builder.build());
+        }
+        msg.attributes.push(RouteAttribute::MultiPath(next_hops));
+    }
+
     let kind = msg.header.kind;
     let scope_set = config.scope.is_some();
     if (kind == RouteType::Local || kind == RouteType::Nat) && !scope_set {
@@ -214,6 +257,8 @@ pub(crate) fn build_route_message(
         || (kind == RouteType::Unicast || kind == RouteType::Unspec)
             && config.via.is_none()
             && config.dev.is_none()
+            && config.nexthops.is_empty()
+            && config.nhid.unwrap_or(0) == 0
             && config.preference.is_none())
         && !scope_set
     {
