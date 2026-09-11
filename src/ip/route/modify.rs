@@ -75,7 +75,7 @@ async fn handle_modify(
     tokio::spawn(connection);
 
     let ifindexes = resolve_route_ifindexes(&handle, &config).await?;
-    let mut msg = build_route_message(&config, &ifindexes)?;
+    let mut msg = build_route_message(&config, &ifindexes, false)?;
 
     let need_onlink = config.onlink
         || (msg.header.scope == RouteScope::Link && config.via.is_some());
@@ -89,6 +89,7 @@ async fn handle_modify(
 pub(crate) fn build_route_message(
     config: &RouteAddConfig,
     ifindexes: &HashMap<String, u32>,
+    is_delete: bool,
 ) -> Result<RouteMessage, CliError> {
     let mut msg = RouteMessage::default();
 
@@ -96,7 +97,11 @@ pub(crate) fn build_route_message(
     msg.header.address_family = family;
 
     msg.header.protocol = RouteProtocol::Boot;
-    msg.header.scope = RouteScope::Universe;
+    msg.header.scope = if is_delete {
+        RouteScope::NoWhere
+    } else {
+        RouteScope::Universe
+    };
     msg.header.kind = RouteType::Unicast;
     msg.header.table = 254;
 
@@ -263,20 +268,32 @@ pub(crate) fn build_route_message(
 
     let kind = msg.header.kind;
     let scope_set = config.scope.is_some();
-    if (kind == RouteType::Local || kind == RouteType::Nat) && !scope_set {
-        msg.header.scope = RouteScope::Host;
-    } else if (kind == RouteType::Broadcast
-        || kind == RouteType::Multicast
-        || kind == RouteType::Anycast
-        || (kind == RouteType::Unicast || kind == RouteType::Unspec)
-            && config.via.is_none()
-            && config.dev.is_none()
-            && config.nexthops.is_empty()
-            && config.nhid.unwrap_or(0) == 0
-            && config.preference.is_none())
-        && !scope_set
-    {
-        msg.header.scope = RouteScope::Link;
+    if !scope_set {
+        msg.header.scope = if family == AddressFamily::Inet6
+            || family == AddressFamily::Mpls
+        {
+            RouteScope::Universe
+        } else if kind == RouteType::Local || kind == RouteType::Nat {
+            RouteScope::Host
+        } else if kind == RouteType::Broadcast
+            || kind == RouteType::Multicast
+            || kind == RouteType::Anycast
+        {
+            RouteScope::Link
+        } else if kind == RouteType::Unicast || kind == RouteType::Unspec {
+            if is_delete {
+                RouteScope::NoWhere
+            } else if config.via.is_none()
+                && config.nexthops.is_empty()
+                && config.nhid.unwrap_or(0) == 0
+            {
+                RouteScope::Link
+            } else {
+                msg.header.scope
+            }
+        } else {
+            msg.header.scope
+        };
     }
 
     if (kind == RouteType::Local
