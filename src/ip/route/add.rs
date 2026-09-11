@@ -957,6 +957,7 @@ mod tests {
         let msg = super::super::modify::build_route_message(
             &config,
             &Default::default(),
+            false,
         )
         .unwrap();
 
@@ -1089,6 +1090,7 @@ mod tests {
         let msg = super::super::modify::build_route_message(
             &config,
             &Default::default(),
+            false,
         )
         .unwrap();
 
@@ -1125,6 +1127,7 @@ mod tests {
         let msg = super::super::modify::build_route_message(
             &config,
             &Default::default(),
+            false,
         )
         .unwrap();
 
@@ -1220,6 +1223,7 @@ mod tests {
         let msg = super::super::modify::build_route_message(
             &config,
             &Default::default(),
+            false,
         )
         .unwrap();
 
@@ -1227,5 +1231,71 @@ mod tests {
         assert!(msg.attributes.contains(&RouteAttribute::TtlPropagate(
             RouteMplsTtlPropagation::Disabled
         )));
+    }
+
+    #[test]
+    fn test_build_route_scope() {
+        let scope =
+            |args: &[&str], family: Option<AddressFamily>, is_delete: bool| {
+                let config = parse_route_config(&opts(args), family).unwrap();
+                super::super::modify::build_route_message(
+                    &config,
+                    &Default::default(),
+                    is_delete,
+                )
+                .unwrap()
+                .header
+                .scope
+            };
+
+        // IPv4 unicast without gateway uses link scope.
+        assert_eq!(scope(&["10.0.0.0/8"], None, false), RouteScope::Link);
+        assert_eq!(
+            scope(&["10.0.0.0/8", "pref", "low"], None, false),
+            RouteScope::Link
+        );
+
+        // A gateway or nexthop ID makes the route global.
+        assert_eq!(
+            scope(&["10.0.0.0/8", "via", "192.0.2.1"], None, false),
+            RouteScope::Universe
+        );
+        assert_eq!(
+            scope(&["10.0.0.0/8", "nexthop", "via", "192.0.2.1"], None, false),
+            RouteScope::Universe
+        );
+        assert_eq!(
+            scope(&["10.0.0.0/8", "nhid", "10"], None, false),
+            RouteScope::Universe
+        );
+
+        // IPv6 and MPLS always default to universe.
+        assert_eq!(
+            scope(&["2001:db8::/64"], Some(AddressFamily::Inet6), false),
+            RouteScope::Universe
+        );
+        assert_eq!(
+            scope(&["2001:db8::/64"], Some(AddressFamily::Inet6), true),
+            RouteScope::Universe
+        );
+
+        // Other IPv4 route types.
+        assert_eq!(
+            scope(&["local", "10.0.0.1/32"], None, false),
+            RouteScope::Host
+        );
+        assert_eq!(
+            scope(&["blackhole", "10.0.0.0/8"], None, false),
+            RouteScope::Universe
+        );
+
+        // Deleting an IPv4 route uses `nowhere` as the scope wildcard.
+        assert_eq!(scope(&["10.0.0.0/8"], None, true), RouteScope::NoWhere);
+
+        // An explicit scope always wins.
+        assert_eq!(
+            scope(&["10.0.0.0/8", "scope", "host"], None, false),
+            RouteScope::Host
+        );
     }
 }

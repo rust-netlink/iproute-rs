@@ -18,7 +18,7 @@ pub(crate) async fn handle_delete(
     tokio::spawn(connection);
 
     let ifindexes = resolve_route_ifindexes(&handle, &config).await?;
-    let msg = build_route_message(&config, &ifindexes)?;
+    let msg = build_route_message(&config, &ifindexes, true)?;
 
     handle
         .route()
