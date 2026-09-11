@@ -7,9 +7,11 @@ use iproute_rs::{CanDisplay, CanOutput, CliColor, write_with_color};
 use rtnetlink::packet_route::{
     AddressFamily,
     route::{
-        RouteAttribute, RouteCacheInfo, RouteFlags, RouteHeader, RouteMessage,
-        RouteMetric, RouteMplsTtlPropagation, RouteNextHopFlags,
-        RoutePreference, RouteProtocol, RouteScope, RouteType, RouteVia,
+        RouteAttribute, RouteCacheInfo, RouteFlags, RouteHeader,
+        RouteIp6Tunnel, RouteLwEnCapType, RouteLwTunnelEncap, RouteMessage,
+        RouteMetric, RouteMplsIpTunnel, RouteMplsTtlPropagation,
+        RouteNextHopFlags, RoutePreference, RouteProtocol, RouteScope,
+        RouteSeg6IpTunnel, RouteType, RouteVia, Seg6Mode,
     },
 };
 use serde::Serialize;
@@ -42,6 +44,8 @@ pub(crate) struct CliRouteInfo {
     pub(crate) nhid: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "to")]
     pub(crate) newdst: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) encap: Option<CliRouteEncap>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) gateway: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -114,6 +118,180 @@ impl CliRouteCacheInfo {
 pub(crate) struct CliRouteVia {
     pub(crate) family: String,
     pub(crate) host: String,
+}
+
+/// `RTA_ENCAP` of a lightweight tunnel, the JSON object is emitted in the
+/// order iproute2 prints the fields of the encapsulation type.
+#[derive(Serialize, Default)]
+pub(crate) struct CliRouteEncap {
+    pub(crate) encap_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tunsrc: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) src: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) dst: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) hoplimit: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) ttl: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tc: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tos: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) key: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) csum: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) seq: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) segs: Option<Vec<String>>,
+}
+
+fn seg6_mode_to_string(mode: Seg6Mode) -> String {
+    match mode {
+        Seg6Mode::Inline => "inline".to_string(),
+        Seg6Mode::Encap => "encap".to_string(),
+        _ => "<unknown>".to_string(),
+    }
+}
+
+impl CliRouteEncap {
+    fn new(
+        encap_type: &RouteLwEnCapType,
+        encap: &[RouteLwTunnelEncap],
+    ) -> Self {
+        let mut ret = Self {
+            encap_type: encap_type.to_string(),
+            ..Default::default()
+        };
+        for item in encap {
+            match item {
+                RouteLwTunnelEncap::Mpls(RouteMplsIpTunnel::Destination(
+                    labels,
+                )) => {
+                    ret.dst = Some(
+                        labels
+                            .iter()
+                            .map(|label| label.label.to_string())
+                            .collect::<Vec<String>>()
+                            .join("/"),
+                    );
+                }
+                RouteLwTunnelEncap::Mpls(RouteMplsIpTunnel::Ttl(ttl)) => {
+                    ret.ttl = Some(*ttl)
+                }
+                RouteLwTunnelEncap::Seg6(RouteSeg6IpTunnel::Seg6(header)) => {
+                    ret.mode = Some(seg6_mode_to_string(header.mode));
+                    ret.segs = Some(
+                        header
+                            .segments
+                            .iter()
+                            .map(|segment| segment.to_string())
+                            .collect(),
+                    );
+                }
+                RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Id(id)) => {
+                    ret.id = Some(*id)
+                }
+                RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Source(src)) => {
+                    ret.src = Some(src.to_string())
+                }
+                RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Destination(dst)) => {
+                    ret.dst = Some(dst.to_string())
+                }
+                RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Hoplimit(hoplimit)) => {
+                    ret.hoplimit = Some(*hoplimit)
+                }
+                RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Tc(tc)) => {
+                    ret.tc = Some(*tc)
+                }
+                RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Flags(flags)) => {
+                    set_encap_tunnel_flags(&mut ret, flags.bits())
+                }
+                _ => (),
+            }
+        }
+        ret
+    }
+}
+
+// `TUNNEL_KEY`, `TUNNEL_CSUM` and `TUNNEL_SEQ` of `LWTUNNEL_IP*_FLAGS`.
+const TUNNEL_CSUM: u16 = 1;
+const TUNNEL_KEY: u16 = 4;
+const TUNNEL_SEQ: u16 = 8;
+
+fn set_encap_tunnel_flags(encap: &mut CliRouteEncap, flags: u16) {
+    if flags & TUNNEL_KEY != 0 {
+        encap.key = Some(true);
+    }
+    if flags & TUNNEL_CSUM != 0 {
+        encap.csum = Some(true);
+    }
+    if flags & TUNNEL_SEQ != 0 {
+        encap.seq = Some(true);
+    }
+}
+
+fn route_encap_to_string(encap: &CliRouteEncap) -> String {
+    use std::fmt::Write;
+
+    let mut buf = String::new();
+    let _ = write!(buf, " encap {} ", encap.encap_type);
+    if let Some(ref mode) = encap.mode {
+        let _ = write!(buf, "mode {mode} ");
+    }
+    if let Some(ref tunsrc) = encap.tunsrc {
+        let _ = write!(buf, "tunsrc {tunsrc} ");
+    }
+    if let Some(id) = encap.id {
+        let _ = write!(buf, "id {id} ");
+    }
+    if let Some(ref src) = encap.src {
+        let _ = write!(buf, "src {src} ");
+    }
+    if let Some(ref dst) = encap.dst {
+        // iproute2 adds a leading space to the MPLS label stack.
+        if encap.encap_type == "mpls" {
+            let _ = write!(buf, " {dst} ");
+        } else {
+            let _ = write!(buf, "dst {dst} ");
+        }
+    }
+    if let Some(hoplimit) = encap.hoplimit {
+        let _ = write!(buf, "hoplimit {hoplimit} ");
+    }
+    if let Some(ttl) = encap.ttl {
+        let _ = write!(buf, "ttl {ttl} ");
+    }
+    if let Some(tc) = encap.tc {
+        let _ = write!(buf, "tc {tc} ");
+    }
+    if let Some(tos) = encap.tos {
+        let _ = write!(buf, "tos {tos} ");
+    }
+    if encap.key == Some(true) {
+        buf.push_str("key ");
+    }
+    if encap.csum == Some(true) {
+        buf.push_str("csum ");
+    }
+    if encap.seq == Some(true) {
+        buf.push_str("seq ");
+    }
+    if let Some(ref segs) = encap.segs {
+        let _ = write!(buf, "segs {} [ ", segs.len());
+        for segment in segs {
+            let _ = write!(buf, "{segment} ");
+        }
+        buf.push_str("] ");
+    }
+    buf
 }
 
 #[derive(Serialize, Default)]
@@ -521,6 +699,9 @@ pub(crate) fn parse_nl_msg_to_route(
 
     let mut oif_index: Option<u32> = None;
     let mut iif_index: Option<u32> = None;
+    // `RTA_ENCAP_TYPE` may be sent after `RTA_ENCAP`.
+    let mut encap_attrs: Option<Vec<RouteLwTunnelEncap>> = None;
+    let mut encap_type_attr: Option<RouteLwEnCapType> = None;
 
     for nla in nl_msg.attributes.clone() {
         match nla {
@@ -652,6 +833,20 @@ pub(crate) fn parse_nl_msg_to_route(
             }
             RouteAttribute::CacheInfo(c) => {
                 info.cache_info = Some(CliRouteCacheInfo::new(&c))
+            }
+            RouteAttribute::EncapType(encap_type) => {
+                if let Some(encap) = encap_attrs.take() {
+                    info.encap = Some(CliRouteEncap::new(&encap_type, &encap));
+                } else {
+                    encap_type_attr = Some(encap_type);
+                }
+            }
+            RouteAttribute::Encap(encap) => {
+                if let Some(encap_type) = encap_type_attr.take() {
+                    info.encap = Some(CliRouteEncap::new(&encap_type, &encap));
+                } else {
+                    encap_attrs = Some(encap);
+                }
             }
             RouteAttribute::Metrics(metrics) => {
                 info.metrics = Some(vec![CliRouteMetrics::new(&metrics)]);
@@ -809,6 +1004,11 @@ impl std::fmt::Display for CliRouteInfo {
         // MPLS new destination
         if let Some(ref newdst) = self.newdst {
             write!(buf, "as to {newdst} ")?;
+        }
+
+        // Encapsulation of a lightweight tunnel
+        if let Some(ref encap) = self.encap {
+            buf.push_str(&route_encap_to_string(encap));
         }
 
         // Gateway (via)
