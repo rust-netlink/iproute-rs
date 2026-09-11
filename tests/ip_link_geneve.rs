@@ -89,6 +89,13 @@ fn test_geneve_local6() {
         ns.ip_rs_exec_cmd(&["link", "add", &parent_name, "type", "dummy"]);
         ns.ip_rs_exec_cmd(&["link", "set", &parent_name, "up"]);
         ns.ip_rs_exec_cmd(&[
+            "address",
+            "add",
+            "2001:9292::1/64",
+            "dev",
+            &parent_name,
+        ]);
+        ns.ip_rs_exec_cmd(&[
             "link",
             "add",
             "link",
