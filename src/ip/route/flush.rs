@@ -5,7 +5,7 @@ use std::{collections::HashMap, time::Instant};
 use futures_util::TryStreamExt;
 use rtnetlink::packet_route::{AddressFamily, route::RouteMessage};
 
-use super::show::{RouteShowFilter, parse_nl_msg_to_route};
+use super::show::{RouteShowFilter, parse_nl_msg_to_route, vrf_table_id};
 use crate::CliError;
 
 pub(crate) async fn handle_flush(
@@ -14,14 +14,22 @@ pub(crate) async fn handle_flush(
     show_stats: bool,
 ) -> Result<(), CliError> {
     let opts_refs: Vec<&str> = opts.iter().map(String::as_str).collect();
-    let (filter, _link_opts) = RouteShowFilter::parse(&opts_refs)?;
+    let (mut filter, _link_opts) = RouteShowFilter::parse(&opts_refs)?;
     drop(opts_refs);
 
     if opts.is_empty() {
         return Err(CliError::from("\"ip route flush\" requires arguments."));
     }
 
+    // `vrf NAME` selects the routing table of the VRF device.
+    if let Some(ref vrf_name) = filter.vrf {
+        let (connection, handle, _) = rtnetlink::new_connection()?;
+        tokio::spawn(connection);
+        filter.tb = Some(vrf_table_id(&handle, vrf_name).await?);
+    }
+
     let show_all_tables = filter.tb == Some(0);
+    let table_filtered = matches!(filter.tb, Some(tb) if tb != 0);
     let filter_family = if show_all_tables && preferred_family.is_none() {
         None
     } else {
@@ -73,7 +81,7 @@ pub(crate) async fn handle_flush(
                 route.table.as_deref(),
                 None | Some("main") | Some("254") | Some("unspec") | Some("0")
             );
-            if !show_all_tables && !is_main_table {
+            if !show_all_tables && !table_filtered && !is_main_table {
                 continue;
             }
 
