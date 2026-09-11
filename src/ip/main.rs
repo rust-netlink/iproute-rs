@@ -33,7 +33,8 @@ pub(crate) fn resolve_preferred_family(
             "inet" => Some(AddressFamily::Inet),
             "inet6" => Some(AddressFamily::Inet6),
             "bridge" => Some(AddressFamily::Bridge),
-            "link" | "mpls" => Some(AddressFamily::Unspec),
+            "link" => Some(AddressFamily::Unspec),
+            "mpls" => Some(AddressFamily::Mpls),
             _ => None,
         };
     }

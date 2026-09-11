@@ -8,8 +8,8 @@ use rtnetlink::packet_route::{
     AddressFamily,
     route::{
         RouteAttribute, RouteCacheInfo, RouteFlags, RouteHeader, RouteMessage,
-        RouteMetric, RouteNextHopFlags, RoutePreference, RouteProtocol,
-        RouteScope, RouteType, RouteVia,
+        RouteMetric, RouteMplsTtlPropagation, RouteNextHopFlags,
+        RoutePreference, RouteProtocol, RouteScope, RouteType, RouteVia,
     },
 };
 use serde::Serialize;
@@ -40,6 +40,8 @@ pub(crate) struct CliRouteInfo {
     pub(crate) src_len: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) nhid: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "to")]
+    pub(crate) newdst: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) gateway: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -458,6 +460,8 @@ fn host_len(family: AddressFamily) -> u8 {
     match family {
         AddressFamily::Inet => 32,
         AddressFamily::Inet6 => 128,
+        // MPLS labels are 20 bits.
+        AddressFamily::Mpls => 20,
         _ => 32,
     }
 }
@@ -592,6 +596,19 @@ pub(crate) fn parse_nl_msg_to_route(
                     },
                     _ => CliRouteVia::default(),
                 });
+            }
+            RouteAttribute::NewDestination(labels) => {
+                info.newdst = Some(
+                    labels
+                        .iter()
+                        .map(|label| label.label.to_string())
+                        .collect::<Vec<String>>()
+                        .join("/"),
+                );
+            }
+            RouteAttribute::TtlPropagate(value) => {
+                info.ttl_propagate =
+                    Some(value == RouteMplsTtlPropagation::Enabled);
             }
             RouteAttribute::PrefSource(addr) => {
                 info.prefsrc = match addr {
@@ -787,6 +804,11 @@ impl std::fmt::Display for CliRouteInfo {
         // Nexthop ID
         if let Some(nhid) = self.nhid {
             write!(buf, "nhid {nhid} ")?;
+        }
+
+        // MPLS new destination
+        if let Some(ref newdst) = self.newdst {
+            write!(buf, "as to {newdst} ")?;
         }
 
         // Gateway (via)
