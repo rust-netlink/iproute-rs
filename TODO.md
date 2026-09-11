@@ -4,17 +4,14 @@
 
 - add/del/change/replace/append/prepend: support `encap`
   (`mpls | ip | ip6 | seg6 | seg6local | rpl | ioam6 | xfrm`)
-- add/del/change/replace/append/prepend: accept TIME values with `s`/`ms`
-  suffix (e.g. `expires 300s`)
-- get: support `vrf NAME` and `as ADDRESS` — `src/ip/route/get.rs`
-- show/flush selectors: support `root PREFIX`, `match PREFIX`,
-  `exact PREFIX`, and `vrf NAME` — `src/ip/route/show.rs`
-  (`RouteShowFilter::parse`)
-- show: display metrics, `expires`, `nhid`, `encap`, `realms`,
-  `ipproto`/`sport`/`dport`/`flowlabel`; populate `ttl_propagate` from the
-  dump — `src/ip/route/show.rs` (`parse_nl_msg_to_route`)
-- tests: add coverage for the above (`tests/ip_route*.rs`)
-- MPLS support
+  — `src/ip/route/add.rs`, `src/ip/route/modify.rs`
+- `netlink-packet-route`: support `LWTUNNEL_ENCAP_SEG6_LOCAL`,
+  `LWTUNNEL_ENCAP_RPL` and `LWTUNNEL_ENCAP_IOAM6` encapsulation
+- `rtnetlink`: build a connection with `NETLINK_GET_STRICT_CHK` enabled so
+  that unsupported attributes of `ip route get as ADDRESS` are rejected
+  like iproute2 — `src/ip/route/get.rs`
+- add/del/change/replace/prepend: parse and emit MPLS routes —
+  `src/ip/route/add.rs`, `src/ip/route/modify.rs`
 
 ## `ip link`
 
