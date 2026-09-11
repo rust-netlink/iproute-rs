@@ -16,6 +16,9 @@ use serde::Serialize;
 
 use crate::CliError;
 
+// `iproute2` converts the route cache jiffies using `get_user_hz()`.
+const USER_HZ: u32 = 100;
+
 fn hex_encode(data: &[u8]) -> String {
     data.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -58,18 +61,45 @@ pub(crate) struct CliRouteInfo {
     pub(crate) flow: Option<CliRouteFlow>,
     #[serde(skip)]
     pub(crate) uid: Option<u32>,
-    #[serde(skip)]
-    pub(crate) cache_info: Option<RouteCacheInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) cache: Option<Vec<&'static str>>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub(crate) cache_info: Option<CliRouteCacheInfo>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "pref")]
     pub(crate) preference: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tos: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) iif: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", rename = "ttl-propogate")]
     pub(crate) ttl_propagate: Option<bool>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) nexthops: Vec<CliRouteNextHop>,
+}
+
+#[derive(Serialize, Default)]
+pub(crate) struct CliRouteCacheInfo {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) expires: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) error: Option<u32>,
+}
+
+impl CliRouteCacheInfo {
+    fn new(cache_info: &RouteCacheInfo) -> Self {
+        Self {
+            expires: if cache_info.expires == 0 {
+                None
+            } else {
+                Some(cache_info.expires / USER_HZ)
+            },
+            error: if cache_info.error == 0 {
+                None
+            } else {
+                Some(cache_info.error)
+            },
+        }
+    }
 }
 
 #[derive(Serialize, Default)]
@@ -104,6 +134,32 @@ const ROUTE_FLAG_DATA: &[(&str, RouteFlags)] = &[
     ("rt_trap", RouteFlags::RtTrap),
     ("offload_failed", RouteFlags::OffloadFailed),
 ];
+
+// Cached IPv4 routes carry the legacy `RTCF_*` flags in `rtm_flags`.
+const ROUTE_CACHE_FLAG_DATA: &[(&str, u32)] = &[
+    ("local", 0x8000_0000),
+    ("reject", 0x4000_0000),
+    ("mc", 0x2000_0000),
+    ("brd", 0x1000_0000),
+    ("dst-nat", 0x0800_0000),
+    ("src-nat", 0x0080_0000),
+    ("masq", 0x0040_0000),
+    ("dst-direct", 0x0002_0000),
+    ("src-direct", 0x0400_0000),
+    ("redirected", 0x0004_0000),
+    ("redirect", 0x0100_0000),
+    ("fastroute", 0x0020_0000),
+    ("notify", 0x0001_0000),
+    ("proxy", 0x0008_0000),
+];
+
+fn route_cache_flags_to_strings(flags: RouteFlags) -> Vec<&'static str> {
+    let raw = flags.bits() & !0xFFFF;
+    ROUTE_CACHE_FLAG_DATA
+        .iter()
+        .filter_map(|(name, mask)| (raw & mask != 0).then_some(*name))
+        .collect()
+}
 
 fn route_flags_to_strings(flags: RouteFlags) -> Vec<&'static str> {
     let mut result = Vec::new();
@@ -349,7 +405,9 @@ pub(crate) fn parse_nl_msg_to_route(
             RouteAttribute::Preference(p) => {
                 info.preference = Some(route_preference_to_string(p))
             }
-            RouteAttribute::CacheInfo(c) => info.cache_info = Some(c),
+            RouteAttribute::CacheInfo(c) => {
+                info.cache_info = Some(CliRouteCacheInfo::new(&c))
+            }
             RouteAttribute::MultiPath(nhs) => {
                 for nh in nhs {
                     let mut cli_nh = CliRouteNextHop {
@@ -456,9 +514,8 @@ pub(crate) fn parse_nl_msg_to_route(
     let is_cloned = nl_msg.header.flags.contains(RouteFlags::Cloned);
     info.cloned = is_cloned;
 
-    // Only show cache info for cloned routes or with -d
-    if !is_cloned && !show_details {
-        info.cache_info = None;
+    if is_cloned && family == AddressFamily::Inet {
+        info.cache = Some(route_cache_flags_to_strings(nl_msg.header.flags));
     }
 
     info
@@ -571,35 +628,24 @@ impl std::fmt::Display for CliRouteInfo {
             write!(buf, "uid {uid} ")?;
         }
 
-        // TTL propagate
-        if let Some(ttl) = self.ttl_propagate {
-            if ttl {
-                write!(buf, "ttl-propagate enabled ")?;
-            } else {
-                write!(buf, "ttl-propagate disabled ")?;
+        // IPv4 cached routes are shown on a dedicated `cache` line, the
+        // remaining cache info follows on the same line as iproute2.
+        if self.family == AddressFamily::Inet && self.cloned {
+            buf.push_str("\n    cache ");
+            if let Some(ref cache) = self.cache
+                && !cache.is_empty()
+            {
+                write!(buf, "<{}> ", cache.join(","))?;
             }
         }
 
-        // Cache info
         if let Some(ref ci) = self.cache_info {
-            let expires_str = if (ci.expires as i32) >= 0 {
-                format!("{}", ci.expires)
-            } else {
-                format!("-{}", ci.expires.wrapping_neg())
-            };
-            write!(
-                buf,
-                " cache <clntref {}, last-use {}, expires {}, error {}, used \
-                 {}, id {}, ts {}, ts_age {}>",
-                ci.clntref,
-                ci.last_use,
-                expires_str,
-                ci.error,
-                ci.used,
-                ci.id,
-                ci.ts,
-                ci.ts_age,
-            )?;
+            if let Some(expires) = ci.expires {
+                write!(buf, "expires {expires}sec ")?;
+            }
+            if let Some(error) = ci.error {
+                write!(buf, "error {error} ")?;
+            }
         }
 
         // IIF
@@ -610,6 +656,15 @@ impl std::fmt::Display for CliRouteInfo {
         // Preference (no trailing space - matches iproute2 behavior)
         if let Some(ref pref) = self.preference {
             write!(buf, "pref {pref}")?;
+        }
+
+        // TTL propagate
+        if let Some(ttl) = self.ttl_propagate {
+            if ttl {
+                buf.push_str("ttl-propogate enabled");
+            } else {
+                buf.push_str("ttl-propogate disabled");
+            }
         }
 
         // Nexthops (multipath)
