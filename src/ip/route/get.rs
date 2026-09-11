@@ -40,7 +40,10 @@ pub(crate) async fn handle_get(
 ) -> Result<Vec<CliRouteInfo>, CliError> {
     let config = parse_get_config(opts, preferred_family)?;
 
-    let (connection, handle, _) = rtnetlink::new_connection()?;
+    // `NETLINK_GET_STRICT_CHK` makes the kernel reject the unsupported
+    // attributes of a route lookup just like iproute2 does.
+    let (connection, handle, _) =
+        rtnetlink::new_connection_with_strict_check()?;
     tokio::spawn(connection);
 
     // Build link index -> name map
@@ -429,14 +432,6 @@ fn build_get_message(
 
     // `as ADDRESS` of `ip route get`
     if let Some(addr) = config.newdst {
-        // The kernel only accepts `RTA_NEWDST` for MPLS lookups. For IPv4
-        // and IPv6 requests it fails the strict attribute check while a
-        // socket without `NETLINK_GET_STRICT_CHK` silently ignores it.
-        if config.family != AddressFamily::Mpls {
-            return Err(CliError::from(
-                "Error: Unsupported attribute in get route request.",
-            ));
-        }
         let rta = match addr {
             IpAddr::V4(a) => {
                 RouteAttribute::NewDestinationAddress(RouteAddress::Inet(a))
