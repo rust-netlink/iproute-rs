@@ -11,7 +11,7 @@ use rtnetlink::packet_route::{
         RouteIp6Tunnel, RouteIpTunnel, RouteLwEnCapType, RouteLwTunnelEncap,
         RouteMessage, RouteMetric, RouteMplsIpTunnel, RouteMplsTtlPropagation,
         RouteNextHopFlags, RoutePreference, RouteProtocol, RouteScope,
-        RouteSeg6IpTunnel, RouteType, RouteVia, Seg6Mode,
+        RouteSeg6IpTunnel, RouteType, RouteVia, RouteXfrmTunnel, Seg6Mode,
     },
 };
 use serde::Serialize;
@@ -131,6 +131,10 @@ pub(crate) struct CliRouteEncap {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) if_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) link_dev: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) id: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tunsrc: Option<String>,
@@ -168,6 +172,7 @@ impl CliRouteEncap {
     fn new(
         encap_type: &RouteLwEnCapType,
         encap: &[RouteLwTunnelEncap],
+        link_map: &HashMap<u32, String>,
     ) -> Self {
         let mut ret = Self {
             encap_type: encap_type.to_string(),
@@ -235,6 +240,17 @@ impl CliRouteEncap {
                 RouteLwTunnelEncap::Ip(RouteIpTunnel::Flags(flags)) => {
                     set_encap_tunnel_flags(&mut ret, flags.bits())
                 }
+                RouteLwTunnelEncap::Xfrm(RouteXfrmTunnel::IfId(if_id)) => {
+                    ret.if_id = Some(u64::from(*if_id))
+                }
+                RouteLwTunnelEncap::Xfrm(RouteXfrmTunnel::Link(index)) => {
+                    ret.link_dev = Some(
+                        link_map
+                            .get(index)
+                            .cloned()
+                            .unwrap_or_else(|| format!("if{index}")),
+                    )
+                }
                 _ => (),
             }
         }
@@ -266,6 +282,12 @@ fn route_encap_to_string(encap: &CliRouteEncap) -> String {
     let _ = write!(buf, " encap {} ", encap.encap_type);
     if let Some(ref mode) = encap.mode {
         let _ = write!(buf, "mode {mode} ");
+    }
+    if let Some(if_id) = encap.if_id {
+        let _ = write!(buf, "if_id {if_id} ");
+    }
+    if let Some(ref link_dev) = encap.link_dev {
+        let _ = write!(buf, "link_dev {link_dev} ");
     }
     if let Some(ref tunsrc) = encap.tunsrc {
         let _ = write!(buf, "tunsrc {tunsrc} ");
@@ -898,14 +920,16 @@ pub(crate) fn parse_nl_msg_to_route(
             }
             RouteAttribute::EncapType(encap_type) => {
                 if let Some(encap) = encap_attrs.take() {
-                    info.encap = Some(CliRouteEncap::new(&encap_type, &encap));
+                    info.encap =
+                        Some(CliRouteEncap::new(&encap_type, &encap, link_map));
                 } else {
                     encap_type_attr = Some(encap_type);
                 }
             }
             RouteAttribute::Encap(encap) => {
                 if let Some(encap_type) = encap_type_attr.take() {
-                    info.encap = Some(CliRouteEncap::new(&encap_type, &encap));
+                    info.encap =
+                        Some(CliRouteEncap::new(&encap_type, &encap, link_map));
                 } else {
                     encap_attrs = Some(encap);
                 }

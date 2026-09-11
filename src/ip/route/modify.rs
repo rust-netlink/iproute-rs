@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, net::IpAddr};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv6Addr},
+};
 
 use futures_util::stream::StreamExt;
 use rtnetlink::{
@@ -12,14 +15,19 @@ use rtnetlink::{
     packet_route::{
         AddressFamily, RouteNetlinkMessage,
         route::{
-            RouteAddress, RouteAttribute, RouteMessage,
-            RouteMplsTtlPropagation, RoutePreference, RouteProtocol,
-            RouteScope, RouteType, RouteVia,
+            RouteAddress, RouteAttribute, RouteIp6Tunnel, RouteIpTunnel,
+            RouteLwEnCapType, RouteLwTunnelEncap, RouteMessage,
+            RouteMplsIpTunnel, RouteMplsTtlPropagation, RoutePreference,
+            RouteProtocol, RouteScope, RouteSeg6IpTunnel, RouteType, RouteVia,
+            RouteXfrmTunnel, Seg6Header, Seg6Mode,
         },
     },
 };
 
-use super::add::{RouteAddConfig, parse_route_config, resolve_route_ifindexes};
+use super::add::{
+    RouteAddConfig, RouteEncapConfig, parse_route_config,
+    resolve_route_ifindexes,
+};
 use crate::CliError;
 
 enum RouteModifyOp {
@@ -84,6 +92,121 @@ async fn handle_modify(
     }
 
     send_route_request(handle, msg, op).await
+}
+
+fn build_encap(
+    encap: &RouteEncapConfig,
+    ifindexes: &HashMap<String, u32>,
+) -> Result<(RouteLwEnCapType, Vec<RouteLwTunnelEncap>), CliError> {
+    let mut attrs = Vec::new();
+
+    let encap_type = match encap {
+        RouteEncapConfig::Mpls { dst, ttl } => {
+            attrs.push(RouteLwTunnelEncap::Mpls(
+                RouteMplsIpTunnel::Destination(dst.clone()),
+            ));
+            if let Some(ttl) = ttl {
+                attrs.push(RouteLwTunnelEncap::Mpls(RouteMplsIpTunnel::Ttl(
+                    *ttl,
+                )));
+            }
+            RouteLwEnCapType::Mpls
+        }
+        RouteEncapConfig::Ip {
+            id,
+            dst,
+            src,
+            ttl,
+            tos,
+            flags,
+        } => {
+            if let Some(id) = id {
+                attrs.push(RouteLwTunnelEncap::Ip(RouteIpTunnel::Id(*id)));
+            }
+            if let Some(dst) = dst {
+                attrs.push(RouteLwTunnelEncap::Ip(RouteIpTunnel::Destination(
+                    *dst,
+                )));
+            }
+            if let Some(src) = src {
+                attrs.push(RouteLwTunnelEncap::Ip(RouteIpTunnel::Source(*src)));
+            }
+            if let Some(ttl) = ttl {
+                attrs.push(RouteLwTunnelEncap::Ip(RouteIpTunnel::Ttl(*ttl)));
+            }
+            if let Some(tos) = tos {
+                attrs.push(RouteLwTunnelEncap::Ip(RouteIpTunnel::Tos(*tos)));
+            }
+            if !flags.is_empty() {
+                attrs
+                    .push(RouteLwTunnelEncap::Ip(RouteIpTunnel::Flags(*flags)));
+            }
+            RouteLwEnCapType::Ip
+        }
+        RouteEncapConfig::Ip6 {
+            id,
+            dst,
+            src,
+            hoplimit,
+            tc,
+            flags,
+        } => {
+            if let Some(id) = id {
+                attrs.push(RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Id(*id)));
+            }
+            if let Some(dst) = dst {
+                attrs.push(RouteLwTunnelEncap::Ip6(
+                    RouteIp6Tunnel::Destination(*dst),
+                ));
+            }
+            if let Some(src) = src {
+                attrs.push(RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Source(
+                    *src,
+                )));
+            }
+            if let Some(hoplimit) = hoplimit {
+                attrs.push(RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Hoplimit(
+                    *hoplimit,
+                )));
+            }
+            if let Some(tc) = tc {
+                attrs.push(RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Tc(*tc)));
+            }
+            if !flags.is_empty() {
+                attrs.push(RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Flags(
+                    *flags,
+                )));
+            }
+            RouteLwEnCapType::Ip6
+        }
+        RouteEncapConfig::Seg6 { mode, segs } => {
+            let mut header = Seg6Header::default();
+            header.mode = *mode;
+            header.segments = segs.clone();
+            // `iproute2` appends a zeroed segment to the SRH of inline mode.
+            if *mode == Seg6Mode::Inline {
+                header.segments.push(Ipv6Addr::UNSPECIFIED);
+            }
+            attrs.push(RouteLwTunnelEncap::Seg6(RouteSeg6IpTunnel::Seg6(
+                header,
+            )));
+            RouteLwEnCapType::Seg6
+        }
+        RouteEncapConfig::Xfrm { if_id, link_dev } => {
+            attrs.push(RouteLwTunnelEncap::Xfrm(RouteXfrmTunnel::IfId(*if_id)));
+            if let Some(name) = link_dev {
+                let index = *ifindexes.get(name).ok_or_else(|| {
+                    CliError::from(format!("Device \"{name}\" does not exist"))
+                })?;
+                attrs.push(RouteLwTunnelEncap::Xfrm(RouteXfrmTunnel::Link(
+                    index,
+                )));
+            }
+            RouteLwEnCapType::Xfrm
+        }
+    };
+
+    Ok((encap_type, attrs))
 }
 
 pub(crate) fn build_route_message(
@@ -264,6 +387,13 @@ pub(crate) fn build_route_message(
             next_hops.push(builder.build());
         }
         msg.attributes.push(RouteAttribute::MultiPath(next_hops));
+    }
+
+    // `iproute2` adds `RTA_ENCAP` before the final `RTA_OIF` of `dev`.
+    if let Some(ref encap) = config.encap {
+        let (encap_type, attrs) = build_encap(encap, ifindexes)?;
+        msg.attributes.push(RouteAttribute::Encap(attrs));
+        msg.attributes.push(RouteAttribute::EncapType(encap_type));
     }
 
     let kind = msg.header.kind;
