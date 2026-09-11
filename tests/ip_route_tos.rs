@@ -175,3 +175,34 @@ fn test_route_add_tos_and_ttl_propagate() {
         assert_route_dump_eq(ip_rs_ns, ip_ns, "10.206.0.0/16");
     });
 }
+
+// The DS field of a route is shown with its name or as a hexadecimal
+// number.
+#[test]
+fn test_route_show_tos() {
+    with_netns(|ns| {
+        setup_dummy_iface(ns);
+        for prefix in ["10.207.0.0/16", "10.208.0.0/16"] {
+            let tos = if prefix == "10.207.0.0/16" {
+                "AF11"
+            } else {
+                "4"
+            };
+            ns.exec_cmd(&[
+                "ip",
+                "route",
+                "add",
+                prefix,
+                "tos",
+                tos,
+                "via",
+                "10.0.0.254",
+                "dev",
+                DUMMY_NAME,
+            ]);
+
+            ns.assert_eq_output(&["route", "show", prefix]);
+            ns.assert_eq_output(&["-j", "route", "show", prefix]);
+        }
+    });
+}
