@@ -2,9 +2,6 @@
 
 ## `ip route`
 
-- add/del/change/replace/append/prepend: support multipath (`nexthop ...`,
-  `weight`), `nhid ID`, and the `pervasive` next-hop flag —
-  `src/ip/route/add.rs`, `src/ip/route/modify.rs`
 - add/del/change/replace/append/prepend: support `tos TOS` and
   `ttl-propagate` in NODE_SPEC
 - add/del/change/replace/append/prepend: support `encap`

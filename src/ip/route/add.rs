@@ -15,6 +15,16 @@ use rtnetlink::{
 
 use crate::CliError;
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct RouteNextHopConfig {
+    pub(crate) via: Option<IpAddr>,
+    pub(crate) dev: Option<String>,
+    /// Weight as given on the command line (`1..=256`).
+    pub(crate) weight: Option<u16>,
+    pub(crate) onlink: bool,
+    pub(crate) pervasive: bool,
+}
+
 pub(crate) struct RouteAddConfig {
     pub(crate) dst: Option<IpAddr>,
     pub(crate) dst_len: u8,
@@ -36,6 +46,8 @@ pub(crate) struct RouteAddConfig {
     pub(crate) family: Option<AddressFamily>,
     pub(crate) metrics: Vec<RouteMetric>,
     pub(crate) realm: Option<RouteRealm>,
+    pub(crate) nexthops: Vec<RouteNextHopConfig>,
+    pub(crate) nhid: Option<u32>,
 }
 
 pub(crate) fn parse_route_config(
@@ -62,6 +74,8 @@ pub(crate) fn parse_route_config(
     let mut family: Option<AddressFamily> = preferred_family;
     let mut metrics: Vec<RouteMetric> = Vec::new();
     let mut realm: Option<RouteRealm> = None;
+    let mut nexthops: Vec<RouteNextHopConfig> = Vec::new();
+    let mut nhid: Option<u32> = None;
     let mut positional_prefix_seen = false;
 
     let mut iter = opts.iter().peekable();
@@ -71,9 +85,9 @@ pub(crate) fn parse_route_config(
                 let val = iter.next().ok_or_else(|| {
                     CliError::from("\"via\" requires a value")
                 })?;
-                let (addr, fam) = parse_via_address(val, family, &mut iter)?;
+                let (addr, fam) = parse_via_address(val, &mut iter)?;
                 via = Some(addr);
-                family = fam.or(family).or(addr_to_family(&addr));
+                family = family.or(fam).or(addr_to_family(&addr));
             }
             "dev" => {
                 dev = Some(
@@ -343,6 +357,25 @@ pub(crate) fn parse_route_config(
                 })?;
                 realm = Some(parse_realm(val)?);
             }
+            "nhid" => {
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"nhid\" requires a value")
+                })?;
+                nhid = Some(parse_u32_any_base(val)?);
+            }
+            "nexthop" => {
+                nexthops.push(parse_one_nexthop(&mut iter, &mut family)?);
+                while let Some(arg) = iter.peek() {
+                    if arg.as_str() != "nexthop" {
+                        return Err(CliError::from(format!(
+                            "unexpected argument: {arg}"
+                        )));
+                    }
+                    iter.next();
+                    nexthops.push(parse_one_nexthop(&mut iter, &mut family)?);
+                }
+                break;
+            }
             "as" => {
                 return Err(CliError::from(format!("invalid argument: {arg}")));
             }
@@ -393,7 +426,70 @@ pub(crate) fn parse_route_config(
         family,
         metrics,
         realm,
+        nexthops,
+        nhid,
     })
+}
+
+fn parse_one_nexthop<'a>(
+    iter: &mut std::iter::Peekable<impl Iterator<Item = &'a String>>,
+    family: &mut Option<AddressFamily>,
+) -> Result<RouteNextHopConfig, CliError> {
+    let mut nexthop = RouteNextHopConfig::default();
+
+    while let Some(raw_arg) = iter.peek() {
+        let arg = raw_arg.to_string();
+        match arg.as_str() {
+            "via" => {
+                iter.next();
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"via\" requires a value")
+                })?;
+                let (addr, _) = parse_via_address(val, iter)?;
+                nexthop.via = Some(addr);
+                // The route address family is only taken from the first
+                // nexthop when it was not determined by the command line
+                // family option or the destination prefix.
+                if family.is_none() {
+                    *family = addr_to_family(&addr);
+                }
+            }
+            "dev" => {
+                iter.next();
+                nexthop.dev = Some(
+                    iter.next()
+                        .ok_or_else(|| {
+                            CliError::from("\"dev\" requires a value")
+                        })?
+                        .clone(),
+                );
+            }
+            "weight" => {
+                iter.next();
+                let val = iter.next().ok_or_else(|| {
+                    CliError::from("\"weight\" requires a value")
+                })?;
+                let weight = parse_u32_any_base(val)?;
+                if weight == 0 || weight > 256 {
+                    return Err(CliError::from(format!(
+                        "invalid weight value: {val}"
+                    )));
+                }
+                nexthop.weight = Some(weight as u16);
+            }
+            "onlink" => {
+                iter.next();
+                nexthop.onlink = true;
+            }
+            "pervasive" => {
+                iter.next();
+                nexthop.pervasive = true;
+            }
+            _ => break,
+        }
+    }
+
+    Ok(nexthop)
 }
 
 fn parse_u32_any_base(s: &str) -> Result<u32, CliError> {
@@ -483,7 +579,6 @@ fn addr_to_family(addr: &IpAddr) -> Option<AddressFamily> {
 
 fn parse_via_address<'a>(
     s: &str,
-    current_family: Option<AddressFamily>,
     iter: &mut std::iter::Peekable<impl Iterator<Item = &'a String>>,
 ) -> Result<(IpAddr, Option<AddressFamily>), CliError> {
     let result = match s {
@@ -509,14 +604,7 @@ fn parse_via_address<'a>(
             let addr: IpAddr = s.parse().map_err(|_| {
                 CliError::from(format!("invalid via address: {s}"))
             })?;
-            let fam = addr_to_family(&addr);
-            if let Some(cf) = current_family
-                && fam != Some(cf)
-            {
-                // Address family differs from route family -
-                // will use RTA_VIA instead of RTA_GATEWAY
-            }
-            (addr, fam)
+            (addr, addr_to_family(&addr))
         }
     };
     Ok(result)
@@ -646,9 +734,32 @@ pub(crate) async fn resolve_ifindex(
     Ok(link.header.index)
 }
 
+pub(crate) async fn resolve_route_ifindexes(
+    handle: &rtnetlink::Handle,
+    config: &RouteAddConfig,
+) -> Result<std::collections::HashMap<String, u32>, CliError> {
+    let mut indexes = std::collections::HashMap::new();
+
+    let dev_names = config
+        .dev
+        .iter()
+        .chain(config.nexthops.iter().filter_map(|nh| nh.dev.as_ref()));
+    for name in dev_names {
+        if indexes.contains_key(name) {
+            continue;
+        }
+        let index = resolve_ifindex(handle, name).await?;
+        indexes.insert(name.clone(), index);
+    }
+
+    Ok(indexes)
+}
+
 #[cfg(test)]
 mod tests {
-    use rtnetlink::packet_route::route::RouteAttribute;
+    use rtnetlink::packet_route::route::{
+        RouteAttribute, RouteNextHopFlags, RouteVia,
+    };
 
     use super::*;
 
@@ -775,7 +886,11 @@ mod tests {
             None,
         )
         .unwrap();
-        let msg = super::super::modify::build_route_message(&config).unwrap();
+        let msg = super::super::modify::build_route_message(
+            &config,
+            &Default::default(),
+        )
+        .unwrap();
 
         assert!(
             msg.attributes.contains(&RouteAttribute::Metrics(vec![
@@ -786,5 +901,190 @@ mod tests {
             source: 1,
             destination: 2,
         })));
+    }
+
+    #[test]
+    fn test_parse_route_multipath() {
+        let config = parse_route_config(
+            &opts(&[
+                "10.109.0.0/16",
+                "nexthop",
+                "via",
+                "10.0.0.254",
+                "dev",
+                "test-dummy",
+                "weight",
+                "1",
+                "nexthop",
+                "via",
+                "10.0.0.253",
+                "dev",
+                "test-dummy",
+                "weight",
+                "2",
+                "onlink",
+            ]),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(config.nexthops.len(), 2);
+        assert_eq!(
+            config.nexthops[0],
+            RouteNextHopConfig {
+                via: Some("10.0.0.254".parse().unwrap()),
+                dev: Some("test-dummy".to_string()),
+                weight: Some(1),
+                onlink: false,
+                pervasive: false,
+            }
+        );
+        assert_eq!(
+            config.nexthops[1],
+            RouteNextHopConfig {
+                via: Some("10.0.0.253".parse().unwrap()),
+                dev: Some("test-dummy".to_string()),
+                weight: Some(2),
+                onlink: true,
+                pervasive: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_route_nhid_and_pervasive() {
+        let config = parse_route_config(
+            &opts(&[
+                "10.109.0.0/16",
+                "nhid",
+                "10",
+                "nexthop",
+                "via",
+                "10.0.0.254",
+                "dev",
+                "test-dummy",
+                "pervasive",
+            ]),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(config.nhid, Some(10));
+        assert_eq!(config.nexthops.len(), 1);
+        assert!(config.nexthops[0].pervasive);
+    }
+
+    #[test]
+    fn test_parse_route_nexthop_weight_bounds() {
+        assert!(
+            parse_route_config(
+                &opts(&["10.0.0.0/8", "nexthop", "weight", "0"]),
+                None,
+            )
+            .is_err()
+        );
+        assert!(
+            parse_route_config(
+                &opts(&["10.0.0.0/8", "nexthop", "weight", "257"]),
+                None,
+            )
+            .is_err()
+        );
+
+        let config = parse_route_config(
+            &opts(&["10.0.0.0/8", "nexthop", "weight", "256"]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(config.nexthops[0].weight, Some(256));
+    }
+
+    #[test]
+    fn test_build_route_multipath_message() {
+        let config = parse_route_config(
+            &opts(&[
+                "10.109.0.0/16",
+                "nexthop",
+                "via",
+                "10.0.0.254",
+                "weight",
+                "2",
+                "pervasive",
+                "nexthop",
+                "via",
+                "inet6",
+                "2001:db8::1",
+            ]),
+            None,
+        )
+        .unwrap();
+        let msg = super::super::modify::build_route_message(
+            &config,
+            &Default::default(),
+        )
+        .unwrap();
+
+        let Some(RouteAttribute::MultiPath(nexthops)) = msg
+            .attributes
+            .iter()
+            .find(|attr| matches!(attr, RouteAttribute::MultiPath(_)))
+        else {
+            panic!("multipath attribute not found");
+        };
+
+        assert_eq!(nexthops.len(), 2);
+        assert_eq!(nexthops[0].hops, 1);
+        assert!(nexthops[0].flags.contains(RouteNextHopFlags::Pervasive));
+        assert_eq!(
+            nexthops[0].attributes,
+            vec![RouteAttribute::Gateway(
+                "10.0.0.254".parse::<Ipv4Addr>().unwrap().into()
+            )]
+        );
+        assert_eq!(
+            nexthops[1].attributes,
+            vec![RouteAttribute::Via(RouteVia::Inet6(
+                "2001:db8::1".parse().unwrap()
+            ))]
+        );
+    }
+
+    #[test]
+    fn test_build_route_nhid_message() {
+        let config =
+            parse_route_config(&opts(&["10.111.0.0/16", "nhid", "10"]), None)
+                .unwrap();
+        let msg = super::super::modify::build_route_message(
+            &config,
+            &Default::default(),
+        )
+        .unwrap();
+
+        assert!(msg.attributes.contains(&RouteAttribute::NhId(10)));
+        assert_eq!(msg.header.scope, RouteScope::Universe);
+    }
+
+    #[test]
+    fn test_parse_route_nexthop_family() {
+        // The destination prefix fixes the route family: a nexthop using
+        // another family must not change it.
+        let config = parse_route_config(
+            &opts(&["10.112.0.0/16", "nexthop", "via", "inet6", "2001:db8::2"]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(config.family, Some(AddressFamily::Inet));
+        assert_eq!(
+            config.nexthops[0].via,
+            Some("2001:db8::2".parse().unwrap())
+        );
+
+        // Without a prefix the family is taken from the first nexthop.
+        let config = parse_route_config(
+            &opts(&["nexthop", "via", "inet6", "2001:db8::2"]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(config.family, Some(AddressFamily::Inet6));
     }
 }
