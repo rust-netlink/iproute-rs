@@ -40,6 +40,8 @@ pub(crate) struct CliLinkInfoDataBond {
     resend_igmp: u32,
     num_peer_notif: u8,
     all_slaves_active: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lacp_strict: Option<bool>,
     min_links: u32,
     lp_interval: u32,
     packets_per_slave: u32,
@@ -79,6 +81,7 @@ impl From<&[InfoBond]> for CliLinkInfoDataBond {
         let mut resend_igmp = 0;
         let mut num_peer_notif = 0;
         let mut all_slaves_active = 0;
+        let mut lacp_strict = None;
         let mut min_links = 0;
         let mut lp_interval = 0;
         let mut packets_per_slave = 0;
@@ -147,6 +150,7 @@ impl From<&[InfoBond]> for CliLinkInfoDataBond {
                 InfoBond::TlbDynamicLb(v) => tlb_dynamic_lb = *v as u8,
                 InfoBond::CoupledControl(v) => coupled_control = *v,
                 InfoBond::BroadcastNeigh(v) => broadcast_neighbor = *v,
+                InfoBond::LacpStrict(v) => lacp_strict = Some(*v),
                 InfoBond::ArpIpTarget(addrs) => {
                     arp_ip_target =
                         Some(addrs.iter().map(|a| a.to_string()).collect());
@@ -176,6 +180,7 @@ impl From<&[InfoBond]> for CliLinkInfoDataBond {
             resend_igmp,
             num_peer_notif,
             all_slaves_active,
+            lacp_strict,
             min_links,
             lp_interval,
             packets_per_slave,
@@ -227,6 +232,9 @@ impl std::fmt::Display for CliLinkInfoDataBond {
         write!(f, " resend_igmp {}", self.resend_igmp)?;
         write!(f, " num_grat_arp {}", self.num_peer_notif)?;
         write!(f, " all_slaves_active {}", self.all_slaves_active)?;
+        if let Some(v) = self.lacp_strict {
+            write!(f, " lacp_strict {}", on_off(v))?;
+        }
         write!(f, " min_links {}", self.min_links)?;
         write!(f, " lp_interval {}", self.lp_interval)?;
         write!(f, " packets_per_slave {}", self.packets_per_slave)?;
@@ -509,6 +517,9 @@ fn apply_bond_args<'a>(
                 builder = builder.append_info_data(InfoBond::BroadcastNeigh(
                     parse_on_off_01(v)?,
                 ));
+            }
+            "lacp_strict" => {
+                builder = builder.lacp_strict(parse_on_off_01(v)?);
             }
             "ad_select" => {
                 let val = v.parse::<BondAdSelect>().map_err(|e| {

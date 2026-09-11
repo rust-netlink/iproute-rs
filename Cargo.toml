@@ -1,12 +1,10 @@
 [package]
-readme = "README.md"
 authors = ["Gris Ge <cnfourt@gmail.com>"]
 name = "iproute-rs"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
 description = "Command line tool for rust-netlink project"
-homepage = "https://github.com/rust-netlink/iproute-rs"
 repository = "https://github.com/rust-netlink/iproute-rs"
 keywords = ["network"]
 
