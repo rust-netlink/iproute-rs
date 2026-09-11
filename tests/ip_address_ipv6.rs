@@ -4,6 +4,13 @@ mod common;
 
 use self::common::{DUMMY_NAME, with_dummy_iface_empty};
 
+fn wait_for_dad() {
+    // The tests run iproute2 and ip-rs show commands sequentially. Without
+    // waiting for DAD to finish, the address may be reported as tentative
+    // only by the first command.
+    std::thread::sleep(std::time::Duration::from_secs(2));
+}
+
 #[test]
 fn test_address_add_simple_ipv6() {
     with_dummy_iface_empty(|ns| {
@@ -14,6 +21,7 @@ fn test_address_add_simple_ipv6() {
             "dev",
             DUMMY_NAME,
         ]);
+        wait_for_dad();
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -37,6 +45,7 @@ fn test_address_add_ipv6_with_all_options() {
             "proto",
             "kernel_ra",
         ]);
+        wait_for_dad();
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -56,6 +65,7 @@ fn test_address_add_home_flag() {
             "proto",
             "kernel_ra",
         ]);
+        wait_for_dad();
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -70,6 +80,7 @@ fn test_address_add_without_prefix_v6() {
             "dev",
             DUMMY_NAME,
         ]);
+        wait_for_dad();
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -78,6 +89,7 @@ fn test_address_add_without_prefix_v6() {
 fn test_address_add_alias_a_ad() {
     with_dummy_iface_empty(|ns| {
         ns.ip_rs_exec_cmd(&["a", "ad", "2001:db8::1/64", "dev", DUMMY_NAME]);
+        wait_for_dad();
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
@@ -93,6 +105,7 @@ fn test_address_change_ipv6_scope() {
             "dev",
             DUMMY_NAME,
         ]);
+        wait_for_dad();
         ns.ip_rs_exec_cmd(&[
             "address",
             "change",
@@ -117,6 +130,7 @@ fn test_address_delete_ipv6() {
             "dev",
             DUMMY_NAME,
         ]);
+        wait_for_dad();
         ns.ip_rs_exec_cmd(&[
             "address",
             "delete",
@@ -138,6 +152,7 @@ fn test_address_replace_ipv6_create_new() {
             "dev",
             DUMMY_NAME,
         ]);
+        wait_for_dad();
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
