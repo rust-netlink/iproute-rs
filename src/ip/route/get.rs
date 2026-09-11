@@ -5,6 +5,7 @@ use std::net::IpAddr;
 use futures_util::TryStreamExt;
 use rtnetlink::packet_route::{
     AddressFamily,
+    link::{InfoKind, LinkAttribute, LinkInfo},
     route::{RouteAddress, RouteAttribute, RouteFlags, RouteMessage},
 };
 
@@ -19,6 +20,8 @@ struct RouteGetConfig {
     tos: Option<u8>,
     iif: Option<String>,
     oif: Option<String>,
+    vrf: Option<String>,
+    newdst: Option<IpAddr>,
     mark: Option<u32>,
     uid: Option<u32>,
     ipproto: Option<u8>,
@@ -51,8 +54,19 @@ pub(crate) async fn handle_get(
         let idx = resolve_ifindex(&handle, name).await?;
         msg.attributes.push(RouteAttribute::Iif(idx));
     }
-    if let Some(ref name) = config.oif {
-        let idx = resolve_ifindex(&handle, name).await?;
+    let oif_index = if let Some(ref name) = config.oif {
+        Some(resolve_ifindex(&handle, name).await?)
+    } else if let Some(ref name) = config.vrf {
+        if !is_vrf_device(&handle, name).await? {
+            return Err(CliError::from(format!(
+                "Error: argument \"{name}\" is wrong: Invalid VRF"
+            )));
+        }
+        Some(resolve_ifindex(&handle, name).await?)
+    } else {
+        None
+    };
+    if let Some(idx) = oif_index {
         msg.attributes.push(RouteAttribute::Oif(idx));
     }
 
@@ -107,9 +121,8 @@ pub(crate) async fn handle_get(
             128
         };
 
-        // Only add OIF if user explicitly specified oif
-        if let Some(ref name) = config.oif {
-            let idx = resolve_ifindex(&handle, name).await?;
+        // Only add OIF if user explicitly specified oif or vrf
+        if let Some(idx) = oif_index {
             msg2.attributes.push(RouteAttribute::Oif(idx));
         }
         // Only add IIF if user explicitly specified iif
@@ -141,6 +154,8 @@ fn parse_get_config(
     let mut tos: Option<u8> = None;
     let mut iif: Option<String> = None;
     let mut oif: Option<String> = None;
+    let mut vrf: Option<String> = None;
+    let mut newdst: Option<IpAddr> = None;
     let mut mark: Option<u32> = None;
     let mut uid: Option<u32> = None;
     let mut ipproto: Option<u8> = None;
@@ -192,6 +207,32 @@ fn parse_get_config(
                         })?
                         .clone(),
                 );
+            }
+            "vrf" => {
+                vrf = Some(
+                    iter.next()
+                        .ok_or_else(|| {
+                            CliError::from("\"vrf\" requires a value")
+                        })?
+                        .clone(),
+                );
+            }
+            "as" => {
+                let mut val = iter
+                    .next()
+                    .ok_or_else(|| CliError::from("\"as\" requires a value"))?;
+                if val == "to" {
+                    val = iter.next().ok_or_else(|| {
+                        CliError::from("\"as to\" requires a value")
+                    })?;
+                }
+                let addr: IpAddr = val.parse().map_err(|_| {
+                    CliError::from(format!("invalid address: {val}"))
+                })?;
+                if family == AddressFamily::Unspec {
+                    family = addr_to_family(&addr);
+                }
+                newdst = Some(addr);
             }
             "mark" => {
                 let val = iter.next().ok_or_else(|| {
@@ -296,6 +337,8 @@ fn parse_get_config(
         tos,
         iif,
         oif,
+        vrf,
+        newdst,
         mark,
         uid,
         ipproto,
@@ -384,6 +427,27 @@ fn build_get_message(
         msg.attributes.push(RouteAttribute::Uid(u));
     }
 
+    // `as ADDRESS` of `ip route get`
+    if let Some(addr) = config.newdst {
+        // The kernel only accepts `RTA_NEWDST` for MPLS lookups. For IPv4
+        // and IPv6 requests it fails the strict attribute check while a
+        // socket without `NETLINK_GET_STRICT_CHK` silently ignores it.
+        if config.family != AddressFamily::Mpls {
+            return Err(CliError::from(
+                "Error: Unsupported attribute in get route request.",
+            ));
+        }
+        let rta = match addr {
+            IpAddr::V4(a) => {
+                RouteAttribute::NewDestinationAddress(RouteAddress::Inet(a))
+            }
+            IpAddr::V6(a) => {
+                RouteAttribute::NewDestinationAddress(RouteAddress::Inet6(a))
+            }
+        };
+        msg.attributes.push(rta);
+    }
+
     // IP proto
     if let Some(p) = config.ipproto {
         msg.attributes.push(RouteAttribute::IpProto(p));
@@ -452,4 +516,24 @@ async fn resolve_ifindex(
         CliError::from(format!("Device \"{name}\" does not exist"))
     })?;
     Ok(link.header.index)
+}
+
+async fn is_vrf_device(
+    handle: &rtnetlink::Handle,
+    name: &str,
+) -> Result<bool, CliError> {
+    let mut links = handle.link().get().match_name(name.to_string()).execute();
+    let link = links.try_next().await?.ok_or_else(|| {
+        CliError::from(format!("Device \"{name}\" not found"))
+    })?;
+    for attr in &link.attributes {
+        if let LinkAttribute::LinkInfo(infos) = attr
+            && infos
+                .iter()
+                .any(|info| matches!(info, LinkInfo::Kind(InfoKind::Vrf)))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

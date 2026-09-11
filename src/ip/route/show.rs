@@ -72,7 +72,7 @@ pub(crate) struct CliRouteInfo {
     pub(crate) mark: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) flow: Option<CliRouteFlow>,
-    #[serde(skip)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) uid: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) cache: Option<Vec<&'static str>>,
@@ -1005,6 +1005,12 @@ pub(crate) fn parse_nl_msg_to_route(
 
     let is_cloned = nl_msg.header.flags.contains(RouteFlags::Cloned);
     info.cloned = is_cloned;
+
+    // iproute2 hides the protocol and scope of cached routes.
+    if is_cloned {
+        info.protocol = None;
+        info.scope = None;
+    }
 
     if is_cloned && family == AddressFamily::Inet {
         info.cache = Some(route_cache_flags_to_strings(nl_msg.header.flags));
