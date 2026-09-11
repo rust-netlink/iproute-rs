@@ -77,3 +77,64 @@ fn test_route_show_mpls_new_destination() {
         ns.assert_eq_output(&["-j", "-f", "mpls", "route", "show"]);
     });
 }
+
+// `ip-rs` must accept the same `-f mpls route` arguments as `iproute2`.
+#[test]
+fn test_route_add_mpls() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        ns.ip_rs_exec_cmd(&[
+            "-f",
+            "mpls",
+            "route",
+            "add",
+            "100",
+            "dev",
+            DUMMY_NAME,
+            "ttl-propagate",
+            "enabled",
+        ]);
+        ns.ip_rs_exec_cmd(&[
+            "-f", "mpls", "route", "add", "300", "via", "inet", "10.0.0.2",
+            "as", "to", "400", "dev", DUMMY_NAME,
+        ]);
+
+        ns.assert_eq_output(&["-f", "mpls", "route", "show"]);
+        ns.assert_eq_output(&["-j", "-f", "mpls", "route", "show"]);
+    });
+}
+
+#[test]
+fn test_route_replace_and_delete_mpls() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        ns.ip_rs_exec_cmd(&[
+            "-f",
+            "mpls",
+            "route",
+            "add",
+            "600",
+            "dev",
+            DUMMY_NAME,
+            "ttl-propagate",
+            "enabled",
+        ]);
+        ns.ip_rs_exec_cmd(&[
+            "-f",
+            "mpls",
+            "route",
+            "replace",
+            "600",
+            "dev",
+            DUMMY_NAME,
+            "ttl-propagate",
+            "disabled",
+        ]);
+        ns.assert_eq_output(&["-f", "mpls", "route", "show"]);
+
+        ns.ip_rs_exec_cmd(&[
+            "-f", "mpls", "route", "del", "600", "dev", DUMMY_NAME,
+        ]);
+        ns.assert_eq_output(&["-f", "mpls", "route", "show"]);
+    });
+}

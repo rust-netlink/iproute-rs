@@ -261,6 +261,12 @@ pub(crate) fn build_route_message(
         msg.attributes.push(rta);
     }
 
+    if let Some(label) = config.mpls_dst {
+        msg.header.destination_prefix_length = config.dst_len;
+        msg.attributes
+            .push(RouteAttribute::Destination(RouteAddress::Mpls(label)));
+    }
+
     if let Some(ref addr) = config.src {
         msg.header.source_prefix_length = config.src_len;
         let rta = match addr {
@@ -275,6 +281,7 @@ pub(crate) fn build_route_message(
             (family, addr),
             (AddressFamily::Inet, IpAddr::V6(_))
                 | (AddressFamily::Inet6, IpAddr::V4(_))
+                | (AddressFamily::Mpls, _)
         );
         let rta = if use_via {
             match addr {
@@ -292,6 +299,11 @@ pub(crate) fn build_route_message(
             }
         };
         msg.attributes.push(rta);
+    }
+
+    if let Some(ref labels) = config.mpls_newdst {
+        msg.attributes
+            .push(RouteAttribute::NewDestination(labels.clone()));
     }
 
     if let Some(ref addr) = config.prefsrc {

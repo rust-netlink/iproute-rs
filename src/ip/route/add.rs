@@ -85,6 +85,10 @@ pub(crate) struct RouteAddConfig {
     pub(crate) tos: Option<u8>,
     pub(crate) ttl_propagate: Option<bool>,
     pub(crate) encap: Option<RouteEncapConfig>,
+    /// `RTA_DST` of a `-f mpls` route.
+    pub(crate) mpls_dst: Option<MplsLabel>,
+    /// `as to LABEL` of a `-f mpls` route, the `RTA_NEWDST` label stack.
+    pub(crate) mpls_newdst: Option<Vec<MplsLabel>>,
 }
 
 pub(crate) fn parse_route_config(
@@ -116,6 +120,8 @@ pub(crate) fn parse_route_config(
     let mut tos: Option<u8> = None;
     let mut ttl_propagate: Option<bool> = None;
     let mut encap: Option<RouteEncapConfig> = None;
+    let mut mpls_dst: Option<MplsLabel> = None;
+    let mut mpls_newdst: Option<Vec<MplsLabel>> = None;
     let mut positional_prefix_seen = false;
 
     let mut iter = opts.iter().peekable();
@@ -440,12 +446,37 @@ pub(crate) fn parse_route_config(
                 break;
             }
             "as" => {
-                return Err(CliError::from(format!("invalid argument: {arg}")));
+                // Only MPLS routes accept `as [to] LABEL`.
+                if family != Some(AddressFamily::Mpls) {
+                    return Err(CliError::from(format!(
+                        "invalid argument: {arg}"
+                    )));
+                }
+                let mut val = iter
+                    .next()
+                    .ok_or_else(|| CliError::from("\"as\" requires a value"))?;
+                if val == "to" {
+                    val = iter.next().ok_or_else(|| {
+                        CliError::from("\"as to\" requires a value")
+                    })?;
+                }
+                mpls_newdst = Some(parse_mpls_label_stack(val)?);
             }
             _ => {
                 if !positional_prefix_seen {
-                    if let Ok(rt) = parse_route_type(arg) {
+                    // `iproute2` only parses a route type when the argument
+                    // does not start with a digit, a MPLS label prefix or an
+                    // inet prefix is a number as well.
+                    let numeric =
+                        arg.as_bytes().first().is_some_and(u8::is_ascii_digit);
+                    if !numeric && let Ok(rt) = parse_route_type(arg) {
                         kind = Some(rt);
+                        continue;
+                    }
+                    if family == Some(AddressFamily::Mpls) {
+                        mpls_dst = Some(parse_mpls_dst_label(arg)?);
+                        dst_len = 20;
+                        positional_prefix_seen = true;
                     } else {
                         let (addr, plen) = parse_prefix(arg)?;
                         dst = Some(addr);
@@ -494,6 +525,8 @@ pub(crate) fn parse_route_config(
         tos,
         ttl_propagate,
         encap,
+        mpls_dst,
+        mpls_newdst,
     })
 }
 
@@ -549,6 +582,25 @@ fn parse_mpls_label_stack(stack: &str) -> Result<Vec<MplsLabel>, CliError> {
     }
 
     Ok(ret)
+}
+
+// `iproute2` parses the prefix of a `-f mpls` route as a single label, the
+// `/` separator is only used for the prefix length of inet routes.
+fn parse_mpls_dst_label(value: &str) -> Result<MplsLabel, CliError> {
+    let label = value
+        .parse::<u32>()
+        .map_err(|_| CliError::from(format!("invalid MPLS label: {value}")))?;
+    if label >= 1 << 20 {
+        return Err(CliError::from(format!(
+            "MPLS label out of range: {value}"
+        )));
+    }
+    Ok(MplsLabel {
+        label,
+        traffic_class: 0,
+        bottom_of_stack: true,
+        ttl: 0,
+    })
 }
 
 fn parse_encap_u64(value: &str) -> Result<u64, CliError> {
@@ -1907,6 +1959,66 @@ mod tests {
             parse_route_config(
                 &opts(&["10.0.0.0/8", "encap", "bpf", "dev", "d0"]),
                 None,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn test_parse_route_mpls() {
+        let config = parse_route_config(
+            &opts(&["100", "dev", "d0", "ttl-propagate", "enabled"]),
+            Some(AddressFamily::Mpls),
+        )
+        .unwrap();
+        assert_eq!(
+            config.mpls_dst,
+            Some(MplsLabel {
+                label: 100,
+                traffic_class: 0,
+                bottom_of_stack: true,
+                ttl: 0,
+            })
+        );
+        assert_eq!(config.dst_len, 20);
+        assert_eq!(config.ttl_propagate, Some(true));
+
+        // `as to LABEL` pushes a label stack, `via inet` keeps the MPLS
+        // route family and moves the gateway to `RTA_VIA`.
+        let config = parse_route_config(
+            &opts(&[
+                "300", "via", "inet", "10.0.0.2", "dev", "d0", "as", "to",
+                "400/500",
+            ]),
+            Some(AddressFamily::Mpls),
+        )
+        .unwrap();
+        assert_eq!(config.family, Some(AddressFamily::Mpls));
+        assert_eq!(config.via, Some("10.0.0.2".parse().unwrap()));
+        assert_eq!(
+            config.mpls_newdst,
+            Some(vec![
+                MplsLabel {
+                    label: 400,
+                    traffic_class: 0,
+                    bottom_of_stack: false,
+                    ttl: 0,
+                },
+                MplsLabel {
+                    label: 500,
+                    traffic_class: 0,
+                    bottom_of_stack: true,
+                    ttl: 0,
+                },
+            ])
+        );
+
+        // A label stack is not a valid MPLS route prefix, `iproute2` treats
+        // the part after `/` as prefix length and rejects it.
+        assert!(
+            parse_route_config(
+                &opts(&["100/200", "dev", "d0"]),
+                Some(AddressFamily::Mpls),
             )
             .is_err()
         );
