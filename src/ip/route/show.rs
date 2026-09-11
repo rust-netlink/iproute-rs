@@ -9,7 +9,7 @@ use rtnetlink::packet_route::{
     route::{
         RouteAttribute, RouteCacheInfo, RouteFlags, RouteHeader, RouteMessage,
         RouteMetric, RouteNextHopFlags, RoutePreference, RouteProtocol,
-        RouteScope, RouteType,
+        RouteScope, RouteType, RouteVia,
     },
 };
 use serde::Serialize;
@@ -42,6 +42,8 @@ pub(crate) struct CliRouteInfo {
     pub(crate) nhid: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) gateway: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) via: Option<CliRouteVia>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "dev")]
     pub(crate) oif: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -104,6 +106,12 @@ impl CliRouteCacheInfo {
             },
         }
     }
+}
+
+#[derive(Serialize, Default)]
+pub(crate) struct CliRouteVia {
+    pub(crate) family: String,
+    pub(crate) host: String,
 }
 
 #[derive(Serialize, Default)]
@@ -454,6 +462,18 @@ fn host_len(family: AddressFamily) -> u8 {
     }
 }
 
+fn af_family_to_string(family: AddressFamily) -> String {
+    match family {
+        AddressFamily::Inet => "inet".to_string(),
+        AddressFamily::Inet6 => "inet6".to_string(),
+        AddressFamily::Packet => "link".to_string(),
+        #[cfg(not(target_os = "android"))]
+        AddressFamily::Mpls => "mpls".to_string(),
+        AddressFamily::Bridge => "bridge".to_string(),
+        _ => "???".to_string(),
+    }
+}
+
 fn route_table_u32_to_string(table: u32) -> String {
     match table {
         0 => "unspec".into(),
@@ -552,21 +572,25 @@ pub(crate) fn parse_nl_msg_to_route(
                 };
             }
             RouteAttribute::Via(via) => {
-                info.gateway = Some(match via {
-                    rtnetlink::packet_route::route::RouteVia::Inet(a) => {
-                        a.to_string()
-                    }
-                    rtnetlink::packet_route::route::RouteVia::Inet6(a) => {
-                        a.to_string()
-                    }
-                    rtnetlink::packet_route::route::RouteVia::Other((_, v)) => {
-                        hex_encode(&v)
-                    }
+                info.via = Some(match via {
+                    RouteVia::Inet(a) => CliRouteVia {
+                        family: "inet".to_string(),
+                        host: a.to_string(),
+                    },
+                    RouteVia::Inet6(a) => CliRouteVia {
+                        family: "inet6".to_string(),
+                        host: a.to_string(),
+                    },
+                    RouteVia::Other((family, v)) => CliRouteVia {
+                        family: af_family_to_string(family),
+                        host: hex_encode(&v),
+                    },
                     #[cfg(any(target_os = "linux", target_os = "fuchsia"))]
-                    rtnetlink::packet_route::route::RouteVia::Packet(v) => {
-                        hex_encode(&v)
-                    }
-                    _ => String::new(),
+                    RouteVia::Packet(v) => CliRouteVia {
+                        family: "link".to_string(),
+                        host: hex_encode(&v),
+                    },
+                    _ => CliRouteVia::default(),
                 });
             }
             RouteAttribute::PrefSource(addr) => {
@@ -770,6 +794,11 @@ impl std::fmt::Display for CliRouteInfo {
             write!(buf, "via ")?;
             write_with_color!(buf, color, "{gw}")?;
             buf.push(' ');
+        }
+
+        // Gateway of another address family
+        if let Some(ref via) = self.via {
+            write!(buf, "via {} {} ", via.family, via.host)?;
         }
 
         // Device
