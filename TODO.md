@@ -7,6 +7,8 @@
   — `src/ip/route/add.rs`, `src/ip/route/modify.rs`
 - `netlink-packet-route`: support `LWTUNNEL_ENCAP_SEG6_LOCAL`,
   `LWTUNNEL_ENCAP_RPL` and `LWTUNNEL_ENCAP_IOAM6` encapsulation
+- show: display `xfrm`, `seg6local`, `rpl` and `ioam6` encapsulation —
+  `src/ip/route/show.rs`
 - `rtnetlink`: build a connection with `NETLINK_GET_STRICT_CHK` enabled so
   that unsupported attributes of `ip route get as ADDRESS` are rejected
   like iproute2 — `src/ip/route/get.rs`
