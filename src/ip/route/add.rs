@@ -8,7 +8,8 @@ use rtnetlink::{
     packet_route::{
         AddressFamily,
         route::{
-            RouteMetric, RouteProtocol, RouteRealm, RouteScope, RouteType,
+            MplsLabel, RouteIp6TunnelFlags, RouteIpTunnelFlags, RouteMetric,
+            RouteProtocol, RouteRealm, RouteScope, RouteType, Seg6Mode,
         },
     },
 };
@@ -23,6 +24,39 @@ pub(crate) struct RouteNextHopConfig {
     pub(crate) weight: Option<u16>,
     pub(crate) onlink: bool,
     pub(crate) pervasive: bool,
+}
+
+/// `encap TYPE ...` of the `ip route` commands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RouteEncapConfig {
+    Mpls {
+        dst: Vec<MplsLabel>,
+        ttl: Option<u8>,
+    },
+    Ip {
+        id: Option<u64>,
+        dst: Option<Ipv4Addr>,
+        src: Option<Ipv4Addr>,
+        ttl: Option<u8>,
+        tos: Option<u8>,
+        flags: RouteIpTunnelFlags,
+    },
+    Ip6 {
+        id: Option<u64>,
+        dst: Option<Ipv6Addr>,
+        src: Option<Ipv6Addr>,
+        hoplimit: Option<u8>,
+        tc: Option<u8>,
+        flags: RouteIp6TunnelFlags,
+    },
+    Seg6 {
+        mode: Seg6Mode,
+        segs: Vec<Ipv6Addr>,
+    },
+    Xfrm {
+        if_id: u32,
+        link_dev: Option<String>,
+    },
 }
 
 pub(crate) struct RouteAddConfig {
@@ -50,6 +84,7 @@ pub(crate) struct RouteAddConfig {
     pub(crate) nhid: Option<u32>,
     pub(crate) tos: Option<u8>,
     pub(crate) ttl_propagate: Option<bool>,
+    pub(crate) encap: Option<RouteEncapConfig>,
 }
 
 pub(crate) fn parse_route_config(
@@ -80,6 +115,7 @@ pub(crate) fn parse_route_config(
     let mut nhid: Option<u32> = None;
     let mut tos: Option<u8> = None;
     let mut ttl_propagate: Option<bool> = None;
+    let mut encap: Option<RouteEncapConfig> = None;
     let mut positional_prefix_seen = false;
 
     let mut iter = opts.iter().peekable();
@@ -171,6 +207,9 @@ pub(crate) fn parse_route_config(
                         )));
                     }
                 });
+            }
+            "encap" => {
+                encap = Some(parse_encap(&mut iter)?);
             }
             "type" => {
                 let val = iter.next().ok_or_else(|| {
@@ -454,6 +493,343 @@ pub(crate) fn parse_route_config(
         nhid,
         tos,
         ttl_propagate,
+        encap,
+    })
+}
+
+fn encap_arg<'a>(
+    iter: &mut std::iter::Peekable<impl Iterator<Item = &'a String>>,
+    keyword: &str,
+) -> Result<String, CliError> {
+    iter.next().map(|val| val.to_string()).ok_or_else(|| {
+        CliError::from(format!("\"{keyword}\" requires a value"))
+    })
+}
+
+fn parse_encap<'a>(
+    iter: &mut std::iter::Peekable<impl Iterator<Item = &'a String>>,
+) -> Result<RouteEncapConfig, CliError> {
+    let kind = iter.next().ok_or_else(|| {
+        CliError::from("\"encap\" requires an encapsulation type")
+    })?;
+
+    match kind.as_str() {
+        "mpls" => parse_encap_mpls(iter),
+        "ip" => parse_encap_ip(iter),
+        "ip6" => parse_encap_ip6(iter),
+        "seg6" => parse_encap_seg6(iter),
+        "xfrm" => parse_encap_xfrm(iter),
+        other => {
+            Err(CliError::from(format!("unsupported encap type: {other}")))
+        }
+    }
+}
+
+// `iproute2` parses MPLS addresses as a `/` separated label stack, only the
+// last label has the bottom of stack bit set.
+fn parse_mpls_label_stack(stack: &str) -> Result<Vec<MplsLabel>, CliError> {
+    let labels: Vec<&str> = stack.split('/').collect();
+    let mut ret = Vec::with_capacity(labels.len());
+
+    for (index, label) in labels.iter().enumerate() {
+        let value = label.parse::<u32>().map_err(|_| {
+            CliError::from(format!("invalid MPLS label: {label}"))
+        })?;
+        if value >= 1 << 20 {
+            return Err(CliError::from(format!(
+                "MPLS label out of range: {label}"
+            )));
+        }
+        ret.push(MplsLabel {
+            label: value,
+            traffic_class: 0,
+            bottom_of_stack: index == labels.len() - 1,
+            ttl: 0,
+        });
+    }
+
+    Ok(ret)
+}
+
+fn parse_encap_u64(value: &str) -> Result<u64, CliError> {
+    if let Some(hex) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    {
+        u64::from_str_radix(hex, 16).map_err(|_| {
+            CliError::from(format!("invalid encapsulation id: {value}"))
+        })
+    } else {
+        value.parse::<u64>().map_err(|_| {
+            CliError::from(format!("invalid encapsulation id: {value}"))
+        })
+    }
+}
+
+fn parse_encap_ipv4(value: &str) -> Result<Ipv4Addr, CliError> {
+    value
+        .parse::<Ipv4Addr>()
+        .map_err(|_| CliError::from(format!("invalid IPv4 address: {value}")))
+}
+
+fn parse_encap_ipv6(value: &str) -> Result<Ipv6Addr, CliError> {
+    value
+        .parse::<Ipv6Addr>()
+        .map_err(|_| CliError::from(format!("invalid IPv6 address: {value}")))
+}
+
+fn parse_encap_u8(value: &str, keyword: &str) -> Result<u8, CliError> {
+    value.parse::<u8>().map_err(|_| {
+        CliError::from(format!("invalid \"{keyword}\" value: {value}"))
+    })
+}
+
+fn parse_encap_mpls<'a>(
+    iter: &mut std::iter::Peekable<impl Iterator<Item = &'a String>>,
+) -> Result<RouteEncapConfig, CliError> {
+    let stack = iter
+        .next()
+        .ok_or_else(|| CliError::from("encap mpls requires a label stack"))?;
+    let dst = parse_mpls_label_stack(stack)?;
+    let mut ttl: Option<u8> = None;
+
+    while let Some(raw_arg) = iter.peek() {
+        let arg = raw_arg.to_string();
+        match arg.as_str() {
+            "ttl" => {
+                iter.next();
+                let val = encap_arg(iter, "ttl")?;
+                ttl = Some(parse_encap_u8(&val, "ttl")?);
+            }
+            _ => break,
+        }
+    }
+
+    Ok(RouteEncapConfig::Mpls { dst, ttl })
+}
+
+fn parse_encap_ip<'a>(
+    iter: &mut std::iter::Peekable<impl Iterator<Item = &'a String>>,
+) -> Result<RouteEncapConfig, CliError> {
+    let mut id: Option<u64> = None;
+    let mut dst: Option<Ipv4Addr> = None;
+    let mut src: Option<Ipv4Addr> = None;
+    let mut ttl: Option<u8> = None;
+    let mut tos: Option<u8> = None;
+    let mut flags = RouteIpTunnelFlags::empty();
+
+    while let Some(raw_arg) = iter.peek() {
+        let arg = raw_arg.to_string();
+        match arg.as_str() {
+            "id" => {
+                iter.next();
+                let val = encap_arg(iter, "id")?;
+                id = Some(parse_encap_u64(&val)?);
+            }
+            "dst" => {
+                iter.next();
+                let val = encap_arg(iter, "dst")?;
+                dst = Some(parse_encap_ipv4(&val)?);
+            }
+            "src" => {
+                iter.next();
+                let val = encap_arg(iter, "src")?;
+                src = Some(parse_encap_ipv4(&val)?);
+            }
+            "ttl" => {
+                iter.next();
+                let val = encap_arg(iter, "ttl")?;
+                ttl = Some(parse_encap_u8(&val, "ttl")?);
+            }
+            "tos" => {
+                iter.next();
+                let val = encap_arg(iter, "tos")?;
+                tos = Some(parse_dsfield(&val)?);
+            }
+            "key" => {
+                iter.next();
+                flags |= RouteIpTunnelFlags::Key;
+            }
+            "csum" => {
+                iter.next();
+                flags |= RouteIpTunnelFlags::Checksum;
+            }
+            "seq" => {
+                iter.next();
+                flags |= RouteIpTunnelFlags::Sequence;
+            }
+            // `geneve_opts`, `vxlan_opts` and `erspan_opts` are not
+            // supported yet.
+            "geneve_opts" | "vxlan_opts" | "erspan_opts" => {
+                return Err(CliError::from(format!(
+                    "encap ip {arg} is not supported"
+                )));
+            }
+            _ => break,
+        }
+    }
+
+    Ok(RouteEncapConfig::Ip {
+        id,
+        dst,
+        src,
+        ttl,
+        tos,
+        flags,
+    })
+}
+
+fn parse_encap_ip6<'a>(
+    iter: &mut std::iter::Peekable<impl Iterator<Item = &'a String>>,
+) -> Result<RouteEncapConfig, CliError> {
+    let mut id: Option<u64> = None;
+    let mut dst: Option<Ipv6Addr> = None;
+    let mut src: Option<Ipv6Addr> = None;
+    let mut hoplimit: Option<u8> = None;
+    let mut tc: Option<u8> = None;
+    let mut flags = RouteIp6TunnelFlags::empty();
+
+    while let Some(raw_arg) = iter.peek() {
+        let arg = raw_arg.to_string();
+        match arg.as_str() {
+            "id" => {
+                iter.next();
+                let val = encap_arg(iter, "id")?;
+                id = Some(parse_encap_u64(&val)?);
+            }
+            "dst" => {
+                iter.next();
+                let val = encap_arg(iter, "dst")?;
+                dst = Some(parse_encap_ipv6(&val)?);
+            }
+            "src" => {
+                iter.next();
+                let val = encap_arg(iter, "src")?;
+                src = Some(parse_encap_ipv6(&val)?);
+            }
+            "hoplimit" => {
+                iter.next();
+                let val = encap_arg(iter, "hoplimit")?;
+                hoplimit = Some(parse_encap_u8(&val, "hoplimit")?);
+            }
+            "tc" => {
+                iter.next();
+                let val = encap_arg(iter, "tc")?;
+                tc = Some(parse_dsfield(&val)?);
+            }
+            "key" => {
+                iter.next();
+                flags |= RouteIp6TunnelFlags::Key;
+            }
+            "csum" => {
+                iter.next();
+                flags |= RouteIp6TunnelFlags::Checksum;
+            }
+            "seq" => {
+                iter.next();
+                flags |= RouteIp6TunnelFlags::Sequence;
+            }
+            "geneve_opts" | "vxlan_opts" | "erspan_opts" => {
+                return Err(CliError::from(format!(
+                    "encap ip6 {arg} is not supported"
+                )));
+            }
+            _ => break,
+        }
+    }
+
+    Ok(RouteEncapConfig::Ip6 {
+        id,
+        dst,
+        src,
+        hoplimit,
+        tc,
+        flags,
+    })
+}
+
+fn parse_encap_seg6<'a>(
+    iter: &mut std::iter::Peekable<impl Iterator<Item = &'a String>>,
+) -> Result<RouteEncapConfig, CliError> {
+    let mut mode: Option<Seg6Mode> = None;
+    let mut segs: Option<Vec<Ipv6Addr>> = None;
+
+    while let Some(raw_arg) = iter.peek() {
+        let arg = raw_arg.to_string();
+        match arg.as_str() {
+            "mode" => {
+                iter.next();
+                let val = encap_arg(iter, "mode")?;
+                mode = Some(match val.as_str() {
+                    "inline" => Seg6Mode::Inline,
+                    "encap" => Seg6Mode::Encap,
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "invalid seg6 mode: {val}"
+                        )));
+                    }
+                });
+            }
+            "segs" => {
+                iter.next();
+                let val = encap_arg(iter, "segs")?;
+                let mut list = Vec::new();
+                for segment in val.split(',') {
+                    list.push(parse_encap_ipv6(segment)?);
+                }
+                segs = Some(list);
+            }
+            // `tunsrc`, `hmac` and `lookup` are not supported yet.
+            "tunsrc" | "hmac" | "lookup" => {
+                return Err(CliError::from(format!(
+                    "encap seg6 {arg} is not supported"
+                )));
+            }
+            _ => break,
+        }
+    }
+
+    let mode = mode.ok_or_else(|| {
+        CliError::from("encap seg6 requires a \"mode\" value")
+    })?;
+
+    Ok(RouteEncapConfig::Seg6 {
+        mode,
+        segs: segs.unwrap_or_default(),
+    })
+}
+
+fn parse_encap_xfrm<'a>(
+    iter: &mut std::iter::Peekable<impl Iterator<Item = &'a String>>,
+) -> Result<RouteEncapConfig, CliError> {
+    let mut if_id: Option<u32> = None;
+    let mut link_dev: Option<String> = None;
+
+    while let Some(raw_arg) = iter.peek() {
+        let arg = raw_arg.to_string();
+        match arg.as_str() {
+            "if_id" => {
+                iter.next();
+                let val = encap_arg(iter, "if_id")?;
+                let id = parse_mark_value(&val)?;
+                if id == 0 {
+                    return Err(CliError::from("invalid \"if_id\" value: 0"));
+                }
+                if_id = Some(id);
+            }
+            "link_dev" => {
+                iter.next();
+                link_dev = Some(encap_arg(iter, "link_dev")?);
+            }
+            _ => break,
+        }
+    }
+
+    Ok(RouteEncapConfig::Xfrm {
+        if_id: if_id.ok_or_else(|| {
+            CliError::from("encap xfrm requires an \"if_id\" value")
+        })?,
+        link_dev,
     })
 }
 
@@ -811,7 +1187,11 @@ pub(crate) async fn resolve_route_ifindexes(
     let dev_names = config
         .dev
         .iter()
-        .chain(config.nexthops.iter().filter_map(|nh| nh.dev.as_ref()));
+        .chain(config.nexthops.iter().filter_map(|nh| nh.dev.as_ref()))
+        .chain(config.encap.iter().filter_map(|encap| match encap {
+            RouteEncapConfig::Xfrm { link_dev, .. } => link_dev.as_ref(),
+            _ => None,
+        }));
     for name in dev_names {
         if indexes.contains_key(name) {
             continue;
@@ -1296,6 +1676,239 @@ mod tests {
         assert_eq!(
             scope(&["10.0.0.0/8", "scope", "host"], None, false),
             RouteScope::Host
+        );
+    }
+
+    #[test]
+    fn test_parse_route_encap_mpls() {
+        let config = parse_route_config(
+            &opts(&["10.0.0.0/8", "encap", "mpls", "100/200", "dev", "d0"]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            config.encap,
+            Some(RouteEncapConfig::Mpls {
+                dst: vec![
+                    MplsLabel {
+                        label: 100,
+                        traffic_class: 0,
+                        bottom_of_stack: false,
+                        ttl: 0,
+                    },
+                    MplsLabel {
+                        label: 200,
+                        traffic_class: 0,
+                        bottom_of_stack: true,
+                        ttl: 0,
+                    },
+                ],
+                ttl: None,
+            })
+        );
+
+        let config = parse_route_config(
+            &opts(&[
+                "10.0.0.0/8",
+                "encap",
+                "mpls",
+                "100",
+                "ttl",
+                "64",
+                "dev",
+                "d0",
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            config.encap,
+            Some(RouteEncapConfig::Mpls {
+                dst: vec![MplsLabel {
+                    label: 100,
+                    traffic_class: 0,
+                    bottom_of_stack: true,
+                    ttl: 0,
+                }],
+                ttl: Some(64),
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_route_encap_ip() {
+        let config = parse_route_config(
+            &opts(&[
+                "10.0.0.0/8",
+                "encap",
+                "ip",
+                "id",
+                "200",
+                "dst",
+                "10.0.0.3",
+                "src",
+                "10.0.0.1",
+                "ttl",
+                "64",
+                "tos",
+                "8",
+                "key",
+                "csum",
+                "seq",
+                "dev",
+                "d0",
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            config.encap,
+            Some(RouteEncapConfig::Ip {
+                id: Some(200),
+                dst: Some(Ipv4Addr::new(10, 0, 0, 3)),
+                src: Some(Ipv4Addr::new(10, 0, 0, 1)),
+                ttl: Some(64),
+                tos: Some(8),
+                flags: RouteIpTunnelFlags::Key
+                    | RouteIpTunnelFlags::Checksum
+                    | RouteIpTunnelFlags::Sequence,
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_route_encap_ip6() {
+        let config = parse_route_config(
+            &opts(&[
+                "2001:db8::/64",
+                "encap",
+                "ip6",
+                "id",
+                "100",
+                "dst",
+                "2001:db8::2",
+                "src",
+                "2001:db8::3",
+                "tc",
+                "7",
+                "hoplimit",
+                "253",
+                "csum",
+                "dev",
+                "d0",
+            ]),
+            Some(AddressFamily::Inet6),
+        )
+        .unwrap();
+        assert_eq!(
+            config.encap,
+            Some(RouteEncapConfig::Ip6 {
+                id: Some(100),
+                dst: Some("2001:db8::2".parse().unwrap()),
+                src: Some("2001:db8::3".parse().unwrap()),
+                hoplimit: Some(253),
+                tc: Some(7),
+                flags: RouteIp6TunnelFlags::Checksum,
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_route_encap_seg6() {
+        let config = parse_route_config(
+            &opts(&[
+                "2001:db8::/64",
+                "encap",
+                "seg6",
+                "mode",
+                "encap",
+                "segs",
+                "2001:db8::2,2001:db8::3",
+                "dev",
+                "d0",
+            ]),
+            Some(AddressFamily::Inet6),
+        )
+        .unwrap();
+        assert_eq!(
+            config.encap,
+            Some(RouteEncapConfig::Seg6 {
+                mode: Seg6Mode::Encap,
+                segs: vec![
+                    "2001:db8::2".parse().unwrap(),
+                    "2001:db8::3".parse().unwrap(),
+                ],
+            })
+        );
+
+        // `mode` is required.
+        assert!(
+            parse_route_config(
+                &opts(&[
+                    "2001:db8::/64",
+                    "encap",
+                    "seg6",
+                    "segs",
+                    "2001:db8::2",
+                    "dev",
+                    "d0",
+                ]),
+                None,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn test_parse_route_encap_xfrm() {
+        let config = parse_route_config(
+            &opts(&[
+                "10.0.0.0/8",
+                "encap",
+                "xfrm",
+                "if_id",
+                "1",
+                "link_dev",
+                "d0",
+                "dev",
+                "d0",
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            config.encap,
+            Some(RouteEncapConfig::Xfrm {
+                if_id: 1,
+                link_dev: Some("d0".to_string()),
+            })
+        );
+
+        // `if_id` is required and must not be zero.
+        assert!(
+            parse_route_config(
+                &opts(&["10.0.0.0/8", "encap", "xfrm", "dev", "d0"]),
+                None,
+            )
+            .is_err()
+        );
+        assert!(
+            parse_route_config(
+                &opts(&["10.0.0.0/8", "encap", "xfrm", "if_id", "0"]),
+                None,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn test_parse_route_encap_unsupported() {
+        assert!(
+            parse_route_config(
+                &opts(&["10.0.0.0/8", "encap", "bpf", "dev", "d0"]),
+                None,
+            )
+            .is_err()
         );
     }
 }
