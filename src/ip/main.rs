@@ -89,7 +89,7 @@ async fn main() -> Result<(), CliError> {
                 .short('s')
                 .long("stats")
                 .help("Show statistics")
-                .action(clap::ArgAction::SetTrue)
+                .action(clap::ArgAction::Count)
                 .global(true),
         )
         .arg(

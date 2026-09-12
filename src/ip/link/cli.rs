@@ -227,13 +227,23 @@ impl LinkCommand {
                 .unwrap_or_default()
                 .map(String::as_str)
                 .collect();
-            handle_show(&opts, matches.get_count("DETAILS") > 0)
-                .await
-                .map(LinkOutput::Show)
+            handle_show(
+                &opts,
+                matches.get_count("DETAILS") > 0,
+                matches.get_count("STATISTICS"),
+                matches.get_flag("ONELINE"),
+            )
+            .await
+            .map(LinkOutput::Show)
         } else {
-            handle_show(&[], matches.get_count("DETAILS") > 0)
-                .await
-                .map(LinkOutput::Show)
+            handle_show(
+                &[],
+                matches.get_count("DETAILS") > 0,
+                matches.get_count("STATISTICS"),
+                matches.get_flag("ONELINE"),
+            )
+            .await
+            .map(LinkOutput::Show)
         }
     }
 }

@@ -42,9 +42,10 @@ impl NeighbourCommand {
                 .get_many::<String>("options")
                 .unwrap_or_default()
                 .map(String::as_str);
-            handle_show(opts, matches.get_flag("STATISTICS")).await
+            handle_show(opts, matches.get_count("STATISTICS") > 0).await
         } else {
-            handle_show([].into_iter(), matches.get_flag("STATISTICS")).await
+            handle_show([].into_iter(), matches.get_count("STATISTICS") > 0)
+                .await
         }
     }
 }
