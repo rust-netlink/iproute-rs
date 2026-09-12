@@ -29,6 +29,24 @@ pub(crate) struct RouteNextHopConfig {
 
 /// `encap TYPE ...` of the `ip route` commands.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RouteEncapOpt {
+    Geneve {
+        class: u16,
+        typ: u8,
+        data: Vec<u8>,
+    },
+    Vxlan {
+        gbp: u32,
+    },
+    Erspan {
+        ver: u8,
+        index: Option<u32>,
+        dir: Option<u8>,
+        hwid: Option<u8>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RouteEncapConfig {
     Mpls {
         dst: Vec<MplsLabel>,
@@ -41,6 +59,7 @@ pub(crate) enum RouteEncapConfig {
         ttl: Option<u8>,
         tos: Option<u8>,
         flags: RouteIpTunnelFlags,
+        opts: Vec<RouteEncapOpt>,
     },
     Ip6 {
         id: Option<u64>,
@@ -49,6 +68,7 @@ pub(crate) enum RouteEncapConfig {
         hoplimit: Option<u8>,
         tc: Option<u8>,
         flags: RouteIp6TunnelFlags,
+        opts: Vec<RouteEncapOpt>,
     },
     Seg6 {
         mode: Seg6Mode,
@@ -661,9 +681,15 @@ fn parse_encap_ipv6(value: &str) -> Result<Ipv6Addr, CliError> {
 }
 
 fn parse_encap_u8(value: &str, keyword: &str) -> Result<u8, CliError> {
-    value.parse::<u8>().map_err(|_| {
+    let parsed = parse_u32_any_base(value).map_err(|_| {
         CliError::from(format!("invalid \"{keyword}\" value: {value}"))
-    })
+    })?;
+    if parsed > u32::from(u8::MAX) {
+        return Err(CliError::from(format!(
+            "invalid \"{keyword}\" value: {value}"
+        )));
+    }
+    Ok(parsed as u8)
 }
 
 fn parse_encap_mpls<'a>(
@@ -699,6 +725,7 @@ fn parse_encap_ip<'a>(
     let mut ttl: Option<u8> = None;
     let mut tos: Option<u8> = None;
     let mut flags = RouteIpTunnelFlags::empty();
+    let mut opts: Vec<RouteEncapOpt> = Vec::new();
 
     while let Some(raw_arg) = iter.peek() {
         let arg = raw_arg.to_string();
@@ -740,12 +767,10 @@ fn parse_encap_ip<'a>(
                 iter.next();
                 flags |= RouteIpTunnelFlags::Sequence;
             }
-            // `geneve_opts`, `vxlan_opts` and `erspan_opts` are not
-            // supported yet.
             "geneve_opts" | "vxlan_opts" | "erspan_opts" => {
-                return Err(CliError::from(format!(
-                    "encap ip {arg} is not supported"
-                )));
+                iter.next();
+                let val = encap_arg(iter, &arg)?;
+                opts.extend(parse_encap_opts(&arg, &val)?);
             }
             _ => break,
         }
@@ -758,6 +783,7 @@ fn parse_encap_ip<'a>(
         ttl,
         tos,
         flags,
+        opts,
     })
 }
 
@@ -770,6 +796,7 @@ fn parse_encap_ip6<'a>(
     let mut hoplimit: Option<u8> = None;
     let mut tc: Option<u8> = None;
     let mut flags = RouteIp6TunnelFlags::empty();
+    let mut opts: Vec<RouteEncapOpt> = Vec::new();
 
     while let Some(raw_arg) = iter.peek() {
         let arg = raw_arg.to_string();
@@ -812,9 +839,9 @@ fn parse_encap_ip6<'a>(
                 flags |= RouteIp6TunnelFlags::Sequence;
             }
             "geneve_opts" | "vxlan_opts" | "erspan_opts" => {
-                return Err(CliError::from(format!(
-                    "encap ip6 {arg} is not supported"
-                )));
+                iter.next();
+                let val = encap_arg(iter, &arg)?;
+                opts.extend(parse_encap_opts(&arg, &val)?);
             }
             _ => break,
         }
@@ -827,6 +854,7 @@ fn parse_encap_ip6<'a>(
         hoplimit,
         tc,
         flags,
+        opts,
     })
 }
 
@@ -1031,6 +1059,103 @@ fn parse_encap_seg6local<'a>(
         oif,
         srh,
     })
+}
+
+fn parse_hex_bytes(value: &str) -> Result<Vec<u8>, CliError> {
+    if value.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !value.len().is_multiple_of(2)
+        || !value.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return Err(CliError::from(format!(
+            "invalid hexadecimal value: {value}"
+        )));
+    }
+    let mut ret = Vec::new();
+    for start in (0..value.len()).step_by(2) {
+        ret.push(u8::from_str_radix(&value[start..start + 2], 16).map_err(
+            |_| CliError::from(format!("invalid hexadecimal value: {value}")),
+        )?);
+    }
+    Ok(ret)
+}
+
+fn parse_encap_u16(value: &str, keyword: &str) -> Result<u16, CliError> {
+    let parsed = parse_u32_any_base(value)?;
+    if parsed > u32::from(u16::MAX) {
+        return Err(CliError::from(format!(
+            "invalid {keyword} value: {value}"
+        )));
+    }
+    Ok(parsed as u16)
+}
+
+// `geneve_opts CLASS:TYPE:DATA[,CLASS:TYPE:DATA...]`, `vxlan_opts GBP` and
+// `erspan_opts VER:INDEX:DIR:HWID` of `encap ip` and `encap ip6`.
+fn parse_encap_opts(
+    keyword: &str,
+    value: &str,
+) -> Result<Vec<RouteEncapOpt>, CliError> {
+    match keyword {
+        "geneve_opts" => {
+            let mut ret = Vec::new();
+            for opt in value.split(',') {
+                let (class, rest) = opt.split_once(':').ok_or_else(|| {
+                    CliError::from(format!("invalid geneve_opts value: {opt}"))
+                })?;
+                let (typ, data) = rest.split_once(':').ok_or_else(|| {
+                    CliError::from(format!("invalid geneve_opts value: {opt}"))
+                })?;
+                ret.push(RouteEncapOpt::Geneve {
+                    class: parse_encap_u16(class, "geneve_opts class")?,
+                    typ: parse_encap_u8(typ, "geneve_opts type")?,
+                    data: parse_hex_bytes(data)?,
+                });
+            }
+            Ok(ret)
+        }
+        "vxlan_opts" => Ok(vec![RouteEncapOpt::Vxlan {
+            gbp: parse_u32_any_base(value)?,
+        }]),
+        "erspan_opts" => {
+            let mut tokens = value.split(':');
+            let ver = tokens
+                .next()
+                .ok_or_else(|| {
+                    CliError::from(format!(
+                        "invalid erspan_opts value: {value}"
+                    ))
+                })
+                .and_then(|ver| parse_encap_u8(ver, "erspan_opts ver"))?;
+            let index = match tokens.next() {
+                Some("") | None => None,
+                Some(index) => Some(parse_u32_any_base(index)?),
+            };
+            let dir = match tokens.next() {
+                Some("") | None => None,
+                Some(dir) => Some(parse_encap_u8(dir, "erspan_opts dir")?),
+            };
+            let hwid = match tokens.next() {
+                Some("") | None => None,
+                Some(hwid) => Some(parse_encap_u8(hwid, "erspan_opts hwid")?),
+            };
+            if tokens.next().is_some() {
+                return Err(CliError::from(format!(
+                    "invalid erspan_opts value: {value}"
+                )));
+            }
+            Ok(vec![RouteEncapOpt::Erspan {
+                ver,
+                index,
+                dir,
+                hwid,
+            }])
+        }
+        _ => Err(CliError::from(format!(
+            "unsupported encapsulation option: {keyword}"
+        ))),
+    }
 }
 
 // `encap rpl segs ADDR[,ADDR...]` of `iproute2`.
@@ -2159,6 +2284,7 @@ mod tests {
                 flags: RouteIpTunnelFlags::Key
                     | RouteIpTunnelFlags::Checksum
                     | RouteIpTunnelFlags::Sequence,
+                opts: Vec::new(),
             })
         );
     }
@@ -2196,6 +2322,85 @@ mod tests {
                 hoplimit: Some(253),
                 tc: Some(7),
                 flags: RouteIp6TunnelFlags::Checksum,
+                opts: Vec::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_route_encap_ip_opts() {
+        let config = parse_route_config(
+            &opts(&[
+                "10.0.0.0/8",
+                "encap",
+                "ip",
+                "id",
+                "300",
+                "geneve_opts",
+                "0x1234:0x42:11223344,0x2020:0x1:deadbeef",
+                "dev",
+                "d0",
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            config.encap,
+            Some(RouteEncapConfig::Ip {
+                id: Some(300),
+                dst: None,
+                src: None,
+                ttl: None,
+                tos: None,
+                flags: RouteIpTunnelFlags::empty(),
+                opts: vec![
+                    RouteEncapOpt::Geneve {
+                        class: 0x1234,
+                        typ: 0x42,
+                        data: vec![0x11, 0x22, 0x33, 0x44],
+                    },
+                    RouteEncapOpt::Geneve {
+                        class: 0x2020,
+                        typ: 0x1,
+                        data: vec![0xde, 0xad, 0xbe, 0xef],
+                    },
+                ],
+            })
+        );
+
+        let config = parse_route_config(
+            &opts(&[
+                "10.0.0.0/8",
+                "encap",
+                "ip",
+                "vxlan_opts",
+                "100",
+                "erspan_opts",
+                "1:2:3:4",
+                "dev",
+                "d0",
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            config.encap,
+            Some(RouteEncapConfig::Ip {
+                id: None,
+                dst: None,
+                src: None,
+                ttl: None,
+                tos: None,
+                flags: RouteIpTunnelFlags::empty(),
+                opts: vec![
+                    RouteEncapOpt::Vxlan { gbp: 100 },
+                    RouteEncapOpt::Erspan {
+                        ver: 1,
+                        index: Some(2),
+                        dir: Some(3),
+                        hwid: Some(4),
+                    },
+                ],
             })
         );
     }

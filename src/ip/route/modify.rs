@@ -15,19 +15,19 @@ use rtnetlink::{
     packet_route::{
         AddressFamily, RouteNetlinkMessage,
         route::{
-            Ioam6TraceHdr, RouteAddress, RouteAttribute, RouteIoam6Tunnel,
-            RouteIp6Tunnel, RouteIpTunnel, RouteLwEnCapType,
-            RouteLwTunnelEncap, RouteMessage, RouteMplsIpTunnel,
-            RouteMplsTtlPropagation, RoutePreference, RouteProtocol,
-            RouteRplIpTunnel, RouteScope, RouteSeg6IpTunnel,
-            RouteSeg6LocalTunnel, RouteType, RouteVia, RouteXfrmTunnel, RplSrh,
-            Seg6Header, Seg6Mode,
+            Ioam6TraceHdr, RouteAddress, RouteAttribute, RouteErspanOpt,
+            RouteGeneveOpt, RouteIoam6Tunnel, RouteIp6Tunnel, RouteIpTunnel,
+            RouteLwEnCapType, RouteLwTunnelEncap, RouteLwTunnelOpt,
+            RouteMessage, RouteMplsIpTunnel, RouteMplsTtlPropagation,
+            RoutePreference, RouteProtocol, RouteRplIpTunnel, RouteScope,
+            RouteSeg6IpTunnel, RouteSeg6LocalTunnel, RouteType, RouteVia,
+            RouteXfrmTunnel, RplSrh, Seg6Header, Seg6Mode,
         },
     },
 };
 
 use super::add::{
-    RouteAddConfig, RouteEncapConfig, parse_route_config,
+    RouteAddConfig, RouteEncapConfig, RouteEncapOpt, parse_route_config,
     resolve_route_ifindexes,
 };
 use crate::CliError;
@@ -96,6 +96,39 @@ async fn handle_modify(
     send_route_request(handle, msg, op).await
 }
 
+fn build_tunnel_opts(opts: &[RouteEncapOpt]) -> Vec<RouteLwTunnelOpt> {
+    let mut ret = Vec::new();
+    for opt in opts {
+        match opt {
+            RouteEncapOpt::Geneve { class, typ, data } => {
+                // `iproute2` sends one attribute per Geneve option.
+                let mut geneve = RouteGeneveOpt::default();
+                geneve.class = *class;
+                geneve.typ = *typ;
+                geneve.data = data.clone();
+                ret.push(RouteLwTunnelOpt::Geneve(vec![geneve]));
+            }
+            RouteEncapOpt::Vxlan { gbp } => {
+                ret.push(RouteLwTunnelOpt::Vxlan(*gbp))
+            }
+            RouteEncapOpt::Erspan {
+                ver,
+                index,
+                dir,
+                hwid,
+            } => {
+                let mut erspan = RouteErspanOpt::default();
+                erspan.ver = *ver;
+                erspan.index = *index;
+                erspan.dir = *dir;
+                erspan.hwid = *hwid;
+                ret.push(RouteLwTunnelOpt::Erspan(erspan));
+            }
+        }
+    }
+    ret
+}
+
 fn build_encap(
     encap: &RouteEncapConfig,
     ifindexes: &HashMap<String, u32>,
@@ -121,6 +154,7 @@ fn build_encap(
             ttl,
             tos,
             flags,
+            opts,
         } => {
             if let Some(id) = id {
                 attrs.push(RouteLwTunnelEncap::Ip(RouteIpTunnel::Id(*id)));
@@ -143,6 +177,11 @@ fn build_encap(
                 attrs
                     .push(RouteLwTunnelEncap::Ip(RouteIpTunnel::Flags(*flags)));
             }
+            if !opts.is_empty() {
+                attrs.push(RouteLwTunnelEncap::Ip(RouteIpTunnel::Opts(
+                    build_tunnel_opts(opts),
+                )));
+            }
             RouteLwEnCapType::Ip
         }
         RouteEncapConfig::Ip6 {
@@ -152,6 +191,7 @@ fn build_encap(
             hoplimit,
             tc,
             flags,
+            opts,
         } => {
             if let Some(id) = id {
                 attrs.push(RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Id(*id)));
@@ -177,6 +217,11 @@ fn build_encap(
             if !flags.is_empty() {
                 attrs.push(RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Flags(
                     *flags,
+                )));
+            }
+            if !opts.is_empty() {
+                attrs.push(RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Opts(
+                    build_tunnel_opts(opts),
                 )));
             }
             RouteLwEnCapType::Ip6
