@@ -8,9 +8,9 @@ use rtnetlink::{
     packet_route::{
         AddressFamily,
         route::{
-            MplsLabel, RouteIp6TunnelFlags, RouteIpTunnelFlags, RouteMetric,
-            RouteProtocol, RouteRealm, RouteScope, RouteType, Seg6LocalAction,
-            Seg6LocalSrh, Seg6Mode,
+            Ioam6Mode, MplsLabel, RouteIp6TunnelFlags, RouteIpTunnelFlags,
+            RouteMetric, RouteProtocol, RouteRealm, RouteScope, RouteType,
+            Seg6LocalAction, Seg6LocalSrh, Seg6Mode,
         },
     },
 };
@@ -53,6 +53,19 @@ pub(crate) enum RouteEncapConfig {
     Seg6 {
         mode: Seg6Mode,
         segs: Vec<Ipv6Addr>,
+    },
+    Rpl {
+        segs: Vec<Ipv6Addr>,
+    },
+    Ioam6 {
+        freq_k: u32,
+        freq_n: u32,
+        mode: Ioam6Mode,
+        tunsrc: Option<Ipv6Addr>,
+        tundst: Option<Ipv6Addr>,
+        trace_type: u32,
+        ns: u16,
+        size: u16,
     },
     Xfrm {
         if_id: u32,
@@ -563,6 +576,8 @@ fn parse_encap<'a>(
         "ip6" => parse_encap_ip6(iter),
         "seg6" => parse_encap_seg6(iter),
         "seg6local" => parse_encap_seg6local(iter),
+        "rpl" => parse_encap_rpl(iter),
+        "ioam6" => parse_encap_ioam6(iter),
         "xfrm" => parse_encap_xfrm(iter),
         other => {
             Err(CliError::from(format!("unsupported encap type: {other}")))
@@ -997,6 +1012,153 @@ fn parse_encap_seg6local<'a>(
         iif,
         oif,
         srh,
+    })
+}
+
+// `encap rpl segs ADDR[,ADDR...]` of `iproute2`.
+fn parse_encap_rpl<'a>(
+    iter: &mut std::iter::Peekable<impl Iterator<Item = &'a String>>,
+) -> Result<RouteEncapConfig, CliError> {
+    let mut segs: Option<Vec<Ipv6Addr>> = None;
+
+    while let Some(raw_arg) = iter.peek() {
+        let arg = raw_arg.to_string();
+        match arg.as_str() {
+            "segs" => {
+                iter.next();
+                let val = encap_arg(iter, "segs")?;
+                let mut list = Vec::new();
+                for segment in val.split(',') {
+                    list.push(parse_encap_ipv6(segment)?);
+                }
+                segs = Some(list);
+            }
+            _ => break,
+        }
+    }
+
+    let segs = segs
+        .ok_or_else(|| CliError::from("encap rpl requires a \"segs\" value"))?;
+
+    Ok(RouteEncapConfig::Rpl { segs })
+}
+
+// `encap ioam6 ...` of `iproute2`:
+//   [ freq K/N ] [ mode MODE ] [ tunsrc ADDR ] tundst ADDR trace prealloc
+//   [ type TYPE ] [ ns NS ] [ size SIZE ]
+fn parse_encap_ioam6<'a>(
+    iter: &mut std::iter::Peekable<impl Iterator<Item = &'a String>>,
+) -> Result<RouteEncapConfig, CliError> {
+    let mut freq_k: u32 = 1;
+    let mut freq_n: u32 = 1;
+    let mut mode = Ioam6Mode::Inline;
+    let mut tunsrc: Option<Ipv6Addr> = None;
+    let mut tundst: Option<Ipv6Addr> = None;
+    let mut trace_type: Option<u32> = None;
+    let mut ns: Option<u16> = None;
+    let mut size: Option<u16> = None;
+    let mut trace = false;
+    let mut prealloc = false;
+
+    while let Some(raw_arg) = iter.peek() {
+        let arg = raw_arg.to_string();
+        match arg.as_str() {
+            "freq" => {
+                iter.next();
+                let val = encap_arg(iter, "freq")?;
+                let (k, n) = val.split_once('/').ok_or_else(|| {
+                    CliError::from(format!("invalid ioam6 frequency: {val}"))
+                })?;
+                freq_k = k.parse::<u32>().map_err(|_| {
+                    CliError::from(format!("invalid ioam6 frequency: {val}"))
+                })?;
+                freq_n = n.parse::<u32>().map_err(|_| {
+                    CliError::from(format!("invalid ioam6 frequency: {val}"))
+                })?;
+            }
+            "mode" => {
+                iter.next();
+                let val = encap_arg(iter, "mode")?;
+                mode = match val.as_str() {
+                    "inline" => Ioam6Mode::Inline,
+                    "encap" => Ioam6Mode::Encap,
+                    "auto" => Ioam6Mode::Auto,
+                    _ => {
+                        return Err(CliError::from(format!(
+                            "invalid ioam6 mode: {val}"
+                        )));
+                    }
+                };
+            }
+            "tunsrc" => {
+                iter.next();
+                let val = encap_arg(iter, "tunsrc")?;
+                tunsrc = Some(parse_encap_ipv6(&val)?);
+            }
+            "tundst" => {
+                iter.next();
+                let val = encap_arg(iter, "tundst")?;
+                tundst = Some(parse_encap_ipv6(&val)?);
+            }
+            "trace" => {
+                iter.next();
+                trace = true;
+            }
+            "prealloc" => {
+                iter.next();
+                prealloc = true;
+            }
+            "type" => {
+                iter.next();
+                let val = encap_arg(iter, "type")?;
+                trace_type = Some(parse_u32_any_base(&val)?);
+            }
+            "ns" => {
+                iter.next();
+                let val = encap_arg(iter, "ns")?;
+                ns = Some(val.parse::<u16>().map_err(|_| {
+                    CliError::from(format!("invalid ioam6 namespace ID: {val}"))
+                })?);
+            }
+            "size" => {
+                iter.next();
+                let val = encap_arg(iter, "size")?;
+                size = Some(val.parse::<u16>().map_err(|_| {
+                    CliError::from(format!("invalid ioam6 trace size: {val}"))
+                })?);
+            }
+            _ => break,
+        }
+    }
+
+    if mode != Ioam6Mode::Inline && tundst.is_none() {
+        return Err(CliError::from(
+            "encap ioam6 requires a \"tundst\" value unless the mode is inline",
+        ));
+    }
+    if !trace || !prealloc {
+        return Err(CliError::from(
+            "encap ioam6 requires the \"trace prealloc\" options",
+        ));
+    }
+    let trace_type = trace_type.ok_or_else(|| {
+        CliError::from("encap ioam6 requires a \"type\" value")
+    })?;
+    let ns = ns
+        .ok_or_else(|| CliError::from("encap ioam6 requires a \"ns\" value"))?;
+    let size = size.ok_or_else(|| {
+        CliError::from("encap ioam6 requires a \"size\" value")
+    })?;
+
+    Ok(RouteEncapConfig::Ioam6 {
+        freq_k,
+        freq_n,
+        mode,
+        tunsrc,
+        tundst,
+        trace_type,
+        ns,
+        size,
     })
 }
 
