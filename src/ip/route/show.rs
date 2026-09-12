@@ -9,11 +9,11 @@ use rtnetlink::packet_route::{
     route::{
         RouteAttribute, RouteCacheInfo, RouteFlags, RouteHeader,
         RouteIoam6Tunnel, RouteIp6Tunnel, RouteIpTunnel, RouteLwEnCapType,
-        RouteLwTunnelEncap, RouteMessage, RouteMetric, RouteMplsIpTunnel,
-        RouteMplsTtlPropagation, RouteNextHopFlags, RoutePreference,
-        RouteProtocol, RouteRplIpTunnel, RouteScope, RouteSeg6IpTunnel,
-        RouteSeg6LocalTunnel, RouteType, RouteVia, RouteXfrmTunnel,
-        Seg6LocalAction, Seg6Mode,
+        RouteLwTunnelEncap, RouteLwTunnelOpt, RouteMessage, RouteMetric,
+        RouteMplsIpTunnel, RouteMplsTtlPropagation, RouteNextHopFlags,
+        RoutePreference, RouteProtocol, RouteRplIpTunnel, RouteScope,
+        RouteSeg6IpTunnel, RouteSeg6LocalTunnel, RouteType, RouteVia,
+        RouteXfrmTunnel, Seg6LocalAction, Seg6Mode,
     },
 };
 use serde::Serialize;
@@ -203,6 +203,12 @@ pub(crate) struct CliRouteEncap {
     pub(crate) hmac: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) lookup: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) geneve_opts: Option<Vec<CliGeneveOpt>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) vxlan_opts: Option<Vec<CliVxlanOpt>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) erspan_opts: Option<Vec<CliErspanOpt>>,
     /// Number of segments shown before the segment list, `iproute2` does
     /// not include it in the JSON output.
     #[serde(skip)]
@@ -213,6 +219,30 @@ pub(crate) struct CliRouteEncap {
 #[derive(Serialize, Default)]
 pub(crate) struct CliRouteEncapSrh {
     pub(crate) segs: Vec<String>,
+}
+
+/// A single Geneve option of `encap ip`/`encap ip6` `geneve_opts`.
+#[derive(Serialize, Default)]
+pub(crate) struct CliGeneveOpt {
+    pub(crate) class: u16,
+    #[serde(rename = "type")]
+    pub(crate) typ: u8,
+    pub(crate) data: String,
+}
+
+/// The `vxlan_opts` of `encap ip`/`encap ip6`.
+#[derive(Serialize, Default)]
+pub(crate) struct CliVxlanOpt {
+    pub(crate) gbp: u32,
+}
+
+/// The `erspan_opts` of `encap ip`/`encap ip6`.
+#[derive(Serialize, Default)]
+pub(crate) struct CliErspanOpt {
+    pub(crate) ver: u8,
+    pub(crate) index: u32,
+    pub(crate) dir: u8,
+    pub(crate) hwid: u8,
 }
 
 fn seg6_mode_to_string(mode: Seg6Mode) -> String {
@@ -393,6 +423,57 @@ impl CliRouteEncap {
                 }
                 RouteLwTunnelEncap::Ip(RouteIpTunnel::Flags(flags)) => {
                     set_encap_tunnel_flags(&mut ret, flags.bits())
+                }
+                RouteLwTunnelEncap::Ip(RouteIpTunnel::Opts(opts))
+                | RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Opts(opts)) => {
+                    for opt in opts {
+                        match opt {
+                            RouteLwTunnelOpt::Geneve(geneve_opts) => {
+                                let list = ret
+                                    .geneve_opts
+                                    .get_or_insert_with(Vec::new);
+                                for geneve in geneve_opts {
+                                    list.push(CliGeneveOpt {
+                                        class: geneve.class,
+                                        typ: geneve.typ,
+                                        data: hex_encode(&geneve.data),
+                                    });
+                                }
+                            }
+                            RouteLwTunnelOpt::Vxlan(gbp) => {
+                                ret.vxlan_opts
+                                    .get_or_insert_with(Vec::new)
+                                    .push(CliVxlanOpt { gbp: *gbp });
+                            }
+                            RouteLwTunnelOpt::Erspan(erspan) => {
+                                // `iproute2` only shows the ERSPAN v1 session
+                                // ID or the ERSPAN v2 direction and hardware
+                                // ID.
+                                let v1 = erspan.ver == 1;
+                                ret.erspan_opts
+                                    .get_or_insert_with(Vec::new)
+                                    .push(CliErspanOpt {
+                                        ver: erspan.ver,
+                                        index: if v1 {
+                                            erspan.index.unwrap_or(0)
+                                        } else {
+                                            0
+                                        },
+                                        dir: if v1 {
+                                            0
+                                        } else {
+                                            erspan.dir.unwrap_or(0)
+                                        },
+                                        hwid: if v1 {
+                                            0
+                                        } else {
+                                            erspan.hwid.unwrap_or(0)
+                                        },
+                                    });
+                            }
+                            _ => (),
+                        }
+                    }
                 }
                 RouteLwTunnelEncap::Xfrm(RouteXfrmTunnel::IfId(if_id)) => {
                     ret.if_id = Some(u64::from(*if_id))
@@ -594,6 +675,33 @@ fn route_encap_to_string(encap: &CliRouteEncap) -> String {
     }
     if let Some(ref lookup) = encap.lookup {
         let _ = write!(buf, "lookup {lookup} ");
+    }
+    if let Some(ref geneve_opts) = encap.geneve_opts {
+        buf.push_str("\n\tgeneve_opts ");
+        for (index, geneve) in geneve_opts.iter().enumerate() {
+            if index > 0 {
+                buf.push(',');
+            }
+            let _ =
+                write!(buf, "{}:{}:{}", geneve.class, geneve.typ, geneve.data);
+            if index + 1 == geneve_opts.len() {
+                buf.push(' ');
+            }
+        }
+    }
+    if let Some(ref vxlan_opts) = encap.vxlan_opts {
+        for vxlan in vxlan_opts {
+            let _ = write!(buf, "\n\tvxlan_opts {} ", vxlan.gbp);
+        }
+    }
+    if let Some(ref erspan_opts) = encap.erspan_opts {
+        for erspan in erspan_opts {
+            let _ = write!(
+                buf,
+                "\n\terspan_opts {}:{}:{}:{} ",
+                erspan.ver, erspan.index, erspan.dir, erspan.hwid
+            );
+        }
     }
     buf
 }

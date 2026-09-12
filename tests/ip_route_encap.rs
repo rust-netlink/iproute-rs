@@ -651,3 +651,111 @@ fn test_route_add_encap_seg6_hmac() {
         );
     });
 }
+
+// `vxlan_opts` of `encap ip` sets the VXLAN GBP.
+#[test]
+fn test_route_add_encap_ip_vxlan_opts() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        assert_ip_rs_add_show_eq(
+            ns,
+            &[
+                "route",
+                "add",
+                "10.41.0.0/16",
+                "encap",
+                "ip",
+                "id",
+                "300",
+                "vxlan_opts",
+                "100",
+                "dev",
+                DUMMY_NAME,
+            ],
+            &["route", "show", "10.41.0.0/16"],
+        );
+    });
+}
+
+// `erspan_opts` of `encap ip` sets the ERSPAN metadata.
+#[test]
+fn test_route_add_encap_ip_erspan_opts() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        assert_ip_rs_add_show_eq(
+            ns,
+            &[
+                "route",
+                "add",
+                "10.42.0.0/16",
+                "encap",
+                "ip",
+                "id",
+                "300",
+                "erspan_opts",
+                "1:2:3:4",
+                "dev",
+                DUMMY_NAME,
+            ],
+            &["route", "show", "10.42.0.0/16"],
+        );
+    });
+}
+
+// `geneve_opts` of `encap ip` sets the Geneve option list.
+//
+// Ignored until the kernel is fixed:
+// https://lore.kernel.org/netdev/20260912055304.1415016-1-cnfourt@gmail.com/
+#[test]
+#[ignore = "kernel panic bug in `ip_tun_parse_opts_geneve()`"]
+fn test_route_add_encap_ip_geneve_opts() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        assert_ip_rs_add_show_eq(
+            ns,
+            &[
+                "route",
+                "add",
+                "10.40.0.0/16",
+                "encap",
+                "ip",
+                "id",
+                "300",
+                "geneve_opts",
+                "0x1234:0x42:11223344,0x2020:0x1:deadbeef",
+                "dev",
+                DUMMY_NAME,
+            ],
+            &["route", "show", "10.40.0.0/16"],
+        );
+    });
+}
+
+// `geneve_opts` of `encap ip6` sets the Geneve option list.
+// Ignored until the kernel is fixed:
+// https://lore.kernel.org/netdev/20260912055304.1415016-1-cnfourt@gmail.com/
+#[test]
+#[ignore = "kernel panic bug in `ip_tun_parse_opts_geneve()`"]
+fn test_route_add_encap_ip6_geneve_opts() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        assert_ip_rs_add_show_eq(
+            ns,
+            &[
+                "-6",
+                "route",
+                "add",
+                "2001:db8:71::/64",
+                "encap",
+                "ip6",
+                "id",
+                "300",
+                "geneve_opts",
+                "0x1234:0x42:11223344",
+                "dev",
+                DUMMY_NAME,
+            ],
+            &["-6", "route", "show", "2001:db8:71::/64"],
+        );
+    });
+}

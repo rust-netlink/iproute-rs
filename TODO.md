@@ -1,14 +1,5 @@
 # TODO
 
-## `ip route`
-
-- add/del/change/replace/append/prepend: support `encap ip geneve_opts`,
-  `encap ip vxlan_opts`, `encap ip erspan_opts`, `encap ip6 geneve_opts`,
-  `encap ip6 vxlan_opts` and `encap ip6 erspan_opts` —
-  `src/ip/route/add.rs`
-- `netlink-packet-route`: support the `geneve_opts`, `vxlan_opts` and
-  `erspan_opts` attributes of `LWTUNNEL_IP_OPTS`
-
 ## `ip link`
 
 - show: implement `-o`/`--oneline` output — `src/ip/link/show.rs` (also
