@@ -447,7 +447,11 @@ fn test_route_show_encap_seg6local_srh() {
 }
 
 // RPL encapsulation with a segment list.
+//
+// Ignored because RPL LWT is optional in the kernel: without
+// CONFIG_IPV6_RPL_LWTUNNEL, adding the route fails with EOPNOTSUPP.
 #[test]
+#[ignore = "requires a kernel built with CONFIG_IPV6_RPL_LWTUNNEL"]
 fn test_route_show_encap_rpl() {
     with_netns(|ns| {
         setup_interface(ns);
@@ -470,6 +474,7 @@ fn test_route_show_encap_rpl() {
 }
 
 #[test]
+#[ignore = "requires a kernel built with CONFIG_IPV6_RPL_LWTUNNEL"]
 fn test_route_add_encap_rpl() {
     with_netns(|ns| {
         setup_interface(ns);
