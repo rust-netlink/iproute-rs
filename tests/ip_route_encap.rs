@@ -593,3 +593,61 @@ fn test_route_add_encap_ioam6_inline() {
         );
     });
 }
+
+// `tunsrc` sets the source address of the SRv6 encapsulation.
+#[test]
+fn test_route_add_encap_seg6_tunsrc() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        assert_ip_rs_add_show_eq(
+            ns,
+            &[
+                "-6",
+                "route",
+                "add",
+                "2001:db8:65::/64",
+                "encap",
+                "seg6",
+                "mode",
+                "encap",
+                "segs",
+                "2001:db8::2,2001:db8::3",
+                "tunsrc",
+                "2001:db8::9",
+                "dev",
+                DUMMY_NAME,
+            ],
+            &["-6", "route", "show", "2001:db8:65::/64"],
+        );
+    });
+}
+
+// `hmac` appends the SRv6 HMAC TLV to the segment routing header.
+#[test]
+fn test_route_add_encap_seg6_hmac() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        assert_ip_rs_add_show_eq(
+            ns,
+            &[
+                "-6",
+                "route",
+                "add",
+                "2001:db8:66::/64",
+                "encap",
+                "seg6",
+                "mode",
+                "encap",
+                "segs",
+                "2001:db8::2",
+                "hmac",
+                "1234",
+                "tunsrc",
+                "2001:db8::9",
+                "dev",
+                DUMMY_NAME,
+            ],
+            &["-6", "route", "show", "2001:db8:66::/64"],
+        );
+    });
+}

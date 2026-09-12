@@ -196,6 +196,13 @@ pub(crate) struct CliRouteEncap {
     pub(crate) seq: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) segs: Option<Vec<String>>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serializer_0x_hex"
+    )]
+    pub(crate) hmac: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) lookup: Option<String>,
     /// Number of segments shown before the segment list, `iproute2` does
     /// not include it in the JSON output.
     #[serde(skip)]
@@ -235,6 +242,19 @@ where
         Some(trace_type) => {
             serializer.serialize_str(&format!("{trace_type:x}"))
         }
+        None => serializer.serialize_none(),
+    }
+}
+
+fn serializer_0x_hex<S>(
+    value: &Option<u32>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match value {
+        Some(value) => serializer.serialize_str(&format!("{value:#x}")),
         None => serializer.serialize_none(),
     }
 }
@@ -290,6 +310,7 @@ impl CliRouteEncap {
                 }
                 RouteLwTunnelEncap::Seg6(RouteSeg6IpTunnel::Seg6(header)) => {
                     ret.mode = Some(seg6_mode_to_string(header.mode));
+                    ret.hmac = header.hmac;
                     ret.segs_count = Some(header.segments.len() as u8);
                     ret.segs = Some(
                         header
@@ -298,6 +319,12 @@ impl CliRouteEncap {
                             .map(|segment| segment.to_string())
                             .collect(),
                     );
+                }
+                RouteLwTunnelEncap::Seg6(RouteSeg6IpTunnel::Src(src)) => {
+                    ret.tunsrc = Some(src.to_string())
+                }
+                RouteLwTunnelEncap::Seg6(RouteSeg6IpTunnel::Table(table)) => {
+                    ret.lookup = Some(route_table_u32_to_string(*table))
                 }
                 RouteLwTunnelEncap::Rpl(RouteRplIpTunnel::Srh(srh)) => {
                     ret.segs_count = Some(srh.segments_left);
@@ -561,6 +588,12 @@ fn route_encap_to_string(encap: &CliRouteEncap) -> String {
             let _ = write!(buf, "{segment} ");
         }
         buf.push_str("] ");
+    }
+    if let Some(hmac) = encap.hmac {
+        let _ = write!(buf, "hmac {hmac:X} ");
+    }
+    if let Some(ref lookup) = encap.lookup {
+        let _ = write!(buf, "lookup {lookup} ");
     }
     buf
 }

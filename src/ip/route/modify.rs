@@ -181,9 +181,16 @@ fn build_encap(
             }
             RouteLwEnCapType::Ip6
         }
-        RouteEncapConfig::Seg6 { mode, segs } => {
+        RouteEncapConfig::Seg6 {
+            mode,
+            segs,
+            tunsrc,
+            lookup,
+            hmac,
+        } => {
             let mut header = Seg6Header::default();
             header.mode = *mode;
+            header.hmac = *hmac;
             header.segments = segs.clone();
             // `iproute2` appends a zeroed segment to the SRH of inline mode.
             if *mode == Seg6Mode::Inline {
@@ -192,6 +199,16 @@ fn build_encap(
             attrs.push(RouteLwTunnelEncap::Seg6(RouteSeg6IpTunnel::Seg6(
                 header,
             )));
+            if let Some(tunsrc) = tunsrc {
+                attrs.push(RouteLwTunnelEncap::Seg6(RouteSeg6IpTunnel::Src(
+                    *tunsrc,
+                )));
+            }
+            if let Some(lookup) = lookup {
+                attrs.push(RouteLwTunnelEncap::Seg6(RouteSeg6IpTunnel::Table(
+                    *lookup,
+                )));
+            }
             RouteLwEnCapType::Seg6
         }
         RouteEncapConfig::Rpl { segs } => {
