@@ -6,6 +6,9 @@ use self::common::{NetnsGuard, with_netns};
 const BRIDGE_NAME: &str = "test-br";
 const BRIDGE_NAME2: &str = "test-br2";
 const DUMMY_NAME: &str = "test-dummy";
+const DUMMY_NAME2: &str = "test-dummy2";
+const VETH_NAME: &str = "test-veth";
+const VETH_PEER_NAME: &str = "test-vpeer";
 
 /// Normalize timer values and whitespace in output to avoid test flakiness
 /// Timer values can vary slightly between consecutive calls due to kernel
@@ -470,6 +473,89 @@ fn test_bridge_create_multiple_options() {
 }
 
 #[test]
+fn test_bridge_create_mcast_hash_elasticity() {
+    with_netns(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "add",
+            BRIDGE_NAME2,
+            "type",
+            "bridge",
+            "mcast_hash_elasticity",
+            "4",
+        ]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
+
+        let outputs = ns.assert_eq_output_map(
+            &["-d", "link", "show", BRIDGE_NAME2],
+            normalize_timers,
+        );
+        assert!(outputs.expected.contains("mcast_hash_elasticity"));
+    });
+}
+
+#[test]
+fn test_bridge_set_fdb_flush() {
+    with_netns(|ns| {
+        ns.ip_rs_exec_cmd(&["link", "add", BRIDGE_NAME2, "type", "bridge"]);
+        ns.exec_cmd(&[
+            "ip",
+            "link",
+            "add",
+            VETH_NAME,
+            "type",
+            "veth",
+            "peer",
+            "name",
+            VETH_PEER_NAME,
+        ]);
+        ns.exec_cmd(&[
+            "ip",
+            "link",
+            "set",
+            VETH_PEER_NAME,
+            "master",
+            BRIDGE_NAME2,
+        ]);
+        ns.exec_cmd(&["ip", "link", "set", VETH_NAME, "up"]);
+        ns.exec_cmd(&["ip", "link", "set", VETH_PEER_NAME, "up"]);
+        ns.ip_rs_exec_cmd(&["link", "set", BRIDGE_NAME2, "up"]);
+
+        // A non-static FDB entry is what `fdb_flush` removes.
+        ns.exec_cmd(&[
+            "bridge",
+            "fdb",
+            "add",
+            "00:11:22:33:44:55",
+            "dev",
+            VETH_PEER_NAME,
+            "master",
+            "dynamic",
+        ]);
+        let fdb = ns.exec_cmd(&["bridge", "fdb", "show", "br", BRIDGE_NAME2]);
+        assert!(fdb.contains("00:11:22:33:44:55"));
+
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            BRIDGE_NAME2,
+            "type",
+            "bridge",
+            "fdb_flush",
+        ]);
+
+        let fdb = ns.exec_cmd(&["bridge", "fdb", "show", "br", BRIDGE_NAME2]);
+        assert!(!fdb.contains("00:11:22:33:44:55"));
+
+        ns.assert_eq_output_map(
+            &["-d", "link", "show", BRIDGE_NAME2],
+            normalize_timers,
+        );
+    });
+}
+
+#[test]
 fn test_bridge_port_set_hairpin() {
     with_bridge_iface(|ns| {
         ns.ip_rs_exec_cmd(&[
@@ -707,5 +793,35 @@ fn test_bridge_port_set_isolated() {
             normalize_timers,
         );
         assert!(outputs.expected.contains("isolated on"));
+    });
+}
+
+#[test]
+fn test_bridge_port_set_backup_port() {
+    with_bridge_iface(|ns| {
+        ns.exec_cmd(&["ip", "link", "add", DUMMY_NAME2, "type", "dummy"]);
+        ns.exec_cmd(&["ip", "link", "set", DUMMY_NAME2, "master", BRIDGE_NAME]);
+        ns.exec_cmd(&["ip", "link", "set", DUMMY_NAME2, "up"]);
+
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            DUMMY_NAME,
+            "type",
+            "bridge_slave",
+            "backup_port",
+            DUMMY_NAME2,
+        ]);
+
+        let outputs = ns.assert_eq_output_map(
+            &["-d", "link", "show", DUMMY_NAME],
+            normalize_timers,
+        );
+        assert!(
+            outputs
+                .expected
+                .contains(&format!("backup_port {DUMMY_NAME2}"))
+        );
     });
 }

@@ -230,3 +230,79 @@ fn test_set_bond_port_prio() {
         assert!(outputs.expected.contains("prio 5"));
     });
 }
+
+#[test]
+fn test_set_bond_clear_active_slave() {
+    with_bond_port_iface(&["mode", "active-backup"], |ns| {
+        // The slave is up, so the bond has an active slave to clear.
+        let outputs = ns.assert_eq_output(&["-d", "link", "show", BOND_NAME]);
+        assert!(
+            outputs
+                .expected
+                .contains(&format!("active_slave {DUMMY_NAME}"))
+        );
+
+        // The bond selects an active slave again right after clearing it, so
+        // only compare the state against iproute2 here.
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            BOND_NAME,
+            "type",
+            "bond",
+            "clear_active_slave",
+        ]);
+
+        ns.assert_eq_output(&["-d", "link", "show", BOND_NAME]);
+        ns.assert_eq_output(&["-d", "-j", "link", "show", BOND_NAME]);
+    });
+}
+
+#[test]
+fn test_set_bond_active_slave_and_primary() {
+    with_bond_port_iface(&["mode", "active-backup"], |ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            BOND_NAME,
+            "type",
+            "bond",
+            "active_slave",
+            DUMMY_NAME,
+        ]);
+        ns.ip_rs_exec_cmd(&[
+            "link", "set", "dev", BOND_NAME, "type", "bond", "primary",
+            DUMMY_NAME,
+        ]);
+
+        let outputs = ns.assert_eq_output(&["-d", "link", "show", BOND_NAME]);
+        assert!(
+            outputs
+                .expected
+                .contains(&format!("active_slave {DUMMY_NAME}"))
+        );
+        assert!(outputs.expected.contains(&format!("primary {DUMMY_NAME}")));
+        ns.assert_eq_output(&["-d", "-j", "link", "show", BOND_NAME]);
+    });
+}
+
+#[test]
+fn test_set_bond_clear_active_slave_with_other_option() {
+    with_bond_port_iface(&["mode", "active-backup"], |ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link",
+            "set",
+            "dev",
+            BOND_NAME,
+            "type",
+            "bond",
+            "clear_active_slave",
+            "miimon",
+            "100",
+        ]);
+        let outputs = ns.assert_eq_output(&["-d", "link", "show", BOND_NAME]);
+        assert!(outputs.expected.contains("miimon 100"));
+    });
+}

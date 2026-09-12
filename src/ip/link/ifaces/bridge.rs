@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
+
 use iproute_rs::{CliError, mac_to_string, parse_mac_str};
 use rtnetlink::{
     LinkBridge, LinkMessageBuilder,
@@ -15,7 +17,7 @@ use super::parse::{
     extract_link_info, parse_from_str, parse_on_off_01, parse_u8, parse_u16,
     parse_u32, parse_u64,
 };
-use crate::link::LinkBaseConf;
+use crate::link::{LinkBaseConf, set::get_ifindex_by_name};
 
 #[derive(Serialize)]
 pub(crate) struct CliLinkInfoDataBridge {
@@ -531,6 +533,22 @@ pub(crate) struct CliLinkInfoDataBridgePort {
     locked: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     mab: Option<bool>,
+    #[serde(skip_serializing)]
+    backup_port: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "backup_port")]
+    backup_port_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_nhid: Option<u32>,
+}
+
+impl CliLinkInfoDataBridgePort {
+    pub(crate) fn resolve_link(&mut self, index_2_name: &HashMap<u32, String>) {
+        if let Some(idx) = self.backup_port
+            && let Some(name) = index_2_name.get(&idx)
+        {
+            self.backup_port_name = Some(name.clone());
+        }
+    }
 }
 
 impl From<&[InfoBridgePort]> for CliLinkInfoDataBridgePort {
@@ -569,6 +587,8 @@ impl From<&[InfoBridgePort]> for CliLinkInfoDataBridgePort {
         let mut isolated = false;
         let mut locked = false;
         let mut mab = None;
+        let mut backup_port = None;
+        let mut backup_nhid = None;
 
         for nla in info {
             match nla {
@@ -628,6 +648,14 @@ impl From<&[InfoBridgePort]> for CliLinkInfoDataBridgePort {
                 InfoBridgePort::Isolated(v) => isolated = *v,
                 InfoBridgePort::Locked(v) => locked = *v,
                 InfoBridgePort::Mab(v) => mab = Some(*v),
+                InfoBridgePort::BackupPort(v) => {
+                    if *v != 0 {
+                        backup_port = Some(*v);
+                    }
+                }
+                InfoBridgePort::BackupNextHopId(v) if *v != 0 => {
+                    backup_nhid = Some(*v);
+                }
                 _ => (),
             }
         }
@@ -676,6 +704,9 @@ impl From<&[InfoBridgePort]> for CliLinkInfoDataBridgePort {
             isolated,
             locked,
             mab,
+            backup_port,
+            backup_port_name: None,
+            backup_nhid,
         }
     }
 }
@@ -742,6 +773,14 @@ impl std::fmt::Display for CliLinkInfoDataBridgePort {
         } else {
             write!(f, " mab off")?;
         }
+        if let Some(v) = &self.backup_port_name {
+            write!(f, " backup_port {v}")?;
+        } else if let Some(v) = self.backup_port {
+            write!(f, " backup_port {v}")?;
+        }
+        if let Some(v) = self.backup_nhid {
+            write!(f, " backup_nhid {v}")?;
+        }
 
         Ok(())
     }
@@ -757,6 +796,10 @@ fn apply_bridge_args<'a>(
     iter: &mut impl Iterator<Item = &'a str>,
 ) -> Result<LinkMessageBuilder<LinkBridge>, CliError> {
     while let Some(key) = iter.next() {
+        if key == "fdb_flush" {
+            builder = builder.fdb_flush();
+            continue;
+        }
         let Some(v) = iter.next() else {
             return Err(CliError::from(format!(
                 "bridge {key} requires a value"
@@ -831,6 +874,12 @@ fn apply_bridge_args<'a>(
             }
             "mcast_querier" => {
                 builder = builder.mcast_querier(parse_on_off_01(v)?);
+            }
+            "mcast_hash_elasticity" => {
+                builder = builder.mcast_hash_elasticity(parse_u32(
+                    v,
+                    "mcast_hash_elasticity",
+                )?);
             }
             "mcast_hash_max" => {
                 builder =
@@ -941,7 +990,8 @@ impl LinkBaseConf {
     }
 }
 
-fn apply_bridge_port_args(
+async fn apply_bridge_port_args(
+    handle: &rtnetlink::Handle,
     mut infos: Vec<LinkInfo>,
     iter: &mut impl Iterator<Item = impl AsRef<str>>,
 ) -> Result<Vec<LinkInfo>, CliError> {
@@ -1085,6 +1135,10 @@ fn apply_bridge_port_args(
             "nobackup_port" => {
                 port_data.push(InfoBridgePort::BackupPort(0));
             }
+            "backup_port" => {
+                let ifindex = get_ifindex_by_name(handle, v.as_ref()).await?;
+                port_data.push(InfoBridgePort::BackupPort(ifindex));
+            }
             "backup_nhid" => {
                 port_data.push(InfoBridgePort::BackupNextHopId(parse_u32(
                     v.as_ref(),
@@ -1109,12 +1163,13 @@ fn apply_bridge_port_args(
 pub(crate) struct IfaceBridgePort;
 
 impl IfaceBridgePort {
-    pub(crate) fn build_entries(
+    pub(crate) async fn build_entries(
+        handle: &rtnetlink::Handle,
         args: &[String],
     ) -> Result<Vec<LinkInfo>, CliError> {
         let infos = Vec::new();
         let mut iter = args.iter();
-        apply_bridge_port_args(infos, &mut iter)
+        apply_bridge_port_args(handle, infos, &mut iter).await
     }
 
     #[rustfmt::skip]

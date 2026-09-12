@@ -91,6 +91,9 @@ impl CliLinkInfo {
         if let Some(ref mut data) = self.info_data {
             data.resolve_link(index_2_name);
         }
+        if let Some(ref mut data) = self.info_port_data {
+            data.resolve_link(index_2_name);
+        }
     }
 }
 
@@ -237,6 +240,7 @@ impl CliLinkInfoData {
     pub(crate) fn resolve_link(&mut self, index_2_name: &HashMap<u32, String>) {
         match self {
             Self::Amt(amt) => amt.resolve_link(index_2_name),
+            Self::Bond(bond) => bond.resolve_link(index_2_name),
             Self::Dsa(dsa) => dsa.resolve_link(index_2_name),
             Self::Vxlan(vxlan) => vxlan.resolve_link(index_2_name),
             Self::Hsr(hsr) => hsr.resolve_link(index_2_name),
@@ -308,6 +312,14 @@ impl std::fmt::Display for CliLinkInfoPortData {
             CliLinkInfoPortData::BondPort(v) => write!(f, "{v}"),
             CliLinkInfoPortData::VrfPort(v) => write!(f, "{v}"),
             CliLinkInfoPortData::TeamPort(v) => write!(f, "{v}"),
+        }
+    }
+}
+
+impl CliLinkInfoPortData {
+    pub(crate) fn resolve_link(&mut self, index_2_name: &HashMap<u32, String>) {
+        if let Self::BridgePort(v) = self {
+            v.resolve_link(index_2_name);
         }
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
+    collections::HashMap,
     net::{Ipv4Addr, Ipv6Addr},
     str::FromStr,
 };
@@ -20,11 +21,15 @@ use serde::Serialize;
 use super::parse::{
     extract_link_info, parse_on_off_01, parse_u8, parse_u16, parse_u32,
 };
-use crate::link::LinkBaseConf;
+use crate::link::{LinkBaseConf, set::get_ifindex_by_name};
 
 #[derive(Serialize)]
 pub(crate) struct CliLinkInfoDataBond {
     mode: String,
+    #[serde(skip_serializing)]
+    active_slave: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "active_slave")]
+    active_slave_name: Option<String>,
     miimon: u32,
     updelay: u32,
     downdelay: u32,
@@ -34,6 +39,10 @@ pub(crate) struct CliLinkInfoDataBond {
     arp_missed_max: u8,
     arp_validate: Option<String>,
     arp_all_targets: String,
+    #[serde(skip_serializing)]
+    primary: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "primary")]
+    primary_name: Option<String>,
     primary_reselect: String,
     fail_over_mac: String,
     xmit_hash_policy: String,
@@ -63,9 +72,25 @@ pub(crate) struct CliLinkInfoDataBond {
     tlb_dynamic_lb: u8,
 }
 
+impl CliLinkInfoDataBond {
+    pub(crate) fn resolve_link(&mut self, index_2_name: &HashMap<u32, String>) {
+        if let Some(idx) = self.active_slave
+            && let Some(name) = index_2_name.get(&idx)
+        {
+            self.active_slave_name = Some(name.clone());
+        }
+        if let Some(idx) = self.primary
+            && let Some(name) = index_2_name.get(&idx)
+        {
+            self.primary_name = Some(name.clone());
+        }
+    }
+}
+
 impl From<&[InfoBond]> for CliLinkInfoDataBond {
     fn from(info: &[InfoBond]) -> Self {
         let mut mode = String::new();
+        let mut active_slave = None;
         let mut miimon = 0;
         let mut updelay = 0;
         let mut downdelay = 0;
@@ -75,6 +100,7 @@ impl From<&[InfoBond]> for CliLinkInfoDataBond {
         let mut arp_missed_max = 0;
         let mut arp_validate = None;
         let mut arp_all_targets = String::new();
+        let mut primary = None;
         let mut primary_reselect = String::new();
         let mut fail_over_mac = String::new();
         let mut xmit_hash_policy = String::new();
@@ -101,6 +127,11 @@ impl From<&[InfoBond]> for CliLinkInfoDataBond {
             use rtnetlink::packet_route::link::InfoBond;
             match nla {
                 InfoBond::Mode(v) => mode = v.to_string(),
+                InfoBond::ActivePort(v) => {
+                    if *v != 0 {
+                        active_slave = Some(*v);
+                    }
+                }
                 InfoBond::MiiMon(v) => miimon = *v,
                 InfoBond::UpDelay(v) => updelay = *v,
                 InfoBond::DownDelay(v) => downdelay = *v,
@@ -116,6 +147,11 @@ impl From<&[InfoBond]> for CliLinkInfoDataBond {
                     }
                 }
                 InfoBond::ArpAllTargets(v) => arp_all_targets = v.to_string(),
+                InfoBond::Primary(v) => {
+                    if *v != 0 {
+                        primary = Some(*v);
+                    }
+                }
                 InfoBond::PrimaryReselect(v) => {
                     primary_reselect = v.to_string()
                 }
@@ -165,6 +201,8 @@ impl From<&[InfoBond]> for CliLinkInfoDataBond {
 
         Self {
             mode,
+            active_slave,
+            active_slave_name: None,
             miimon,
             updelay,
             downdelay,
@@ -174,6 +212,8 @@ impl From<&[InfoBond]> for CliLinkInfoDataBond {
             arp_missed_max,
             arp_validate,
             arp_all_targets,
+            primary,
+            primary_name: None,
             primary_reselect,
             fail_over_mac,
             xmit_hash_policy,
@@ -207,6 +247,11 @@ impl std::fmt::Display for CliLinkInfoDataBond {
             self.arp_validate.as_ref().map_or("none", |s| s.as_str());
 
         write!(f, "mode {}", self.mode)?;
+        if let Some(v) = &self.active_slave_name {
+            write!(f, " active_slave {v}")?;
+        } else if let Some(v) = self.active_slave {
+            write!(f, " active_slave {v}")?;
+        }
         write!(f, " miimon {}", self.miimon)?;
         write!(f, " updelay {}", self.updelay)?;
         write!(f, " downdelay {}", self.downdelay)?;
@@ -226,6 +271,11 @@ impl std::fmt::Display for CliLinkInfoDataBond {
         }
         write!(f, " arp_validate {}", arp_validate)?;
         write!(f, " arp_all_targets {}", self.arp_all_targets)?;
+        if let Some(v) = &self.primary_name {
+            write!(f, " primary {v}")?;
+        } else if let Some(v) = self.primary {
+            write!(f, " primary {v}")?;
+        }
         write!(f, " primary_reselect {}", self.primary_reselect)?;
         write!(f, " fail_over_mac {}", self.fail_over_mac)?;
         write!(f, " xmit_hash_policy {}", self.xmit_hash_policy)?;
@@ -379,6 +429,10 @@ fn apply_bond_args<'a>(
     iter: &mut impl Iterator<Item = &'a str>,
 ) -> Result<LinkMessageBuilder<LinkBond>, CliError> {
     while let Some(key) = iter.next() {
+        if key == "clear_active_slave" {
+            builder = builder.active_port(0);
+            continue;
+        }
         let Some(v) = iter.next() else {
             return Err(CliError::from(format!("bond {key} requires a value")));
         };
@@ -564,55 +618,60 @@ impl LinkBaseConf {
         &self,
         handle: &rtnetlink::Handle,
     ) -> Result<LinkMessageBuilder<LinkBond>, CliError> {
-        let mut builder = LinkBond::new(&self.name);
+        let mut iter = self.iface_specific.iter().map(|s| s.as_str());
+        apply_bond_conf_args(LinkBond::new(&self.name), handle, &mut iter).await
+    }
+}
 
-        let mut remaining: Vec<&str> = Vec::new();
-        let mut iter = self.iface_specific.iter();
-        while let Some(key) = iter.next() {
-            match key.as_str() {
-                "active_slave" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "bond active_slave requires a value",
-                        ));
-                    };
-                    let ifindex = self.get_ifindex_by_name(handle, v).await?;
-                    builder = builder.active_port(ifindex);
-                }
-                "primary" => {
-                    let Some(v) = iter.next() else {
-                        return Err(CliError::from(
-                            "bond primary requires a value",
-                        ));
-                    };
-                    let ifindex = self.get_ifindex_by_name(handle, v).await?;
-                    builder = builder.primary(ifindex);
-                }
-                _ => {
-                    remaining.push(key);
-                    if let Some(v) = iter.next() {
-                        remaining.push(v);
-                    }
+/// Handle the bond options which take an interface name, the rest are passed
+/// to `apply_bond_args()`.
+async fn apply_bond_conf_args<'a>(
+    mut builder: LinkMessageBuilder<LinkBond>,
+    handle: &rtnetlink::Handle,
+    iter: &mut impl Iterator<Item = &'a str>,
+) -> Result<LinkMessageBuilder<LinkBond>, CliError> {
+    let mut remaining: Vec<&'a str> = Vec::new();
+    while let Some(key) = iter.next() {
+        match key {
+            "active_slave" | "primary" => {
+                let Some(v) = iter.next() else {
+                    return Err(CliError::from(format!(
+                        "bond {key} requires a value"
+                    )));
+                };
+                let ifindex = get_ifindex_by_name(handle, v).await?;
+                builder = if key == "active_slave" {
+                    builder.active_port(ifindex)
+                } else {
+                    builder.primary(ifindex)
+                };
+            }
+            // `clear_active_slave` does not take a value, keep it in the
+            // remaining options as is.
+            "clear_active_slave" => remaining.push(key),
+            _ => {
+                remaining.push(key);
+                if let Some(v) = iter.next() {
+                    remaining.push(v);
                 }
             }
         }
-
-        let mut remaining_iter = remaining.into_iter();
-        builder = apply_bond_args(builder, &mut remaining_iter)?;
-        Ok(builder)
     }
+
+    apply_bond_args(builder, &mut remaining.into_iter())
 }
 
 pub(crate) struct IfaceBond;
 
 impl IfaceBond {
-    pub(crate) fn build_entries(
+    pub(crate) async fn build_entries(
+        handle: &rtnetlink::Handle,
         args: &[String],
     ) -> Result<Vec<LinkInfo>, CliError> {
         let builder =
             LinkMessageBuilder::<LinkBond>::new_with_info_kind(InfoKind::Bond);
         let mut iter = args.iter().map(|s| s.as_str());
-        let builder = apply_bond_args(builder, &mut iter)?;
+        let builder = apply_bond_conf_args(builder, handle, &mut iter).await?;
         Ok(extract_link_info(builder.build()))
     }
 
