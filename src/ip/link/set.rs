@@ -429,7 +429,7 @@ async fn handle_link_set_replace(
     Ok(vec![])
 }
 
-async fn get_ifindex_by_name(
+pub(crate) async fn get_ifindex_by_name(
     handle: &rtnetlink::Handle,
     name: &str,
 ) -> Result<u32, CliError> {
@@ -1209,7 +1209,7 @@ async fn build_type_link_info(
             Ok(infos)
         }
         InfoKind::Bond => {
-            let mut infos = IfaceBond::build_entries(args)?;
+            let mut infos = IfaceBond::build_entries(handle, args).await?;
             clean_extracted(&mut infos, kind);
             Ok(infos)
         }
@@ -1367,7 +1367,7 @@ async fn build_type_link_info(
             IfaceBondPort::build_entries(args)
         }
         InfoKind::Other(s) if s == "bridge_slave" => {
-            IfaceBridgePort::build_entries(args)
+            IfaceBridgePort::build_entries(handle, args).await
         }
         InfoKind::Other(s) if s == "team_slave" => {
             IfaceTeamPort::build_entries(args)

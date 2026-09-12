@@ -1,10 +1,5 @@
 # TODO
 
-## `ip link`
-
-- add/set: audit per-type options against `ip link add type <TYPE> help`
-  (candidates: vxlan, bond, bridge)
-
 ## `ip address`
 
 - show: implement `-o`/`--oneline` output — `src/ip/address/show.rs`
