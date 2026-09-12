@@ -746,7 +746,7 @@ pub(crate) async fn handle_show(
     }
 
     let mut links_info: HashMap<u32, _> =
-        crate::link::handle_show(&link_opts_refs, include_details)
+        crate::link::handle_show(&link_opts_refs, include_details, 0, false)
             .await?
             .into_iter()
             .map(|mut link_info| {

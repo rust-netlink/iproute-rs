@@ -167,3 +167,100 @@ fn test_show_two_dummies_type_filter() {
         ns.assert_eq_output(&["link", "show", "type", "dummy"]);
     });
 }
+
+#[test]
+fn test_show_oneline() {
+    with_two_dummies(|ns| {
+        ns.assert_eq_output(&["-o", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_oneline_details() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-o", "-d", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_oneline_device() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-o", "link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_show_stats() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-s", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_stats_device() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-s", "link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_show_stats_detailed() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-s", "-s", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_stats_with_traffic() {
+    with_netns(|ns| {
+        // Generate loopback traffic so the statistics columns contain
+        // non-zero values of different widths.
+        ns.ip_rs_exec_cmd(&["link", "set", "lo", "up"]);
+        ns.exec_cmd(&["ping", "-c", "3", "-q", "127.0.0.1"]);
+        ns.assert_eq_output(&["-s", "link", "show", "lo"]);
+    });
+}
+
+#[test]
+fn test_show_stats_oneline() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-o", "-s", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_stats_json() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-j", "-s", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_stats_detailed_json() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-j", "-s", "-s", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_stats_detailed_with_traffic() {
+    with_netns(|ns| {
+        ns.ip_rs_exec_cmd(&["link", "set", "lo", "up"]);
+        ns.exec_cmd(&["ping", "-c", "3", "-q", "127.0.0.1"]);
+        ns.assert_eq_output(&["-s", "-s", "link", "show", "lo"]);
+    });
+}
+
+#[test]
+fn test_show_json_link_null() {
+    with_netns(|ns| {
+        // The default tunnel devices (e.g. `ip6tnl0`) report link index 0,
+        // which iproute2 serializes as `"link": null`.
+        let ip_output = ns.exec_cmd(&["ip", "-j", "link", "show"]);
+        if !ip_output.contains("\"link\":null") {
+            // Tunnel devices are not available on this host.
+            return;
+        }
+        ns.assert_eq_output(&["-j", "link", "show"]);
+    });
+}

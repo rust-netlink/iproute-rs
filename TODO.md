@@ -2,10 +2,6 @@
 
 ## `ip link`
 
-- show: implement `-o`/`--oneline` output — `src/ip/link/show.rs` (also
-  applies to address/neighbour/route show)
-- show: implement `-s`/`--stats` RX/TX statistics output —
-  `src/ip/link/show.rs`
 - add/set: audit per-type options against `ip link add type <TYPE> help`
   (candidates: vxlan, bond, bridge)
 

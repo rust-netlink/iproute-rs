@@ -8,8 +8,8 @@ use iproute_rs::{
 };
 use rtnetlink::packet_route::link::{
     LinkAttribute, LinkExtentMask, LinkFlags, LinkInfo, LinkLayerType,
-    LinkMessage, LinkVfInfo, Prop, VfInfo, VfInfoBroadcast, VfInfoMac,
-    VfLinkState, VfStats as NlVfStats, VfVlan, VlanProtocol,
+    LinkMessage, LinkVfInfo, Prop, Stats, Stats64, VfInfo, VfInfoBroadcast,
+    VfInfoMac, VfLinkState, VfStats as NlVfStats, VfVlan, VlanProtocol,
 };
 use serde::Serialize;
 
@@ -20,12 +20,17 @@ use crate::link::detail::CliLinkInfoDetail;
 pub(crate) struct CliLinkInfo {
     #[serde(skip)]
     brief: bool,
+    #[serde(skip)]
+    oneline: bool,
     ifindex: u32,
     #[serde(skip)]
     raw_flags: LinkFlags,
+    /// Lower link of this interface: `Some(None)` means the kernel reported
+    /// link index 0, which iproute2 displays as `@NONE` and serializes as
+    /// `"link": null`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    link: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    link: Option<Option<String>>,
+    #[serde(skip)]
     link_index: Option<u32>,
     ifname: String,
     flags: Vec<String>,
@@ -57,6 +62,9 @@ pub(crate) struct CliLinkInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(flatten)]
     details: Option<CliLinkInfoDetail>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(flatten)]
+    stats: Option<CliLinkStats>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     altnames: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -139,10 +147,556 @@ struct CliVfRxStats {
 
 #[derive(Debug, Clone, Default, Serialize)]
 struct CliVfTxStats {
+    #[serde(rename = "tx_bytes")]
     bytes: u64,
+    #[serde(rename = "tx_packets")]
     packets: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     dropped: Option<u64>,
+}
+
+/// RX/TX statistics of a link, collected from `IFLA_STATS64` or the legacy
+/// `IFLA_STATS` attribute when `ip link show -s` is used.
+struct CliLinkStats {
+    /// Whether the values were collected from `IFLA_STATS64`. iproute2 uses
+    /// `stats64` as JSON key for `IFLA_STATS64` and `stats` for
+    /// `IFLA_STATS`.
+    is_stats64: bool,
+    /// Whether `-s -s` was requested, which asks for the detailed error
+    /// counters.
+    detailed: bool,
+    rx: CliLinkRxStats,
+    tx: CliLinkTxStats,
+}
+
+#[derive(Default)]
+struct CliLinkRxStats {
+    bytes: u64,
+    packets: u64,
+    errors: u64,
+    dropped: u64,
+    over_errors: u64,
+    multicast: u64,
+    compressed: Option<u64>,
+    length_errors: Option<u64>,
+    crc_errors: Option<u64>,
+    frame_errors: Option<u64>,
+    fifo_errors: Option<u64>,
+    missed_errors: Option<u64>,
+    nohandler: Option<u64>,
+    otherhost: Option<u64>,
+}
+
+#[derive(Default)]
+struct CliLinkTxStats {
+    bytes: u64,
+    packets: u64,
+    errors: u64,
+    dropped: u64,
+    carrier_errors: u64,
+    collisions: u64,
+    compressed: Option<u64>,
+    aborted_errors: Option<u64>,
+    fifo_errors: Option<u64>,
+    window_errors: Option<u64>,
+    heartbeat_errors: Option<u64>,
+    carrier_changes: Option<u64>,
+}
+
+/// The `ip -j` output of iproute2 nests the RX/TX counters under `stats64`
+/// or `stats`, depending on the netlink attribute the kernel provided.
+impl Serialize for CliLinkStats {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+
+        #[derive(Serialize)]
+        struct Body<'a> {
+            rx: &'a CliLinkRxStats,
+            tx: &'a CliLinkTxStats,
+        }
+
+        let body = Body {
+            rx: &self.rx,
+            tx: &self.tx,
+        };
+        let mut map = serializer.serialize_map(Some(1))?;
+        if self.is_stats64 {
+            map.serialize_entry("stats64", &body)?;
+        } else {
+            map.serialize_entry("stats", &body)?;
+        }
+        map.end()
+    }
+}
+
+impl Serialize for CliLinkRxStats {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("bytes", &self.bytes)?;
+        map.serialize_entry("packets", &self.packets)?;
+        map.serialize_entry("errors", &self.errors)?;
+        map.serialize_entry("dropped", &self.dropped)?;
+        map.serialize_entry("over_errors", &self.over_errors)?;
+        map.serialize_entry("multicast", &self.multicast)?;
+        if let Some(v) = self.compressed {
+            map.serialize_entry("compressed", &v)?;
+        }
+        if let Some(v) = self.length_errors {
+            map.serialize_entry("length_errors", &v)?;
+        }
+        if let Some(v) = self.crc_errors {
+            map.serialize_entry("crc_errors", &v)?;
+        }
+        if let Some(v) = self.frame_errors {
+            map.serialize_entry("frame_errors", &v)?;
+        }
+        if let Some(v) = self.fifo_errors {
+            map.serialize_entry("fifo_errors", &v)?;
+        }
+        if let Some(v) = self.missed_errors {
+            map.serialize_entry("missed_errors", &v)?;
+        }
+        if let Some(v) = self.nohandler {
+            map.serialize_entry("nohandler", &v)?;
+        }
+        if let Some(v) = self.otherhost {
+            map.serialize_entry("otherhost", &v)?;
+        }
+        map.end()
+    }
+}
+
+impl Serialize for CliLinkTxStats {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("bytes", &self.bytes)?;
+        map.serialize_entry("packets", &self.packets)?;
+        map.serialize_entry("errors", &self.errors)?;
+        map.serialize_entry("dropped", &self.dropped)?;
+        map.serialize_entry("carrier_errors", &self.carrier_errors)?;
+        map.serialize_entry("collisions", &self.collisions)?;
+        if let Some(v) = self.compressed {
+            map.serialize_entry("compressed", &v)?;
+        }
+        if let Some(v) = self.aborted_errors {
+            map.serialize_entry("aborted_errors", &v)?;
+        }
+        if let Some(v) = self.fifo_errors {
+            map.serialize_entry("fifo_errors", &v)?;
+        }
+        if let Some(v) = self.window_errors {
+            map.serialize_entry("window_errors", &v)?;
+        }
+        if let Some(v) = self.heartbeat_errors {
+            map.serialize_entry("heartbeat_errors", &v)?;
+        }
+        if let Some(v) = self.carrier_changes {
+            map.serialize_entry("carrier_changes", &v)?;
+        }
+        map.end()
+    }
+}
+
+/// Counter values of `IFLA_STATS64` and the legacy `IFLA_STATS` in a common
+/// u64 representation.
+#[derive(Default)]
+struct CliLinkStatsValues {
+    rx_bytes: u64,
+    rx_packets: u64,
+    rx_errors: u64,
+    rx_dropped: u64,
+    rx_over_errors: u64,
+    rx_missed_errors: u64,
+    multicast: u64,
+    rx_compressed: u64,
+    rx_length_errors: u64,
+    rx_crc_errors: u64,
+    rx_frame_errors: u64,
+    rx_fifo_errors: u64,
+    rx_nohandler: u64,
+    rx_otherhost_dropped: u64,
+    tx_bytes: u64,
+    tx_packets: u64,
+    tx_errors: u64,
+    tx_dropped: u64,
+    tx_carrier_errors: u64,
+    collisions: u64,
+    tx_compressed: u64,
+    tx_aborted_errors: u64,
+    tx_fifo_errors: u64,
+    tx_window_errors: u64,
+    tx_heartbeat_errors: u64,
+}
+
+impl From<&Stats64> for CliLinkStatsValues {
+    fn from(s: &Stats64) -> Self {
+        Self {
+            rx_bytes: s.rx_bytes,
+            rx_packets: s.rx_packets,
+            rx_errors: s.rx_errors,
+            rx_dropped: s.rx_dropped,
+            rx_over_errors: s.rx_over_errors,
+            rx_missed_errors: s.rx_missed_errors,
+            multicast: s.multicast,
+            rx_compressed: s.rx_compressed,
+            rx_length_errors: s.rx_length_errors,
+            rx_crc_errors: s.rx_crc_errors,
+            rx_frame_errors: s.rx_frame_errors,
+            rx_fifo_errors: s.rx_fifo_errors,
+            rx_nohandler: s.rx_nohandler,
+            rx_otherhost_dropped: s.rx_otherhost_dropped,
+            tx_bytes: s.tx_bytes,
+            tx_packets: s.tx_packets,
+            tx_errors: s.tx_errors,
+            tx_dropped: s.tx_dropped,
+            tx_carrier_errors: s.tx_carrier_errors,
+            collisions: s.collisions,
+            tx_compressed: s.tx_compressed,
+            tx_aborted_errors: s.tx_aborted_errors,
+            tx_fifo_errors: s.tx_fifo_errors,
+            tx_window_errors: s.tx_window_errors,
+            tx_heartbeat_errors: s.tx_heartbeat_errors,
+        }
+    }
+}
+
+impl From<&Stats> for CliLinkStatsValues {
+    fn from(s: &Stats) -> Self {
+        Self {
+            rx_bytes: s.rx_bytes.into(),
+            rx_packets: s.rx_packets.into(),
+            rx_errors: s.rx_errors.into(),
+            rx_dropped: s.rx_dropped.into(),
+            rx_over_errors: s.rx_over_errors.into(),
+            rx_missed_errors: s.rx_missed_errors.into(),
+            multicast: s.multicast.into(),
+            rx_compressed: s.rx_compressed.into(),
+            rx_length_errors: s.rx_length_errors.into(),
+            rx_crc_errors: s.rx_crc_errors.into(),
+            rx_frame_errors: s.rx_frame_errors.into(),
+            rx_fifo_errors: s.rx_fifo_errors.into(),
+            rx_nohandler: s.rx_nohandler.into(),
+            // `IFLA_STATS` has no `rx_otherhost_dropped` counter.
+            rx_otherhost_dropped: 0,
+            tx_bytes: s.tx_bytes.into(),
+            tx_packets: s.tx_packets.into(),
+            tx_errors: s.tx_errors.into(),
+            tx_dropped: s.tx_dropped.into(),
+            tx_carrier_errors: s.tx_carrier_errors.into(),
+            collisions: s.collisions.into(),
+            tx_compressed: s.tx_compressed.into(),
+            tx_aborted_errors: s.tx_aborted_errors.into(),
+            tx_fifo_errors: s.tx_fifo_errors.into(),
+            tx_window_errors: s.tx_window_errors.into(),
+            tx_heartbeat_errors: s.tx_heartbeat_errors.into(),
+        }
+    }
+}
+
+impl CliLinkStats {
+    /// `show_stats` is the number of `-s` given by the user: iproute2 only
+    /// displays the detailed error counters (and its JSON counterparts) when
+    /// `-s -s` is used.
+    fn new(
+        values: CliLinkStatsValues,
+        is_stats64: bool,
+        show_stats: u8,
+        carrier_changes: Option<u32>,
+    ) -> Self {
+        let detailed = show_stats > 1;
+        Self {
+            is_stats64,
+            detailed,
+            rx: CliLinkRxStats {
+                bytes: values.rx_bytes,
+                packets: values.rx_packets,
+                errors: values.rx_errors,
+                dropped: values.rx_dropped,
+                over_errors: values.rx_over_errors,
+                multicast: values.multicast,
+                compressed: (values.rx_compressed != 0)
+                    .then_some(values.rx_compressed),
+                length_errors: detailed.then_some(values.rx_length_errors),
+                crc_errors: detailed.then_some(values.rx_crc_errors),
+                frame_errors: detailed.then_some(values.rx_frame_errors),
+                fifo_errors: detailed.then_some(values.rx_fifo_errors),
+                missed_errors: detailed.then_some(values.rx_missed_errors),
+                nohandler: (detailed && values.rx_nohandler != 0)
+                    .then_some(values.rx_nohandler),
+                otherhost: (detailed && values.rx_otherhost_dropped != 0)
+                    .then_some(values.rx_otherhost_dropped),
+            },
+            tx: CliLinkTxStats {
+                bytes: values.tx_bytes,
+                packets: values.tx_packets,
+                errors: values.tx_errors,
+                dropped: values.tx_dropped,
+                carrier_errors: values.tx_carrier_errors,
+                collisions: values.collisions,
+                compressed: (values.tx_compressed != 0)
+                    .then_some(values.tx_compressed),
+                aborted_errors: detailed.then_some(values.tx_aborted_errors),
+                fifo_errors: detailed.then_some(values.tx_fifo_errors),
+                window_errors: detailed.then_some(values.tx_window_errors),
+                heartbeat_errors: detailed
+                    .then_some(values.tx_heartbeat_errors),
+                carrier_changes: match (detailed, carrier_changes) {
+                    (true, Some(v)) => Some(v.into()),
+                    _ => None,
+                },
+            },
+        }
+    }
+}
+
+/// Update each column width with the number of digits of the values, the
+/// same way iproute2 `size_columns()` does.
+fn size_columns(cols: &mut [usize; 8], values: &[u64]) {
+    for (col, value) in cols.iter_mut().zip(values) {
+        let width = match value {
+            0 => 1,
+            v => v.ilog10() as usize + 1,
+        };
+        *col = (*col).max(width);
+    }
+}
+
+impl std::fmt::Display for CliLinkStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let rx = &self.rx;
+        let tx = &self.tx;
+        // Initial widths are the header string lengths, see iproute2
+        // `print_stats64()`.
+        let mut cols = [10usize, 7, 6, 7, 7, 7, 10, 9];
+
+        size_columns(
+            &mut cols,
+            &[
+                rx.bytes,
+                rx.packets,
+                rx.errors,
+                rx.dropped,
+                rx.missed_errors.unwrap_or(0),
+                rx.multicast,
+                rx.compressed.unwrap_or(0),
+                0,
+            ],
+        );
+        if self.detailed {
+            size_columns(
+                &mut cols,
+                &[
+                    0,
+                    rx.length_errors.unwrap_or(0),
+                    rx.crc_errors.unwrap_or(0),
+                    rx.frame_errors.unwrap_or(0),
+                    rx.fifo_errors.unwrap_or(0),
+                    rx.over_errors,
+                    rx.nohandler.unwrap_or(0),
+                    rx.otherhost.unwrap_or(0),
+                ],
+            );
+        }
+        size_columns(
+            &mut cols,
+            &[
+                tx.bytes,
+                tx.packets,
+                tx.errors,
+                tx.dropped,
+                tx.carrier_errors,
+                tx.collisions,
+                tx.compressed.unwrap_or(0),
+                0,
+            ],
+        );
+        if self.detailed {
+            size_columns(
+                &mut cols,
+                &[
+                    0,
+                    0,
+                    tx.aborted_errors.unwrap_or(0),
+                    tx.fifo_errors.unwrap_or(0),
+                    tx.window_errors.unwrap_or(0),
+                    tx.heartbeat_errors.unwrap_or(0),
+                    tx.carrier_changes.unwrap_or(0),
+                    0,
+                ],
+            );
+        }
+
+        write!(f, "\n    RX: ")?;
+        write!(f, "{:>width$}", "bytes", width = cols[0] - 4)?;
+        write!(f, " {:>width$}", "packets", width = cols[1])?;
+        write!(f, " {:>width$}", "errors", width = cols[2])?;
+        write!(f, " {:>width$}", "dropped", width = cols[3])?;
+        write!(f, " {:>width$}", "missed", width = cols[4])?;
+        write!(f, " {:>width$}", "mcast", width = cols[5])?;
+        write!(
+            f,
+            " {:>width$}",
+            if rx.compressed.is_some() {
+                "compressed"
+            } else {
+                ""
+            },
+            width = cols[6],
+        )?;
+        write!(f, "\n    ")?;
+        write!(f, "{:>width$} ", rx.bytes, width = cols[0])?;
+        write!(f, "{:>width$} ", rx.packets, width = cols[1])?;
+        write!(f, "{:>width$} ", rx.errors, width = cols[2])?;
+        write!(f, "{:>width$} ", rx.dropped, width = cols[3])?;
+        write!(
+            f,
+            "{:>width$} ",
+            rx.missed_errors.unwrap_or(0),
+            width = cols[4],
+        )?;
+        write!(f, "{:>width$} ", rx.multicast, width = cols[5])?;
+        if let Some(compressed) = rx.compressed {
+            write!(f, "{compressed:>width$} ", width = cols[6])?;
+        }
+
+        if self.detailed {
+            write!(f, "\n    RX errors:")?;
+            write!(f, "{:>width$}", "", width = cols[0] - 10)?;
+            write!(f, " {:>width$}", "length", width = cols[1])?;
+            write!(f, " {:>width$}", "crc", width = cols[2])?;
+            write!(f, " {:>width$}", "frame", width = cols[3])?;
+            write!(f, " {:>width$}", "fifo", width = cols[4])?;
+            write!(f, " {:>width$}", "overrun", width = cols[5])?;
+            if rx.nohandler.is_some() {
+                write!(f, "{:>width$}", " nohandler", width = cols[6] + 1)?;
+            }
+            if rx.otherhost.is_some() {
+                write!(f, "{:>width$}", " otherhost", width = cols[7] + 1)?;
+            }
+            write!(f, "\n{:>width$}", "", width = cols[0] + 5)?;
+            write!(
+                f,
+                "{:>width$} ",
+                rx.length_errors.unwrap_or(0),
+                width = cols[1],
+            )?;
+            write!(
+                f,
+                "{:>width$} ",
+                rx.crc_errors.unwrap_or(0),
+                width = cols[2],
+            )?;
+            write!(
+                f,
+                "{:>width$} ",
+                rx.frame_errors.unwrap_or(0),
+                width = cols[3],
+            )?;
+            write!(
+                f,
+                "{:>width$} ",
+                rx.fifo_errors.unwrap_or(0),
+                width = cols[4],
+            )?;
+            write!(f, "{:>width$} ", rx.over_errors, width = cols[5])?;
+            if let Some(nohandler) = rx.nohandler {
+                write!(f, "{nohandler:>width$} ", width = cols[6])?;
+            }
+            if let Some(otherhost) = rx.otherhost {
+                write!(f, "{otherhost:>width$} ", width = cols[7])?;
+            }
+        }
+
+        write!(f, "\n    TX: ")?;
+        write!(f, "{:>width$}", "bytes", width = cols[0] - 4)?;
+        write!(f, " {:>width$}", "packets", width = cols[1])?;
+        write!(f, " {:>width$}", "errors", width = cols[2])?;
+        write!(f, " {:>width$}", "dropped", width = cols[3])?;
+        write!(f, " {:>width$}", "carrier", width = cols[4])?;
+        write!(f, " {:>width$}", "collsns", width = cols[5])?;
+        write!(
+            f,
+            " {:>width$}",
+            if tx.compressed.is_some() {
+                "compressed"
+            } else {
+                ""
+            },
+            width = cols[6],
+        )?;
+        write!(f, "\n    ")?;
+        write!(f, "{:>width$} ", tx.bytes, width = cols[0])?;
+        write!(f, "{:>width$} ", tx.packets, width = cols[1])?;
+        write!(f, "{:>width$} ", tx.errors, width = cols[2])?;
+        write!(f, "{:>width$} ", tx.dropped, width = cols[3])?;
+        write!(f, "{:>width$} ", tx.carrier_errors, width = cols[4])?;
+        write!(f, "{:>width$} ", tx.collisions, width = cols[5])?;
+        if let Some(compressed) = tx.compressed {
+            write!(f, "{compressed:>width$} ", width = cols[6])?;
+        }
+
+        if self.detailed {
+            write!(f, "\n    TX errors:")?;
+            write!(f, "{:>width$}", "", width = cols[0] - 10)?;
+            write!(f, " {:>width$}", "aborted", width = cols[1])?;
+            write!(f, " {:>width$}", "fifo", width = cols[2])?;
+            write!(f, " {:>width$}", "window", width = cols[3])?;
+            write!(f, " {:>width$}", "heartbt", width = cols[4])?;
+            write!(
+                f,
+                " {:>width$}",
+                if tx.carrier_changes.is_some() {
+                    "transns"
+                } else {
+                    ""
+                },
+                width = cols[5],
+            )?;
+            write!(f, "\n{:>width$}", "", width = cols[0] + 5)?;
+            write!(
+                f,
+                "{:>width$} ",
+                tx.aborted_errors.unwrap_or(0),
+                width = cols[1],
+            )?;
+            write!(
+                f,
+                "{:>width$} ",
+                tx.fifo_errors.unwrap_or(0),
+                width = cols[2],
+            )?;
+            write!(
+                f,
+                "{:>width$} ",
+                tx.window_errors.unwrap_or(0),
+                width = cols[3],
+            )?;
+            write!(
+                f,
+                "{:>width$} ",
+                tx.heartbeat_errors.unwrap_or(0),
+                width = cols[4],
+            )?;
+            if let Some(carrier_changes) = tx.carrier_changes {
+                write!(f, "{carrier_changes:>width$} ", width = cols[5])?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl CliLinkInfo {
@@ -170,6 +724,10 @@ impl CliLinkInfo {
 
     pub fn set_brief(&mut self, brief: bool) {
         self.brief = brief;
+    }
+
+    pub fn set_oneline(&mut self, oneline: bool) {
+        self.oneline = oneline;
     }
 }
 
@@ -211,19 +769,17 @@ impl std::fmt::Display for CliLinkInfo {
         }
 
         write!(f, "{}: ", self.ifindex)?;
-        let link = if self.link_index.is_some() || self.link.is_some() {
-            let display_name = if let Some(link_name) = &self.link {
-                link_name
-            } else if let Some(link_index) = self.link_index {
-                if link_index == 0 {
-                    "NONE"
-                } else {
-                    &format!("if{link_index}")
-                }
-            } else {
-                "NONE"
-            };
+        let link = if let Some(link_name) = &self.link {
+            // iproute2 prints `@NONE` when the kernel reports link index 0.
+            let display_name =
+                link_name.clone().unwrap_or_else(|| "NONE".to_string());
             format!("@{display_name}")
+        } else if let Some(link_index) = self.link_index {
+            if link_index == 0 {
+                "@NONE".to_string()
+            } else {
+                format!("@if{link_index}")
+            }
         } else {
             String::new()
         };
@@ -292,6 +848,10 @@ impl std::fmt::Display for CliLinkInfo {
             write!(f, "{details}")?;
         }
 
+        if let Some(stats) = &self.stats {
+            write!(f, "{stats}")?;
+        }
+
         for altname in &self.altnames {
             write!(f, "\n    altname {altname}")?;
         }
@@ -322,7 +882,14 @@ impl std::fmt::Display for CliLinkInfo {
 
 impl CanDisplay for CliLinkInfo {
     fn gen_string(&self) -> String {
-        self.to_string()
+        let output = self.to_string();
+        if self.oneline {
+            // iproute2 replaces the newline of every continuation line with
+            // a backslash for `-o`.
+            output.replace('\n', "\\")
+        } else {
+            output
+        }
     }
 }
 
@@ -467,6 +1034,8 @@ impl LinkShowFilter {
 pub(crate) async fn handle_show(
     opts: &[&str],
     include_details: bool,
+    statistics: u8,
+    oneline: bool,
 ) -> Result<Vec<CliLinkInfo>, CliError> {
     let filter = LinkShowFilter::parse(opts)?;
 
@@ -487,11 +1056,19 @@ pub(crate) async fn handle_show(
     let mut ifaces: Vec<CliLinkInfo> = Vec::new();
 
     while let Some(nl_msg) = links.try_next().await? {
-        ifaces.push(parse_nl_msg_to_iface(nl_msg, include_details).await?);
+        ifaces.push(
+            parse_nl_msg_to_iface(nl_msg, include_details, statistics).await?,
+        );
     }
 
     resolve_controller_and_link_names(&mut ifaces);
     resolve_netns_names(&mut ifaces).await?;
+
+    if oneline {
+        for iface in ifaces.iter_mut() {
+            iface.set_oneline(true);
+        }
+    }
 
     // In order to resolve interface index to interface name and netns name,
     // we cannot use kernel side interface filter, but need to dump everything,
@@ -525,6 +1102,7 @@ fn normalize_link_type(link_type: &str) -> String {
 pub(crate) async fn parse_nl_msg_to_iface(
     nl_msg: LinkMessage,
     include_details: bool,
+    statistics: u8,
 ) -> Result<CliLinkInfo, CliError> {
     let raw_flags = nl_msg.header.flags;
     let link_layer_type_raw = nl_msg.header.link_layer_type;
@@ -571,6 +1149,9 @@ pub(crate) async fn parse_nl_msg_to_iface(
     }
 
     let mut temp_permaddr = String::new();
+    let mut stats64: Option<Stats64> = None;
+    let mut stats32: Option<Stats> = None;
+    let mut carrier_changes: Option<u32> = None;
 
     for nl_attr in nl_msg.attributes {
         match nl_attr {
@@ -603,14 +1184,19 @@ pub(crate) async fn parse_nl_msg_to_iface(
                 }
             }
             LinkAttribute::VfInfoList(list) => {
-                let mut vfs: Vec<CliVfInfo> =
-                    list.into_iter().map(parse_vf_info).collect();
+                let mut vfs: Vec<CliVfInfo> = list
+                    .into_iter()
+                    .map(|vf| parse_vf_info(vf, statistics > 0))
+                    .collect();
                 for vf in vfs.iter_mut() {
                     vf.is_point_2_point = ret.is_point_2_point;
                 }
                 ret.vfinfo_list = Some(vfs);
             }
             LinkAttribute::NumVf(n) => ret.num_vf = Some(n),
+            LinkAttribute::Stats64(s) if statistics > 0 => stats64 = Some(s),
+            LinkAttribute::Stats(s) if statistics > 0 => stats32 = Some(s),
+            LinkAttribute::CarrierChanges(v) => carrier_changes = Some(v),
             LinkAttribute::LinkInfo(infos) => {
                 for info in &infos {
                     if let LinkInfo::Kind(k) = info {
@@ -622,6 +1208,26 @@ pub(crate) async fn parse_nl_msg_to_iface(
         }
     }
 
+    // Like iproute2 `get_rtnl_link_stats_rta()`, prefer `IFLA_STATS64` over
+    // the legacy `IFLA_STATS` attribute.
+    if statistics > 0 {
+        if let Some(s) = stats64 {
+            ret.stats = Some(CliLinkStats::new(
+                CliLinkStatsValues::from(&s),
+                true,
+                statistics,
+                carrier_changes,
+            ));
+        } else if let Some(s) = stats32 {
+            ret.stats = Some(CliLinkStats::new(
+                CliLinkStatsValues::from(&s),
+                false,
+                statistics,
+                carrier_changes,
+            ));
+        }
+    }
+
     // Only set permaddr if it differs from the current address
     if !temp_permaddr.is_empty() && temp_permaddr != ret.address {
         ret.permaddr = temp_permaddr;
@@ -630,7 +1236,7 @@ pub(crate) async fn parse_nl_msg_to_iface(
     Ok(ret)
 }
 
-fn parse_vf_info(vf: LinkVfInfo) -> CliVfInfo {
+fn parse_vf_info(vf: LinkVfInfo, show_stats: bool) -> CliVfInfo {
     let mut info = CliVfInfo::default();
     let mut vlan_vlan_id = None;
     let mut vlan_qos = None;
@@ -638,6 +1244,7 @@ fn parse_vf_info(vf: LinkVfInfo) -> CliVfInfo {
     let mut tx_rate_val = None;
     let mut max_tx_rate_val = None;
     let mut min_tx_rate_val = None;
+    let mut has_stats = false;
     let mut stats_rx = CliVfRxStats::default();
     let mut stats_tx = CliVfTxStats::default();
 
@@ -728,6 +1335,7 @@ fn parse_vf_info(vf: LinkVfInfo) -> CliVfInfo {
                 }
             }
             VfInfo::Stats(stats) => {
+                has_stats = true;
                 for stat in stats {
                     match stat {
                         NlVfStats::RxPackets(v) => stats_rx.packets = v,
@@ -758,12 +1366,8 @@ fn parse_vf_info(vf: LinkVfInfo) -> CliVfInfo {
     info.max_tx_rate = max_tx_rate_val;
     info.min_tx_rate = min_tx_rate_val;
 
-    // Only emit stats if any values are non-zero
-    if stats_rx.bytes != 0
-        || stats_rx.packets != 0
-        || stats_tx.bytes != 0
-        || stats_tx.packets != 0
-    {
+    // iproute2 only shows VF statistics with `-s`.
+    if show_stats && has_stats {
         info.stats = Some(CliVfStats {
             rx: stats_rx,
             tx: stats_tx,
@@ -894,9 +1498,9 @@ impl std::fmt::Display for CliVfInfo {
         }
 
         if let Some(ref stats) = self.stats {
-            write!(f, "\n    RX: bytes  packets  mcast   bcast")?;
+            write!(f, "\n    RX: bytes  packets  mcast   bcast ")?;
             if stats.rx.dropped.is_some() {
-                write!(f, "  dropped")?;
+                write!(f, "  dropped ")?;
             }
             write!(
                 f,
@@ -907,15 +1511,19 @@ impl std::fmt::Display for CliVfInfo {
                 stats.rx.broadcast,
             )?;
             if let Some(dropped) = stats.rx.dropped {
-                write!(f, " {:>8}", dropped)?;
+                write!(f, " {dropped:>8} ")?;
+            } else {
+                write!(f, " ")?;
             }
-            write!(f, "\n    TX: bytes  packets")?;
+            write!(f, "\n    TX: bytes  packets ")?;
             if stats.tx.dropped.is_some() {
-                write!(f, "  dropped")?;
+                write!(f, "  dropped ")?;
             }
             write!(f, "\n    {:>10} {:>8}", stats.tx.bytes, stats.tx.packets,)?;
             if let Some(dropped) = stats.tx.dropped {
-                write!(f, " {:>8}", dropped)?;
+                write!(f, " {dropped:>8} ")?;
+            } else {
+                write!(f, " ")?;
             }
         }
 
@@ -1022,8 +1630,6 @@ fn resolve_controller_and_link_names(links: &mut [CliLinkInfo]) {
             link.controller = Some(name.to_string());
         }
         if let Some(link_ifindex) = link.link_index {
-            // Keep link_index = 0 (tunnel interfaces show @NONE), skip
-            // name resolution for zero index.
             if link_ifindex > 0 {
                 let name = if let Some(name) = index_2_name.get(&link_ifindex)
                     && link.link_netnsid.is_none()
@@ -1032,15 +1638,18 @@ fn resolve_controller_and_link_names(links: &mut [CliLinkInfo]) {
                 } else {
                     format!("if{link_ifindex}")
                 };
-                link.link = Some(name);
-                // Clear link_index, we want to serialize "link" only
-                link.link_index = None;
+                link.link = Some(Some(name));
+            } else {
+                // iproute2 serializes link index 0 as `"link": null`, the
+                // text output is `@NONE`.
+                link.link = Some(None);
             }
+            link.link_index = None;
         }
 
         // Compute M-DOWN: if linked interface is not UP, append "M-DOWN"
         // to flags, matching iproute2 behavior (print_link_flags mdown param).
-        if let Some(ref link_name) = link.link
+        if let Some(Some(ref link_name)) = link.link
             && let Some((&linked_ifindex, _)) =
                 index_2_name.iter().find(|(_, name)| *name == link_name)
             && let Some(linked_flags) = index_2_flags.get(&linked_ifindex)
