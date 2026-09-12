@@ -8,11 +8,12 @@ use rtnetlink::packet_route::{
     AddressFamily,
     route::{
         RouteAttribute, RouteCacheInfo, RouteFlags, RouteHeader,
-        RouteIp6Tunnel, RouteIpTunnel, RouteLwEnCapType, RouteLwTunnelEncap,
-        RouteMessage, RouteMetric, RouteMplsIpTunnel, RouteMplsTtlPropagation,
-        RouteNextHopFlags, RoutePreference, RouteProtocol, RouteScope,
-        RouteSeg6IpTunnel, RouteSeg6LocalTunnel, RouteType, RouteVia,
-        RouteXfrmTunnel, Seg6LocalAction, Seg6Mode,
+        RouteIoam6Tunnel, RouteIp6Tunnel, RouteIpTunnel, RouteLwEnCapType,
+        RouteLwTunnelEncap, RouteMessage, RouteMetric, RouteMplsIpTunnel,
+        RouteMplsTtlPropagation, RouteNextHopFlags, RoutePreference,
+        RouteProtocol, RouteRplIpTunnel, RouteScope, RouteSeg6IpTunnel,
+        RouteSeg6LocalTunnel, RouteType, RouteVia, RouteXfrmTunnel,
+        Seg6LocalAction, Seg6Mode,
     },
 };
 use serde::Serialize;
@@ -130,6 +131,10 @@ pub(crate) struct CliRouteVia {
 pub(crate) struct CliRouteEncap {
     pub(crate) encap_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) freqk: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) freqn: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) action: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) srh: Option<CliRouteEncapSrh>,
@@ -156,6 +161,22 @@ pub(crate) struct CliRouteEncap {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tunsrc: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tundst: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) trace: Option<()>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) prealloc: Option<()>,
+    #[serde(
+        rename = "type",
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serializer_trace_type"
+    )]
+    pub(crate) trace_type: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) ns: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) size: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) src: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) dst: Option<String>,
@@ -175,6 +196,10 @@ pub(crate) struct CliRouteEncap {
     pub(crate) seq: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) segs: Option<Vec<String>>,
+    /// Number of segments shown before the segment list, `iproute2` does
+    /// not include it in the JSON output.
+    #[serde(skip)]
+    pub(crate) segs_count: Option<u8>,
 }
 
 /// `SEG6_LOCAL_SRH` of a `seg6local` encapsulation.
@@ -196,6 +221,21 @@ fn encap_type_to_string(encap_type: &RouteLwEnCapType) -> String {
         // iproute2 spells the SRv6 local encapsulation `seg6local`.
         RouteLwEnCapType::Seg6Local => "seg6local".to_string(),
         _ => encap_type.to_string(),
+    }
+}
+
+fn serializer_trace_type<S>(
+    trace_type: &Option<u32>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match trace_type {
+        Some(trace_type) => {
+            serializer.serialize_str(&format!("{trace_type:x}"))
+        }
+        None => serializer.serialize_none(),
     }
 }
 
@@ -250,6 +290,7 @@ impl CliRouteEncap {
                 }
                 RouteLwTunnelEncap::Seg6(RouteSeg6IpTunnel::Seg6(header)) => {
                     ret.mode = Some(seg6_mode_to_string(header.mode));
+                    ret.segs_count = Some(header.segments.len() as u8);
                     ret.segs = Some(
                         header
                             .segments
@@ -257,6 +298,38 @@ impl CliRouteEncap {
                             .map(|segment| segment.to_string())
                             .collect(),
                     );
+                }
+                RouteLwTunnelEncap::Rpl(RouteRplIpTunnel::Srh(srh)) => {
+                    ret.segs_count = Some(srh.segments_left);
+                    ret.segs = Some(
+                        srh.segments
+                            .iter()
+                            .rev()
+                            .map(|segment| segment.to_string())
+                            .collect(),
+                    );
+                }
+                RouteLwTunnelEncap::Ioam6(RouteIoam6Tunnel::FreqK(freq)) => {
+                    ret.freqk = Some(*freq)
+                }
+                RouteLwTunnelEncap::Ioam6(RouteIoam6Tunnel::FreqN(freq)) => {
+                    ret.freqn = Some(*freq)
+                }
+                RouteLwTunnelEncap::Ioam6(RouteIoam6Tunnel::Mode(mode)) => {
+                    ret.mode = Some(mode.to_string())
+                }
+                RouteLwTunnelEncap::Ioam6(RouteIoam6Tunnel::Src(src)) => {
+                    ret.tunsrc = Some(src.to_string())
+                }
+                RouteLwTunnelEncap::Ioam6(RouteIoam6Tunnel::Dst(dst)) => {
+                    ret.tundst = Some(dst.to_string())
+                }
+                RouteLwTunnelEncap::Ioam6(RouteIoam6Tunnel::Trace(trace)) => {
+                    ret.trace = Some(());
+                    ret.prealloc = Some(());
+                    ret.trace_type = Some(trace.trace_type);
+                    ret.ns = Some(trace.namespace_id);
+                    ret.size = Some(u16::from(trace.remlen) * 4);
                 }
                 RouteLwTunnelEncap::Ip6(RouteIp6Tunnel::Id(id)) => {
                     ret.id = Some(*id)
@@ -395,6 +468,9 @@ fn route_encap_to_string(encap: &CliRouteEncap) -> String {
         }
         buf.push_str("] ");
     }
+    if let (Some(freqk), Some(freqn)) = (encap.freqk, encap.freqn) {
+        let _ = write!(buf, "freq {freqk}/{freqn} ");
+    }
     if let Some(ref table) = encap.table {
         let _ = write!(buf, "table {table} ");
     }
@@ -424,6 +500,21 @@ fn route_encap_to_string(encap: &CliRouteEncap) -> String {
     }
     if let Some(ref tunsrc) = encap.tunsrc {
         let _ = write!(buf, "tunsrc {tunsrc} ");
+    }
+    if let Some(ref tundst) = encap.tundst {
+        let _ = write!(buf, "tundst {tundst} ");
+    }
+    if encap.trace.is_some() && encap.prealloc.is_some() {
+        buf.push_str("trace prealloc ");
+    }
+    if let Some(trace_type) = encap.trace_type {
+        let _ = write!(buf, "type {trace_type:#08x} ");
+    }
+    if let Some(ns) = encap.ns {
+        let _ = write!(buf, "ns {ns} ");
+    }
+    if let Some(size) = encap.size {
+        let _ = write!(buf, "size {size} ");
     }
     if let Some(id) = encap.id {
         let _ = write!(buf, "id {id} ");
@@ -461,7 +552,11 @@ fn route_encap_to_string(encap: &CliRouteEncap) -> String {
         buf.push_str("seq ");
     }
     if let Some(ref segs) = encap.segs {
-        let _ = write!(buf, "segs {} [ ", segs.len());
+        let _ = write!(
+            buf,
+            "segs {} [ ",
+            encap.segs_count.unwrap_or(segs.len() as u8)
+        );
         for segment in segs {
             let _ = write!(buf, "{segment} ");
         }
