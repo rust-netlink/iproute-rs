@@ -53,6 +53,9 @@ pub(crate) enum RouteEncapConfig {
     Seg6 {
         mode: Seg6Mode,
         segs: Vec<Ipv6Addr>,
+        tunsrc: Option<Ipv6Addr>,
+        lookup: Option<u32>,
+        hmac: Option<u32>,
     },
     Rpl {
         segs: Vec<Ipv6Addr>,
@@ -832,6 +835,9 @@ fn parse_encap_seg6<'a>(
 ) -> Result<RouteEncapConfig, CliError> {
     let mut mode: Option<Seg6Mode> = None;
     let mut segs: Option<Vec<Ipv6Addr>> = None;
+    let mut tunsrc: Option<Ipv6Addr> = None;
+    let mut lookup: Option<u32> = None;
+    let mut hmac: Option<u32> = None;
 
     while let Some(raw_arg) = iter.peek() {
         let arg = raw_arg.to_string();
@@ -858,11 +864,20 @@ fn parse_encap_seg6<'a>(
                 }
                 segs = Some(list);
             }
-            // `tunsrc`, `hmac` and `lookup` are not supported yet.
-            "tunsrc" | "hmac" | "lookup" => {
-                return Err(CliError::from(format!(
-                    "encap seg6 {arg} is not supported"
-                )));
+            "tunsrc" => {
+                iter.next();
+                let val = encap_arg(iter, "tunsrc")?;
+                tunsrc = Some(parse_encap_ipv6(&val)?);
+            }
+            "lookup" => {
+                iter.next();
+                let val = encap_arg(iter, "lookup")?;
+                lookup = Some(parse_table_id(&val)?);
+            }
+            "hmac" => {
+                iter.next();
+                let val = encap_arg(iter, "hmac")?;
+                hmac = Some(parse_u32_any_base(&val)?);
             }
             _ => break,
         }
@@ -875,6 +890,9 @@ fn parse_encap_seg6<'a>(
     Ok(RouteEncapConfig::Seg6 {
         mode,
         segs: segs.unwrap_or_default(),
+        tunsrc,
+        lookup,
+        hmac,
     })
 }
 
@@ -2207,6 +2225,9 @@ mod tests {
                     "2001:db8::2".parse().unwrap(),
                     "2001:db8::3".parse().unwrap(),
                 ],
+                tunsrc: None,
+                lookup: None,
+                hmac: None,
             })
         );
 
