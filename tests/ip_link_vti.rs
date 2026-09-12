@@ -7,8 +7,6 @@ const VTI_NAME: &str = "tdmy-vti0";
 const VTI6_NAME: &str = "tdmy-vti60";
 
 fn normalize_vti_output(s: String) -> String {
-    let s = s.replace("link/vti ", "link/ipip ");
-    let s = s.replace("link/vti6 ", "link/tunnel6 ");
     // VTI keys are stored as __be32 by the kernel. ip-rs and iproute2
     // differ in byte order when displaying keys as dotted-quad.
     // Normalize by converting "N.0.0.0" -> "0.0.0.N" and vice versa

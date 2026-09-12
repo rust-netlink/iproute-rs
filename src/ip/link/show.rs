@@ -1095,6 +1095,9 @@ fn normalize_link_type(link_type: &str) -> String {
         "ipgre" => "gre".to_string(),
         "ip6gre" => "gre6".to_string(),
         "rawip" => "[519]".to_string(),
+        // iproute2 names `ARPHRD_TUNNEL` `ipip`, devices of type vti reuse
+        // this ARPHRD.
+        "tunnel" => "ipip".to_string(),
         _ => link_type.to_string(),
     }
 }
@@ -1141,9 +1144,7 @@ pub(crate) async fn parse_nl_msg_to_iface(
         && !linkinfo.info_kind.is_empty()
     {
         let kind = &linkinfo.info_kind;
-        if matches!(link_layer_type, LinkLayerType::Tunnel | LinkLayerType::Sit)
-            || *kind == "gre"
-        {
+        if matches!(link_layer_type, LinkLayerType::Sit) || *kind == "gre" {
             ret.link_type.clone_from(kind);
         }
     }
