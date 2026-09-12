@@ -15,11 +15,13 @@ use rtnetlink::{
     packet_route::{
         AddressFamily, RouteNetlinkMessage,
         route::{
-            RouteAddress, RouteAttribute, RouteIp6Tunnel, RouteIpTunnel,
-            RouteLwEnCapType, RouteLwTunnelEncap, RouteMessage,
-            RouteMplsIpTunnel, RouteMplsTtlPropagation, RoutePreference,
-            RouteProtocol, RouteScope, RouteSeg6IpTunnel, RouteSeg6LocalTunnel,
-            RouteType, RouteVia, RouteXfrmTunnel, Seg6Header, Seg6Mode,
+            Ioam6TraceHdr, RouteAddress, RouteAttribute, RouteIoam6Tunnel,
+            RouteIp6Tunnel, RouteIpTunnel, RouteLwEnCapType,
+            RouteLwTunnelEncap, RouteMessage, RouteMplsIpTunnel,
+            RouteMplsTtlPropagation, RoutePreference, RouteProtocol,
+            RouteRplIpTunnel, RouteScope, RouteSeg6IpTunnel,
+            RouteSeg6LocalTunnel, RouteType, RouteVia, RouteXfrmTunnel, RplSrh,
+            Seg6Header, Seg6Mode,
         },
     },
 };
@@ -191,6 +193,53 @@ fn build_encap(
                 header,
             )));
             RouteLwEnCapType::Seg6
+        }
+        RouteEncapConfig::Rpl { segs } => {
+            // `iproute2` stores the segments in reverse order and sets the
+            // `segments_left` field to the number of segments.
+            let mut srh = RplSrh::default();
+            srh.routing_type = 3;
+            srh.segments_left = segs.len() as u8;
+            srh.segments = segs.iter().rev().copied().collect();
+            attrs.push(RouteLwTunnelEncap::Rpl(RouteRplIpTunnel::Srh(srh)));
+            RouteLwEnCapType::Rpl
+        }
+        RouteEncapConfig::Ioam6 {
+            freq_k,
+            freq_n,
+            mode,
+            tunsrc,
+            tundst,
+            trace_type,
+            ns,
+            size,
+        } => {
+            attrs.push(RouteLwTunnelEncap::Ioam6(RouteIoam6Tunnel::FreqK(
+                *freq_k,
+            )));
+            attrs.push(RouteLwTunnelEncap::Ioam6(RouteIoam6Tunnel::FreqN(
+                *freq_n,
+            )));
+            attrs
+                .push(RouteLwTunnelEncap::Ioam6(RouteIoam6Tunnel::Mode(*mode)));
+            if let Some(tunsrc) = tunsrc {
+                attrs.push(RouteLwTunnelEncap::Ioam6(RouteIoam6Tunnel::Src(
+                    *tunsrc,
+                )));
+            }
+            if let Some(tundst) = tundst {
+                attrs.push(RouteLwTunnelEncap::Ioam6(RouteIoam6Tunnel::Dst(
+                    *tundst,
+                )));
+            }
+            let mut trace = Ioam6TraceHdr::default();
+            trace.namespace_id = *ns;
+            trace.remlen = (size / 4) as u8;
+            trace.trace_type = *trace_type;
+            attrs.push(RouteLwTunnelEncap::Ioam6(RouteIoam6Tunnel::Trace(
+                trace,
+            )));
+            RouteLwEnCapType::Ioam6
         }
         RouteEncapConfig::Xfrm { if_id, link_dev } => {
             attrs.push(RouteLwTunnelEncap::Xfrm(RouteXfrmTunnel::IfId(*if_id)));

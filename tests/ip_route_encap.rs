@@ -445,3 +445,151 @@ fn test_route_show_encap_seg6local_srh() {
         assert_route_show_eq(ns, &["-6", "route", "show", "2001:db8:c::/64"]);
     });
 }
+
+// RPL encapsulation with a segment list.
+#[test]
+fn test_route_show_encap_rpl() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        ns.exec_cmd(&[
+            "ip",
+            "-6",
+            "route",
+            "add",
+            "2001:db8:60::/64",
+            "encap",
+            "rpl",
+            "segs",
+            "2001:db8::2,2001:db8::3",
+            "dev",
+            DUMMY_NAME,
+        ]);
+
+        assert_route_show_eq(ns, &["-6", "route", "show", "2001:db8:60::/64"]);
+    });
+}
+
+#[test]
+fn test_route_add_encap_rpl() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        assert_ip_rs_add_show_eq(
+            ns,
+            &[
+                "-6",
+                "route",
+                "add",
+                "2001:db8:61::/64",
+                "encap",
+                "rpl",
+                "segs",
+                "2001:db8::2,2001:db8::3",
+                "dev",
+                DUMMY_NAME,
+            ],
+            &["-6", "route", "show", "2001:db8:61::/64"],
+        );
+    });
+}
+
+// IOAM6 encapsulation in encapsulating mode with a source and a trace.
+#[test]
+fn test_route_show_encap_ioam6() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        ns.exec_cmd(&[
+            "ip",
+            "-6",
+            "route",
+            "add",
+            "2001:db8:62::/64",
+            "encap",
+            "ioam6",
+            "freq",
+            "2/3",
+            "mode",
+            "encap",
+            "tunsrc",
+            "2001:db8::8",
+            "tundst",
+            "2001:db8::9",
+            "trace",
+            "prealloc",
+            "type",
+            "0x800000",
+            "ns",
+            "7",
+            "size",
+            "8",
+            "dev",
+            DUMMY_NAME,
+        ]);
+
+        assert_route_show_eq(ns, &["-6", "route", "show", "2001:db8:62::/64"]);
+    });
+}
+
+#[test]
+fn test_route_add_encap_ioam6() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        assert_ip_rs_add_show_eq(
+            ns,
+            &[
+                "-6",
+                "route",
+                "add",
+                "2001:db8:63::/64",
+                "encap",
+                "ioam6",
+                "mode",
+                "encap",
+                "tundst",
+                "2001:db8::9",
+                "trace",
+                "prealloc",
+                "type",
+                "0x800000",
+                "ns",
+                "1",
+                "size",
+                "4",
+                "dev",
+                DUMMY_NAME,
+            ],
+            &["-6", "route", "show", "2001:db8:63::/64"],
+        );
+    });
+}
+
+// IOAM6 encapsulation in inline mode does not need a tunnel destination.
+#[test]
+fn test_route_add_encap_ioam6_inline() {
+    with_netns(|ns| {
+        setup_interface(ns);
+        assert_ip_rs_add_show_eq(
+            ns,
+            &[
+                "-6",
+                "route",
+                "add",
+                "2001:db8:64::/64",
+                "encap",
+                "ioam6",
+                "mode",
+                "inline",
+                "trace",
+                "prealloc",
+                "type",
+                "0x800000",
+                "ns",
+                "1",
+                "size",
+                "4",
+                "dev",
+                DUMMY_NAME,
+            ],
+            &["-6", "route", "show", "2001:db8:64::/64"],
+        );
+    });
+}
