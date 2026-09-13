@@ -21,7 +21,7 @@ use rtnetlink::{
             RouteMessage, RouteMplsIpTunnel, RouteMplsTtlPropagation,
             RoutePreference, RouteProtocol, RouteRplIpTunnel, RouteScope,
             RouteSeg6IpTunnel, RouteSeg6LocalTunnel, RouteType, RouteVia,
-            RouteXfrmTunnel, RplSrh, Seg6Header, Seg6Mode,
+            RouteVxlanOpt, RouteXfrmTunnel, RplSrh, Seg6Header, Seg6Mode,
         },
     },
 };
@@ -108,21 +108,25 @@ fn build_tunnel_opts(opts: &[RouteEncapOpt]) -> Vec<RouteLwTunnelOpt> {
                 geneve.data = data.clone();
                 ret.push(RouteLwTunnelOpt::Geneve(vec![geneve]));
             }
-            RouteEncapOpt::Vxlan { gbp } => {
-                ret.push(RouteLwTunnelOpt::Vxlan(*gbp))
-            }
+            RouteEncapOpt::Vxlan { gbp } => ret
+                .push(RouteLwTunnelOpt::Vxlan(vec![RouteVxlanOpt::Gbp(*gbp)])),
             RouteEncapOpt::Erspan {
                 ver,
                 index,
                 dir,
                 hwid,
             } => {
-                let mut erspan = RouteErspanOpt::default();
-                erspan.ver = *ver;
-                erspan.index = *index;
-                erspan.dir = *dir;
-                erspan.hwid = *hwid;
-                ret.push(RouteLwTunnelOpt::Erspan(erspan));
+                let mut erspan_opts = vec![RouteErspanOpt::Ver(*ver)];
+                if let Some(index) = index {
+                    erspan_opts.push(RouteErspanOpt::Index(*index));
+                }
+                if let Some(dir) = dir {
+                    erspan_opts.push(RouteErspanOpt::Dir(*dir));
+                }
+                if let Some(hwid) = hwid {
+                    erspan_opts.push(RouteErspanOpt::Hwid(*hwid));
+                }
+                ret.push(RouteLwTunnelOpt::Erspan(erspan_opts));
             }
         }
     }

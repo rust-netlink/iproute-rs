@@ -7,13 +7,13 @@ use iproute_rs::{CanDisplay, CanOutput, CliColor, write_with_color};
 use rtnetlink::packet_route::{
     AddressFamily,
     route::{
-        RouteAttribute, RouteCacheInfo, RouteFlags, RouteHeader,
-        RouteIoam6Tunnel, RouteIp6Tunnel, RouteIpTunnel, RouteLwEnCapType,
-        RouteLwTunnelEncap, RouteLwTunnelOpt, RouteMessage, RouteMetric,
-        RouteMplsIpTunnel, RouteMplsTtlPropagation, RouteNextHopFlags,
-        RoutePreference, RouteProtocol, RouteRplIpTunnel, RouteScope,
-        RouteSeg6IpTunnel, RouteSeg6LocalTunnel, RouteType, RouteVia,
-        RouteXfrmTunnel, Seg6LocalAction, Seg6Mode,
+        RouteAttribute, RouteCacheInfo, RouteErspanOpt, RouteFlags,
+        RouteHeader, RouteIoam6Tunnel, RouteIp6Tunnel, RouteIpTunnel,
+        RouteLwEnCapType, RouteLwTunnelEncap, RouteLwTunnelOpt, RouteMessage,
+        RouteMetric, RouteMplsIpTunnel, RouteMplsTtlPropagation,
+        RouteNextHopFlags, RoutePreference, RouteProtocol, RouteRplIpTunnel,
+        RouteScope, RouteSeg6IpTunnel, RouteSeg6LocalTunnel, RouteType,
+        RouteVia, RouteVxlanOpt, RouteXfrmTunnel, Seg6LocalAction, Seg6Mode,
     },
 };
 use serde::Serialize;
@@ -440,36 +440,46 @@ impl CliRouteEncap {
                                     });
                                 }
                             }
-                            RouteLwTunnelOpt::Vxlan(gbp) => {
-                                ret.vxlan_opts
-                                    .get_or_insert_with(Vec::new)
-                                    .push(CliVxlanOpt { gbp: *gbp });
+                            RouteLwTunnelOpt::Vxlan(vxlan_opts) => {
+                                for vxlan_opt in vxlan_opts {
+                                    if let RouteVxlanOpt::Gbp(gbp) = vxlan_opt {
+                                        ret.vxlan_opts
+                                            .get_or_insert_with(Vec::new)
+                                            .push(CliVxlanOpt { gbp: *gbp });
+                                    }
+                                }
                             }
-                            RouteLwTunnelOpt::Erspan(erspan) => {
+                            RouteLwTunnelOpt::Erspan(erspan_opts) => {
+                                let mut erspan = CliErspanOpt::default();
+                                for opt in erspan_opts {
+                                    match opt {
+                                        RouteErspanOpt::Ver(v) => {
+                                            erspan.ver = *v
+                                        }
+                                        RouteErspanOpt::Index(v) => {
+                                            erspan.index = *v
+                                        }
+                                        RouteErspanOpt::Dir(v) => {
+                                            erspan.dir = *v
+                                        }
+                                        RouteErspanOpt::Hwid(v) => {
+                                            erspan.hwid = *v
+                                        }
+                                        _ => (),
+                                    }
+                                }
                                 // `iproute2` only shows the ERSPAN v1 session
                                 // ID or the ERSPAN v2 direction and hardware
                                 // ID.
-                                let v1 = erspan.ver == 1;
+                                if erspan.ver == 1 {
+                                    erspan.dir = 0;
+                                    erspan.hwid = 0;
+                                } else {
+                                    erspan.index = 0;
+                                }
                                 ret.erspan_opts
                                     .get_or_insert_with(Vec::new)
-                                    .push(CliErspanOpt {
-                                        ver: erspan.ver,
-                                        index: if v1 {
-                                            erspan.index.unwrap_or(0)
-                                        } else {
-                                            0
-                                        },
-                                        dir: if v1 {
-                                            0
-                                        } else {
-                                            erspan.dir.unwrap_or(0)
-                                        },
-                                        hwid: if v1 {
-                                            0
-                                        } else {
-                                            erspan.hwid.unwrap_or(0)
-                                        },
-                                    });
+                                    .push(erspan);
                             }
                             _ => (),
                         }
