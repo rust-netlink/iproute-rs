@@ -40,7 +40,41 @@ impl NetnsGuard {
                 .success()
         );
 
+        // The kernel marks new IPv6 addresses as `tentative` until duplicate
+        // address detection finishes, which would make the output of the two
+        // compared commands depend on timing. DAD is disabled for interfaces
+        // created in this throwaway namespace, so nothing needs to be
+        // restored.
+        assert!(
+            Command::new("ip")
+                .args([
+                    "netns",
+                    "exec",
+                    &name,
+                    "sh",
+                    "-c",
+                    "echo 0 > /proc/sys/net/ipv6/conf/all/accept_dad; echo 0 \
+                     > /proc/sys/net/ipv6/conf/all/dad_transmits",
+                ])
+                .status()
+                .expect("failed to disable IPv6 DAD")
+                .success()
+        );
+
         Self { name }
+    }
+
+    /// Wait until the kernel finished duplicate address detection, i.e. no
+    /// address is marked `tentative` anymore.
+    pub fn wait_for_ipv6_dad(&self) {
+        for _ in 0..100 {
+            let output = self.exec_cmd(&["ip", "-j", "address", "show"]);
+            if !output.contains("\"tentative\"") {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        panic!("IPv6 addresses are still tentative after 5 seconds");
     }
 
     pub fn exec_cmd(&self, args: &[&str]) -> String {

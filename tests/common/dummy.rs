@@ -4,13 +4,28 @@ use super::netns::{NetnsGuard, with_netns};
 
 pub(crate) const DUMMY_NAME: &str = "test-dummy";
 
+fn create_dummy(ns: &NetnsGuard) {
+    ns.exec_cmd(&["ip", "link", "add", DUMMY_NAME, "type", "dummy"]);
+    // Duplicate address detection is already disabled for interfaces created
+    // in the test namespace, disable it for this interface as well so IPv6
+    // addresses are never left `tentative`.
+    ns.exec_cmd(&[
+        "sh",
+        "-c",
+        &format!(
+            "echo 0 > /proc/sys/net/ipv6/conf/{DUMMY_NAME}/accept_dad; echo 0 \
+             > /proc/sys/net/ipv6/conf/{DUMMY_NAME}/dad_transmits"
+        ),
+    ]);
+    ns.exec_cmd(&["ip", "link", "set", DUMMY_NAME, "up"]);
+}
+
 pub(crate) fn with_dummy_iface_empty<T>(test: T)
 where
     T: FnOnce(&NetnsGuard),
 {
     with_netns(|ns| {
-        ns.exec_cmd(&["ip", "link", "add", DUMMY_NAME, "type", "dummy"]);
-        ns.exec_cmd(&["ip", "link", "set", DUMMY_NAME, "up"]);
+        create_dummy(ns);
 
         test(ns);
     });
@@ -21,8 +36,7 @@ where
     T: FnOnce(&NetnsGuard),
 {
     with_netns(|ns| {
-        ns.exec_cmd(&["ip", "link", "add", DUMMY_NAME, "type", "dummy"]);
-        ns.exec_cmd(&["ip", "link", "set", DUMMY_NAME, "up"]);
+        create_dummy(ns);
 
         ns.exec_cmd(&[
             "ip",
@@ -75,6 +89,8 @@ where
             "proto",
             "kernel_ra",
         ]);
+
+        ns.wait_for_ipv6_dad();
 
         test(ns);
     });
