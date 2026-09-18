@@ -390,3 +390,10 @@ fn test_address_show_brief_alias() {
         ns.assert_eq_output(&["--brief", "address", "show", DUMMY_NAME]);
     });
 }
+
+#[test]
+fn test_address_show_brief_short_flag() {
+    with_dummy_iface_static_ip(|ns| {
+        ns.assert_eq_output(&["-br", "address", "show", DUMMY_NAME]);
+    });
+}

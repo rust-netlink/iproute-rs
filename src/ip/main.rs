@@ -202,7 +202,17 @@ async fn main() -> Result<(), CliError> {
         .subcommand(NeighbourCommand::gen_command())
         .subcommand(RouteCommand::gen_command());
 
-    let matches = app.get_matches_mut();
+    // iproute2 accepts `-br` as short form of `--brief`, but clap only
+    // supports single character short flags, so translate it beforehand.
+    let matches = app
+        .try_get_matches_from_mut(std::env::args_os().map(|arg| {
+            if arg == "-br" {
+                std::ffi::OsString::from("--brief")
+            } else {
+                arg
+            }
+        }))
+        .unwrap_or_else(|e| e.exit());
 
     let fmt = if matches.get_flag("JSON") {
         OutputFormat::Json
