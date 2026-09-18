@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod address;
+mod addrlabel;
 mod link;
 mod neighbour;
 mod route;
@@ -10,7 +11,10 @@ use std::io::IsTerminal;
 use iproute_rs::{CliColor, CliError, OutputFormat, print_result_and_exit};
 use rtnetlink::packet_route::AddressFamily;
 
-use self::{address::AddressCommand, link::LinkCommand, route::RouteCommand};
+use self::{
+    address::AddressCommand, addrlabel::AddrLabelCommand, link::LinkCommand,
+    route::RouteCommand,
+};
 use crate::neighbour::NeighbourCommand;
 
 pub(crate) fn resolve_preferred_family(
@@ -199,6 +203,7 @@ async fn main() -> Result<(), CliError> {
         .subcommand_required(true)
         .subcommand(LinkCommand::gen_command())
         .subcommand(AddressCommand::gen_command())
+        .subcommand(AddrLabelCommand::gen_command())
         .subcommand(NeighbourCommand::gen_command())
         .subcommand(RouteCommand::gen_command());
 
@@ -239,6 +244,14 @@ async fn main() -> Result<(), CliError> {
         let preferred_family = resolve_preferred_family(matches);
         print_result_and_exit(
             AddressCommand::handle(matches, preferred_family).await,
+            fmt,
+        );
+    } else if let Some(matches) =
+        matches.subcommand_matches(AddrLabelCommand::CMD)
+    {
+        let preferred_family = resolve_preferred_family(matches);
+        print_result_and_exit(
+            AddrLabelCommand::handle(matches, preferred_family).await,
             fmt,
         );
     } else if let Some(matches) =
