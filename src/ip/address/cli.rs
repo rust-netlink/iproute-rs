@@ -5,9 +5,9 @@ use rtnetlink::packet_route::AddressFamily;
 use super::{
     add::{AddressModifyOp, handle_add, handle_delete, handle_modify},
     save::{handle_flush, handle_restore, handle_save, handle_showdump},
-    show::handle_show,
+    show::{AddressOutput, handle_show},
 };
-use crate::{CliError, link::CliLinkInfo};
+use crate::CliError;
 
 pub(crate) struct AddressCommand;
 
@@ -139,7 +139,7 @@ impl AddressCommand {
     pub(crate) async fn handle(
         matches: &clap::ArgMatches,
         preferred_family: Option<AddressFamily>,
-    ) -> Result<Vec<CliLinkInfo>, CliError> {
+    ) -> Result<AddressOutput, CliError> {
         if let Some(matches) = matches.subcommand_matches("add") {
             let opts: Vec<String> = matches
                 .get_many::<String>("options")
@@ -147,7 +147,7 @@ impl AddressCommand {
                 .map(|o| o.to_string())
                 .collect();
             handle_add(&opts).await?;
-            Ok(vec![])
+            Ok(AddressOutput::Links(vec![]))
         } else if let Some(matches) = matches.subcommand_matches("change") {
             let opts: Vec<String> = matches
                 .get_many::<String>("options")
@@ -155,7 +155,7 @@ impl AddressCommand {
                 .map(|o| o.to_string())
                 .collect();
             handle_modify(&opts, AddressModifyOp::Change).await?;
-            Ok(vec![])
+            Ok(AddressOutput::Links(vec![]))
         } else if let Some(matches) = matches.subcommand_matches("replace") {
             let opts: Vec<String> = matches
                 .get_many::<String>("options")
@@ -163,7 +163,7 @@ impl AddressCommand {
                 .map(|o| o.to_string())
                 .collect();
             handle_modify(&opts, AddressModifyOp::Replace).await?;
-            Ok(vec![])
+            Ok(AddressOutput::Links(vec![]))
         } else if let Some(matches) = matches.subcommand_matches("delete") {
             let opts: Vec<String> = matches
                 .get_many::<String>("options")
@@ -171,7 +171,7 @@ impl AddressCommand {
                 .map(|o| o.to_string())
                 .collect();
             handle_delete(&opts).await?;
-            Ok(vec![])
+            Ok(AddressOutput::Links(vec![]))
         } else if let Some(matches) = matches.subcommand_matches("save") {
             let opts: Vec<String> = matches
                 .get_many::<String>("options")
@@ -179,10 +179,10 @@ impl AddressCommand {
                 .map(|o| o.to_string())
                 .collect();
             handle_save(&opts).await?;
-            Ok(vec![])
+            Ok(AddressOutput::Links(vec![]))
         } else if matches.subcommand_matches("restore").is_some() {
             handle_restore().await?;
-            Ok(vec![])
+            Ok(AddressOutput::Links(vec![]))
         } else if matches.subcommand_matches("help").is_some() {
             let msg = concat!(
                 "Usage: ip address {add|change|replace} IFADDR dev IFNAME [ \
@@ -222,10 +222,10 @@ impl AddressCommand {
                 "ADDRPROTO := [ NAME | NUMBER ]\n",
             );
             eprint!("{}", msg);
-            Ok(vec![])
+            Ok(AddressOutput::Links(vec![]))
         } else if matches.subcommand_matches("showdump").is_some() {
             handle_showdump().await?;
-            Ok(vec![])
+            Ok(AddressOutput::Links(vec![]))
         } else if let Some(matches) = matches.subcommand_matches("flush") {
             let opts: Vec<String> = matches
                 .get_many::<String>("options")
@@ -234,7 +234,7 @@ impl AddressCommand {
                 .collect();
             let max_loops = matches.get_one::<u32>("LOOPS").copied();
             handle_flush(&opts, max_loops).await?;
-            Ok(vec![])
+            Ok(AddressOutput::Links(vec![]))
         } else if let Some(matches) = matches.subcommand_matches("show") {
             let opts: Vec<&str> = matches
                 .get_many::<String>("options")
@@ -246,6 +246,8 @@ impl AddressCommand {
                 matches.get_count("DETAILS") > 0,
                 preferred_family,
                 matches.get_flag("BRIEF"),
+                matches.get_flag("ONELINE"),
+                matches.get_count("STATISTICS"),
             )
             .await
         } else {
@@ -254,6 +256,8 @@ impl AddressCommand {
                 matches.get_count("DETAILS") > 0,
                 preferred_family,
                 matches.get_flag("BRIEF"),
+                matches.get_flag("ONELINE"),
+                matches.get_count("STATISTICS"),
             )
             .await
         }
