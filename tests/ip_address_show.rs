@@ -2,8 +2,56 @@
 
 mod common;
 use self::common::{
-    DUMMY_NAME, with_dummy_iface_empty, with_dummy_iface_static_ip,
+    DUMMY_NAME, NetnsGuard, with_dummy_iface_empty, with_dummy_iface_static_ip,
 };
+
+/// Add addresses with and without an `IFA_PROTO` attribute to a dummy
+/// interface: only the first address carries the unknown protocol 99.
+fn with_protocol_addresses<T>(test: T)
+where
+    T: FnOnce(&NetnsGuard),
+{
+    with_dummy_iface_empty(|ns| {
+        ns.exec_cmd(&[
+            "ip",
+            "address",
+            "add",
+            "192.0.2.1/24",
+            "dev",
+            DUMMY_NAME,
+            "proto",
+            "99",
+        ]);
+        ns.exec_cmd(&[
+            "ip",
+            "address",
+            "add",
+            "192.0.2.2/24",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        ns.exec_cmd(&["ip", "address", "add", "fd00::1/64", "dev", DUMMY_NAME]);
+        test(ns);
+    });
+}
+
+#[test]
+fn test_address_show_protocol_filter() {
+    with_protocol_addresses(|ns| {
+        ns.assert_eq_output(&[
+            "address", "show", "dev", DUMMY_NAME, "proto", "99",
+        ]);
+    });
+}
+
+#[test]
+fn test_address_show_protocol_filter_hex() {
+    with_protocol_addresses(|ns| {
+        ns.assert_eq_output(&[
+            "address", "show", "dev", DUMMY_NAME, "proto", "0x63",
+        ]);
+    });
+}
 
 #[test]
 fn test_address_show_oneline() {
@@ -90,35 +138,38 @@ fn test_address_show_stats_brief() {
 }
 
 #[test]
+fn test_address_show_filter_scope() {
+    with_dummy_iface_static_ip(|ns| {
+        // No interface has a host scope address, so iproute2 drops every
+        // interface from the output.
+        ns.assert_eq_output(&["address", "show", "scope", "host"]);
+    });
+}
+
+#[test]
+fn test_address_show_filter_json_oneline() {
+    with_dummy_iface_static_ip(|ns| {
+        ns.assert_eq_output(&["-j", "-o", "-4", "address", "show"]);
+    });
+}
+
+#[test]
+fn test_address_show_filter_json_oneline_ipv6() {
+    with_dummy_iface_static_ip(|ns| {
+        ns.assert_eq_output(&["-j", "-o", "-6", "address", "show"]);
+    });
+}
+
+#[test]
 fn test_address_show_unknown_protocol() {
-    with_dummy_iface_empty(|ns| {
-        ns.exec_cmd(&[
-            "ip",
-            "address",
-            "add",
-            "192.0.2.1/24",
-            "dev",
-            DUMMY_NAME,
-            "proto",
-            "99",
-        ]);
+    with_protocol_addresses(|ns| {
         ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
     });
 }
 
 #[test]
 fn test_address_show_unknown_protocol_json() {
-    with_dummy_iface_empty(|ns| {
-        ns.exec_cmd(&[
-            "ip",
-            "address",
-            "add",
-            "192.0.2.1/24",
-            "dev",
-            DUMMY_NAME,
-            "proto",
-            "99",
-        ]);
+    with_protocol_addresses(|ns| {
         ns.assert_eq_output(&["-j", "address", "show", DUMMY_NAME]);
     });
 }
