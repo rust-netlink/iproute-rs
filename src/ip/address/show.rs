@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, net::IpAddr};
+use std::{
+    collections::{HashMap, HashSet},
+    net::IpAddr,
+};
 
 use futures_util::TryStreamExt;
 use indexmap::IndexMap;
@@ -562,6 +565,17 @@ impl AddressShowFilter {
         addr: &CliAddressInfo,
         msg: &AddressMessage,
     ) -> bool {
+        self.link_matches(addr, msg) && self.proto_matches(msg)
+    }
+
+    /// Whether iproute2 `ipaddr_filter()` would keep the link of this
+    /// address. The protocol filter is not part of it because iproute2
+    /// applies it while printing each address.
+    pub(crate) fn link_matches(
+        &self,
+        addr: &CliAddressInfo,
+        msg: &AddressMessage,
+    ) -> bool {
         if let Some(s) = self.scope {
             let scope_val: u8 = msg.header.scope.into();
             if (scope_val ^ s) & self.scope_mask != 0 {
@@ -573,23 +587,6 @@ impl AddressShowFilter {
             && !fnmatch_simple(label_pat.as_str(), &addr.label)
         {
             return false;
-        }
-
-        if let Some(p) = self.proto {
-            let addr_proto = msg
-                .attributes
-                .iter()
-                .find_map(|a| {
-                    if let AddressAttribute::Protocol(ap) = a {
-                        Some(u8::from(*ap))
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(0);
-            if addr_proto != p {
-                return false;
-            }
         }
 
         if let Some(ref target) = self.to_prefix {
@@ -652,6 +649,24 @@ impl AddressShowFilter {
 
         true
     }
+
+    /// iproute2 `print_addrinfo()` only rejects addresses which carry an
+    /// `IFA_PROTO` attribute differing from the requested protocol.
+    fn proto_matches(&self, msg: &AddressMessage) -> bool {
+        let Some(proto) = self.proto else {
+            return true;
+        };
+        match msg.attributes.iter().find_map(|a| {
+            if let AddressAttribute::Protocol(ap) = a {
+                Some(u8::from(*ap))
+            } else {
+                None
+            }
+        }) {
+            Some(addr_proto) => addr_proto == proto,
+            None => true,
+        }
+    }
 }
 
 pub(crate) fn get_addr_flags_from_msg(msg: &AddressMessage) -> AddressFlags {
@@ -704,9 +719,21 @@ pub(crate) fn parse_protocol_value(s: &str) -> Result<u8, CliError> {
         "kernel_lo" => Ok(1),
         "kernel_ra" => Ok(2),
         "kernel_ll" => Ok(3),
-        _ => s
-            .parse::<u8>()
-            .map_err(|_| CliError::from(format!("invalid protocol: {s}"))),
+        _ => {
+            // iproute2 `get_u8()` uses base 0, accepting decimal, hex and
+            // octal numbers.
+            let (radix, digits) = if let Some(hex) =
+                s.strip_prefix("0x").or_else(|| s.strip_prefix("0X"))
+            {
+                (16, hex)
+            } else if s.len() > 1 && s.starts_with('0') {
+                (8, &s[1..])
+            } else {
+                (10, s)
+            };
+            u8::from_str_radix(digits, radix)
+                .map_err(|_| CliError::from(format!("invalid protocol: {s}")))
+        }
     }
 }
 
@@ -848,6 +875,10 @@ pub(crate) async fn handle_show(
         address_msgs.push(nl_msg);
     }
 
+    let dumped_indexes: HashSet<u32> =
+        address_msgs.iter().map(|msg| msg.header.index).collect();
+    let mut matched_indexes: HashSet<u32> = HashSet::new();
+
     for msg in &address_msgs {
         if let Some(family) = preferred_family
             && msg.header.family != family
@@ -855,8 +886,11 @@ pub(crate) async fn handle_show(
             continue;
         }
         let addr_info = parse_nl_msg_to_address(msg.clone(), brief)?;
-        if addr_filter.matches(&addr_info, msg) {
-            addresses_infos.push(addr_info);
+        if addr_filter.link_matches(&addr_info, msg) {
+            matched_indexes.insert(addr_info.index);
+            if addr_filter.matches(&addr_info, msg) {
+                addresses_infos.push(addr_info);
+            }
         }
     }
 
@@ -881,6 +915,19 @@ pub(crate) async fn handle_show(
         if let Some(link_info) = links_info.get_mut(&addr_info.index) {
             link_info.add_address(addr_info);
         }
+    }
+
+    // Like iproute2 `ipaddr_filter()`, drop links whose addresses are all
+    // filtered out. Links without any address are kept when no address
+    // family was requested.
+    if preferred_family != Some(AddressFamily::Unspec) {
+        links_info.retain(|index, _| {
+            if dumped_indexes.contains(index) {
+                matched_indexes.contains(index)
+            } else {
+                preferred_family.is_none()
+            }
+        });
     }
 
     let mut result: Vec<CliLinkInfo> = links_info.into_values().collect();
