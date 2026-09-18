@@ -187,6 +187,62 @@ impl NetnsGuard {
             .expect("Failed to convert stderr to String")
     }
 
+    /// Run an `ip` (iproute2) command expected to fail, returning its stderr
+    /// and exit code.
+    pub fn exec_cmd_expect_failure(&self, args: &[&str]) -> (String, i32) {
+        let mut full_args = vec!["netns", "exec", &self.name];
+        full_args.extend_from_slice(args);
+
+        let output = Command::new("ip")
+            .args(&full_args)
+            .output()
+            .unwrap_or_else(|e| {
+                panic!("failed to execute command {args:?}: {e}")
+            });
+
+        assert!(
+            !output.status.success(),
+            "Command unexpectedly succeeded: {args:?}"
+        );
+
+        (
+            String::from_utf8(output.stderr)
+                .expect("Failed to convert stderr to String"),
+            output.status.code().unwrap_or(-1),
+        )
+    }
+
+    /// Run an `ip-rs` command expected to fail, returning its stderr and exit
+    /// code.
+    pub fn ip_rs_exec_cmd_expect_failure_with_code(
+        &self,
+        args: &[&str],
+    ) -> (String, i32) {
+        let ip_rs_path = std::env!("CARGO_BIN_EXE_ip-rs");
+
+        let mut full_args = vec!["netns", "exec", &self.name];
+        full_args.push(ip_rs_path);
+        full_args.extend_from_slice(args);
+
+        let output = Command::new("ip")
+            .args(&full_args)
+            .output()
+            .unwrap_or_else(|e| {
+                panic!("failed to execute ip-rs command {args:?}: {e}")
+            });
+
+        assert!(
+            !output.status.success(),
+            "Command unexpectedly succeeded: {args:?}"
+        );
+
+        (
+            String::from_utf8(output.stderr)
+                .expect("Failed to convert stderr to String"),
+            output.status.code().unwrap_or(-1),
+        )
+    }
+
     pub fn assert_alias_output(
         &self,
         expected_args: &[&str],
