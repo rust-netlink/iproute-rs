@@ -7,7 +7,10 @@ use indexmap::IndexMap;
 use iproute_rs::{CanDisplay, CanOutput, CliColor, write_with_color};
 use rtnetlink::packet_route::{
     AddressFamily,
-    address::{AddressAttribute, AddressFlags, AddressMessage, AddressScope},
+    address::{
+        AddressAttribute, AddressFlags, AddressMessage, AddressProtocol,
+        AddressScope,
+    },
 };
 use serde::Serialize;
 
@@ -213,6 +216,20 @@ fn addr_scope_to_cli_string(addr_scope: &AddressScope) -> String {
     }
 }
 
+/// iproute2 `rtnl_addrprot_n2a()` prints protocols unknown to it as hex
+/// numbers, e.g. `proto 0x63` instead of `proto 99`.
+fn addr_proto_to_string(proto: AddressProtocol) -> String {
+    match proto {
+        AddressProtocol::Loopback => "kernel_lo".to_string(),
+        AddressProtocol::RouterAnnouncement => "kernel_ra".to_string(),
+        AddressProtocol::LinkLocal => "kernel_ll".to_string(),
+        _ => {
+            let proto: u8 = proto.into();
+            format!("0x{proto:x}")
+        }
+    }
+}
+
 fn get_address_flags(
     family: AddressFamily,
     flags: AddressFlags,
@@ -278,7 +295,7 @@ pub(crate) fn parse_nl_msg_to_address(
                 preferred_life_time = c.ifa_preferred;
             }
             AddressAttribute::Flags(f) => flags = f,
-            AddressAttribute::Protocol(p) => protocol = p.to_string(),
+            AddressAttribute::Protocol(p) => protocol = addr_proto_to_string(p),
             _ => {}
         }
     }
