@@ -69,6 +69,12 @@ pub(crate) struct CliLinkInfo {
     altnames: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     addr_info: Option<Vec<CliAddressInfo>>,
+    /// `ip address show -s`: iproute2 prints the link statistics after the
+    /// address list, unlike `ip link show -s` which prints them inside the
+    /// link information.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(flatten)]
+    addr_stats: Option<CliLinkStats>,
     #[serde(skip_serializing_if = "Option::is_none")]
     vfinfo_list: Option<Vec<CliVfInfo>>,
     #[serde(skip)]
@@ -729,6 +735,12 @@ impl CliLinkInfo {
     pub fn set_oneline(&mut self, oneline: bool) {
         self.oneline = oneline;
     }
+
+    /// `ip address show -s` prints the link statistics after the address
+    /// list, so move them to the field serialized at that position.
+    pub fn move_stats_after_addr_info(&mut self) {
+        self.addr_stats = self.stats.take();
+    }
 }
 
 impl std::fmt::Display for CliLinkInfo {
@@ -868,6 +880,10 @@ impl std::fmt::Display for CliLinkInfo {
                     write!(f, "\n    {}", addr)?;
                 }
             }
+        }
+
+        if let Some(stats) = &self.addr_stats {
+            write!(f, "{stats}")?;
         }
 
         if let Some(vfinfo_list) = &self.vfinfo_list {
@@ -1083,8 +1099,18 @@ impl CliLinkInfo {
         self.ifindex
     }
 
+    pub(crate) fn get_ifname(&self) -> &str {
+        &self.ifname
+    }
+
     pub(crate) fn add_address(&mut self, addr_info: CliAddressInfo) {
         self.addr_info.get_or_insert_default().push(addr_info);
+    }
+
+    /// Take the address list for `ip -o address show`, which prints the
+    /// addresses without the link information.
+    pub(crate) fn take_addr_info(&mut self) -> Vec<CliAddressInfo> {
+        self.addr_info.take().unwrap_or_default()
     }
 }
 

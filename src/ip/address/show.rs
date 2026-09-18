@@ -693,15 +693,113 @@ pub(crate) fn parse_protocol_value(s: &str) -> Result<u8, CliError> {
     }
 }
 
+/// One link of `ip -o address show` output. iproute2 omits the link
+/// information in oneline mode and only prints the address entries, each
+/// prefixed with the link index and name.
+#[derive(Serialize)]
+pub(crate) struct CliAddrOnelineLink {
+    addr_info: Vec<CliAddrOnelineEntry>,
+}
+
+impl CliAddrOnelineLink {
+    fn new(ifindex: u32, ifname: &str, addr_info: Vec<CliAddressInfo>) -> Self {
+        Self {
+            addr_info: addr_info
+                .into_iter()
+                .map(|addr| CliAddrOnelineEntry {
+                    index: ifindex,
+                    dev: ifname.to_string(),
+                    addr,
+                })
+                .collect(),
+        }
+    }
+
+    fn gen_string(&self) -> String {
+        self.addr_info
+            .iter()
+            .map(CliAddrOnelineEntry::gen_string)
+            .collect::<Vec<String>>()
+            .join("\n")
+    }
+}
+
+#[derive(Serialize)]
+struct CliAddrOnelineEntry {
+    index: u32,
+    dev: String,
+    #[serde(flatten)]
+    addr: CliAddressInfo,
+}
+
+impl CliAddrOnelineEntry {
+    fn gen_string(&self) -> String {
+        // iproute2 replaces the newline of the continuation lines with a
+        // backslash in oneline mode.
+        format!("{}: {}    {}", self.index, self.dev, self.addr)
+            .replace('\n', "\\")
+    }
+}
+
+/// Output of the `ip address` subcommands.
+pub(crate) enum AddressOutput {
+    /// Full link information including the address list, used by
+    /// `ip address show`.
+    Links(Vec<CliLinkInfo>),
+    /// `ip -o address show` only prints the address entries.
+    Oneline(Vec<CliAddrOnelineLink>),
+}
+
+impl Serialize for AddressOutput {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Links(v) => v.serialize(serializer),
+            Self::Oneline(v) => v.serialize(serializer),
+        }
+    }
+}
+
+impl CanDisplay for AddressOutput {
+    fn gen_string(&self) -> String {
+        match self {
+            Self::Links(v) => v.gen_string(),
+            Self::Oneline(v) => v
+                .iter()
+                .map(CliAddrOnelineLink::gen_string)
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<String>>()
+                .join("\n"),
+        }
+    }
+}
+
+impl CanOutput for AddressOutput {}
+
 pub(crate) async fn handle_show(
     opts: &[&str],
     include_details: bool,
     preferred_family: Option<AddressFamily>,
     brief: bool,
-) -> Result<Vec<CliLinkInfo>, CliError> {
+    oneline: bool,
+    statistics: u8,
+) -> Result<AddressOutput, CliError> {
     let (addr_filter, link_opts) = AddressShowFilter::parse(opts)?;
     let link_opts_refs: Vec<&str> =
         link_opts.iter().map(String::as_str).collect();
+
+    // `ip -0 address show` (link family) prints the link information like
+    // `ip link show` does.
+    let link_only = preferred_family == Some(AddressFamily::Unspec);
+    // iproute2 does not print the link statistics when the link information
+    // is skipped or printed in brief form.
+    let statistics = if brief || (oneline && !link_only) {
+        0
+    } else {
+        statistics
+    };
 
     let (connection, handle, _) = rtnetlink::new_connection()?;
     tokio::spawn(connection);
@@ -745,17 +843,22 @@ pub(crate) async fn handle_show(
         }
     }
 
-    let mut links_info: HashMap<u32, _> =
-        crate::link::handle_show(&link_opts_refs, include_details, 0, false)
-            .await?
-            .into_iter()
-            .map(|mut link_info| {
-                link_info.show_only_addr_details();
-                link_info.set_brief(brief);
-                link_info
-            })
-            .map(|link_info| (link_info.get_ifindex(), link_info))
-            .collect();
+    let mut links_info: HashMap<u32, _> = crate::link::handle_show(
+        &link_opts_refs,
+        include_details,
+        statistics,
+        oneline,
+    )
+    .await?
+    .into_iter()
+    .map(|mut link_info| {
+        link_info.show_only_addr_details();
+        link_info.set_brief(brief);
+        link_info.move_stats_after_addr_info();
+        link_info
+    })
+    .map(|link_info| (link_info.get_ifindex(), link_info))
+    .collect();
 
     for addr_info in addresses_infos {
         if let Some(link_info) = links_info.get_mut(&addr_info.index) {
@@ -766,7 +869,22 @@ pub(crate) async fn handle_show(
     let mut result: Vec<CliLinkInfo> = links_info.into_values().collect();
     result.sort_by_key(|link| link.get_ifindex());
 
-    Ok(result)
+    if oneline && !brief && !link_only {
+        let links: Vec<CliAddrOnelineLink> = result
+            .into_iter()
+            .map(|mut link| {
+                let addr_info = link.take_addr_info();
+                CliAddrOnelineLink::new(
+                    link.get_ifindex(),
+                    link.get_ifname(),
+                    addr_info,
+                )
+            })
+            .collect();
+        Ok(AddressOutput::Oneline(links))
+    } else {
+        Ok(AddressOutput::Links(result))
+    }
 }
 
 #[cfg(test)]
