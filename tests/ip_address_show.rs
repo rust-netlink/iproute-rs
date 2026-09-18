@@ -88,3 +88,37 @@ fn test_address_show_stats_brief() {
         ns.assert_eq_output(&["--brief", "-s", "address", "show", DUMMY_NAME]);
     });
 }
+
+#[test]
+fn test_address_show_unknown_protocol() {
+    with_dummy_iface_empty(|ns| {
+        ns.exec_cmd(&[
+            "ip",
+            "address",
+            "add",
+            "192.0.2.1/24",
+            "dev",
+            DUMMY_NAME,
+            "proto",
+            "99",
+        ]);
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_show_unknown_protocol_json() {
+    with_dummy_iface_empty(|ns| {
+        ns.exec_cmd(&[
+            "ip",
+            "address",
+            "add",
+            "192.0.2.1/24",
+            "dev",
+            DUMMY_NAME,
+            "proto",
+            "99",
+        ]);
+        ns.assert_eq_output(&["-j", "address", "show", DUMMY_NAME]);
+    });
+}
