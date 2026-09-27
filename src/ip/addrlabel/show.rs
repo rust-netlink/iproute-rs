@@ -121,7 +121,7 @@ pub(crate) fn resolve_family(
 pub(crate) async fn handle_show(
     preferred_family: Option<AddressFamily>,
 ) -> Result<Vec<CliAddrLabel>, CliError> {
-    let links = crate::link::handle_show(&[], false, 0, false).await?;
+    let links = crate::link::handle_show(&[], false, 0, false, false).await?;
     let ifnames: HashMap<u32, String> = links
         .into_iter()
         .map(|link| (link.get_ifindex(), link.get_ifname().to_string()))

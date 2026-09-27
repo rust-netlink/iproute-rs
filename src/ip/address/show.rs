@@ -17,7 +17,10 @@ use rtnetlink::packet_route::{
 };
 use serde::Serialize;
 
-use crate::{CliError, link::CliLinkInfo};
+use crate::{
+    CliError,
+    link::{BriefMode, CliLinkInfo},
+};
 
 #[derive(Serialize, Default)]
 pub(crate) struct CliAddressInfo {
@@ -899,12 +902,15 @@ pub(crate) async fn handle_show(
         include_details,
         statistics,
         oneline,
+        false,
     )
     .await?
     .into_iter()
     .map(|mut link_info| {
         link_info.show_only_addr_details();
-        link_info.set_brief(brief);
+        if brief {
+            link_info.set_brief(BriefMode::Address);
+        }
         link_info.move_stats_after_addr_info();
         link_info
     })
