@@ -48,7 +48,7 @@ use super::{
     },
     property::LinkPropertyCommand,
     set::LinkSetCommand,
-    show::{CliLinkInfo, handle_show},
+    show::{CliLinkBrief, CliLinkInfo, handle_show},
     xstats::{XstatsOutput, handle_xstats},
 };
 
@@ -64,7 +64,17 @@ impl Serialize for LinkOutput {
         S: serde::Serializer,
     {
         match self {
-            LinkOutput::Show(v) => v.serialize(serializer),
+            LinkOutput::Show(v) => {
+                // `ip -br link show` only serializes the fields of the brief
+                // output.
+                if v.iter().any(CliLinkInfo::is_brief_link) {
+                    let brief: Vec<CliLinkBrief<'_>> =
+                        v.iter().map(CliLinkBrief::from).collect();
+                    brief.serialize(serializer)
+                } else {
+                    v.serialize(serializer)
+                }
+            }
             LinkOutput::Xstats(v) => v.serialize(serializer),
             LinkOutput::Afstats(v) => v.serialize(serializer),
         }
@@ -82,7 +92,10 @@ impl CanDisplay for LinkOutput {
 
     fn to_json_string(&self) -> String {
         match self {
-            LinkOutput::Show(v) => v.to_json_string(),
+            // Serialize through `LinkOutput::serialize()` so the brief output
+            // gets its own JSON shape.
+            LinkOutput::Show(_) => serde_json::to_string(self)
+                .expect("Failed to generate JSON string"),
             LinkOutput::Xstats(v) => v.to_json_string(),
             LinkOutput::Afstats(v) => v.to_json_string(),
         }
@@ -232,6 +245,7 @@ impl LinkCommand {
                 matches.get_count("DETAILS") > 0,
                 matches.get_count("STATISTICS"),
                 matches.get_flag("ONELINE"),
+                matches.get_flag("BRIEF"),
             )
             .await
             .map(LinkOutput::Show)
@@ -241,6 +255,7 @@ impl LinkCommand {
                 matches.get_count("DETAILS") > 0,
                 matches.get_count("STATISTICS"),
                 matches.get_flag("ONELINE"),
+                matches.get_flag("BRIEF"),
             )
             .await
             .map(LinkOutput::Show)

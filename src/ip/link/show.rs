@@ -16,10 +16,23 @@ use serde::Serialize;
 use super::{super::address::CliAddressInfo, flags::link_flags_to_string};
 use crate::link::detail::CliLinkInfoDetail;
 
+/// Shape of the `-br`/`--brief` output. `ip link show -br` prints the MAC
+/// address and flags of the interface while `ip address show -br` prints the
+/// addresses assigned to it.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum BriefMode {
+    #[default]
+    None,
+    /// `ip link show -br`
+    Link,
+    /// `ip address show -br`
+    Address,
+}
+
 #[derive(Serialize, Default)]
 pub(crate) struct CliLinkInfo {
     #[serde(skip)]
-    brief: bool,
+    brief: BriefMode,
     #[serde(skip)]
     oneline: bool,
     ifindex: u32,
@@ -81,6 +94,43 @@ pub(crate) struct CliLinkInfo {
     num_vf: Option<u32>,
     #[serde(skip)]
     kind: String,
+}
+
+/// `ip -j -br link show` serializes only the fields printed by iproute2
+/// `print_linkinfo_brief()`: the lower link (or its raw index when it lives
+/// in another netns), interface name, operstate, address and flags.
+#[derive(Serialize)]
+pub(crate) struct CliLinkBrief<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    link: Option<&'a Option<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    link_index: Option<u32>,
+    ifname: &'a String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    operstate: &'a String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    address: &'a String,
+    flags: &'a [String],
+}
+
+impl<'a> From<&'a CliLinkInfo> for CliLinkBrief<'a> {
+    fn from(link: &'a CliLinkInfo) -> Self {
+        // `print_name_and_link()` serializes links in another netns as
+        // `link_index` instead of the interface name.
+        let (link_attr, link_index) = if link.link_netnsid.is_some() {
+            (None, link.link_index)
+        } else {
+            (link.link.as_ref(), None)
+        };
+        Self {
+            link: link_attr,
+            link_index,
+            ifname: &link.ifname,
+            operstate: &link.operstate,
+            address: &link.address,
+            flags: &link.flags,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -728,61 +778,23 @@ impl CliLinkInfo {
         self.remove_inet6_addr_gen_mode();
     }
 
-    pub fn set_brief(&mut self, brief: bool) {
+    pub fn set_brief(&mut self, brief: BriefMode) {
         self.brief = brief;
+    }
+
+    pub(crate) fn is_brief_link(&self) -> bool {
+        self.brief == BriefMode::Link
     }
 
     pub fn set_oneline(&mut self, oneline: bool) {
         self.oneline = oneline;
     }
 
-    /// `ip address show -s` prints the link statistics after the address
-    /// list, so move them to the field serialized at that position.
-    pub fn move_stats_after_addr_info(&mut self) {
-        self.addr_stats = self.stats.take();
-    }
-}
-
-impl std::fmt::Display for CliLinkInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.brief {
-            // Brief mode: interface name (16 chars), state (14 chars), then
-            // addresses
-            write!(f, "{:<16} ", self.ifname)?;
-
-            // State with color and padding (14 chars + 1 space = 15 total)
-            if self.operstate == "UP" {
-                write_with_color!(
-                    f,
-                    CliColor::StateUp,
-                    "{:<15}",
-                    self.operstate
-                )?;
-            } else if self.operstate == "DOWN" {
-                write_with_color!(
-                    f,
-                    CliColor::StateDown,
-                    "{:<15}",
-                    self.operstate
-                )?;
-            } else {
-                write!(f, "{:<15}", self.operstate)?;
-            }
-
-            // Addresses on the same line (no MAC address in brief mode for ip
-            // address)
-            if let Some(addr_info) = &self.addr_info {
-                for addr in addr_info {
-                    write!(f, "{} ", addr)?;
-                }
-            }
-            // Don't add extra newline - the formatter will add one
-            return Ok(());
-        }
-
-        write!(f, "{}: ", self.ifindex)?;
-        let link = if let Some(link_name) = &self.link {
-            // iproute2 prints `@NONE` when the kernel reports link index 0.
+    /// `@link` suffix of the interface name, matching iproute2
+    /// `print_name_and_link()`: `@NONE` for a lower link index of 0 and
+    /// `@ifN` for a lower link in another netns.
+    fn link_suffix(&self) -> String {
+        if let Some(link_name) = &self.link {
             let display_name =
                 link_name.clone().unwrap_or_else(|| "NONE".to_string());
             format!("@{display_name}")
@@ -794,7 +806,26 @@ impl std::fmt::Display for CliLinkInfo {
             }
         } else {
             String::new()
-        };
+        }
+    }
+
+    /// `ip address show -s` prints the link statistics after the address
+    /// list, so move them to the field serialized at that position.
+    pub fn move_stats_after_addr_info(&mut self) {
+        self.addr_stats = self.stats.take();
+    }
+}
+
+impl std::fmt::Display for CliLinkInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.brief {
+            BriefMode::Link => return self.fmt_brief_link(f),
+            BriefMode::Address => return self.fmt_brief_address(f),
+            BriefMode::None => {}
+        }
+
+        write!(f, "{}: ", self.ifindex)?;
+        let link = self.link_suffix();
 
         write_with_color!(f, CliColor::IfaceName, "{}{link}: ", self.ifname)?;
         write!(
@@ -869,16 +900,8 @@ impl std::fmt::Display for CliLinkInfo {
         }
 
         if let Some(addr_info) = &self.addr_info {
-            if self.brief {
-                // In brief mode, print all addresses on the same line
-                for addr in addr_info {
-                    write!(f, " {}", addr)?;
-                }
-                writeln!(f)?;
-            } else {
-                for addr in addr_info {
-                    write!(f, "\n    {}", addr)?;
-                }
+            for addr in addr_info {
+                write!(f, "\n    {}", addr)?;
             }
         }
 
@@ -893,6 +916,60 @@ impl std::fmt::Display for CliLinkInfo {
         }
 
         Ok(())
+    }
+}
+
+impl CliLinkInfo {
+    /// `ip link show -br`: interface name (16 chars), operstate (14 chars),
+    /// MAC address and flags, matching iproute2 `print_linkinfo_brief()`.
+    fn fmt_brief_link(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        let name = format!("{}{}", self.ifname, self.link_suffix());
+        write_with_color!(f, CliColor::IfaceName, "{name:<16} ")?;
+        self.fmt_brief_operstate(f)?;
+
+        if !self.address.is_empty() {
+            write_with_color!(f, CliColor::Mac, "{} ", self.address)?;
+        }
+        write!(f, "<{}> ", self.flags.as_slice().join(","))?;
+        Ok(())
+    }
+
+    /// `ip address show -br`: interface name (16 chars), operstate
+    /// (14 chars) and addresses on a single line.
+    fn fmt_brief_address(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "{:<16} ", self.ifname)?;
+        self.fmt_brief_operstate(f)?;
+
+        if let Some(addr_info) = &self.addr_info {
+            for addr in addr_info {
+                write!(f, "{} ", addr)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Operstate padded to the 14 columns iproute2 uses in brief output,
+    /// colored for the `UP` and `DOWN` states.
+    fn fmt_brief_operstate(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        if self.operstate.is_empty() {
+            return Ok(());
+        }
+        if self.operstate == "UP" {
+            write_with_color!(f, CliColor::StateUp, "{:<15}", self.operstate)
+        } else if self.operstate == "DOWN" {
+            write_with_color!(f, CliColor::StateDown, "{:<15}", self.operstate)
+        } else {
+            write!(f, "{:<15}", self.operstate)
+        }
     }
 }
 
@@ -1052,6 +1129,7 @@ pub(crate) async fn handle_show(
     include_details: bool,
     statistics: u8,
     oneline: bool,
+    brief: bool,
 ) -> Result<Vec<CliLinkInfo>, CliError> {
     let filter = LinkShowFilter::parse(opts)?;
 
@@ -1083,6 +1161,12 @@ pub(crate) async fn handle_show(
     if oneline {
         for iface in ifaces.iter_mut() {
             iface.set_oneline(true);
+        }
+    }
+
+    if brief {
+        for iface in ifaces.iter_mut() {
+            iface.set_brief(BriefMode::Link);
         }
     }
 
@@ -1671,7 +1755,8 @@ fn resolve_controller_and_link_names(links: &mut [CliLinkInfo]) {
                 // text output is `@NONE`.
                 link.link = Some(None);
             }
-            link.link_index = None;
+            // `link_index` is kept for the brief JSON output, which serializes
+            // the raw index for links living in another netns.
         }
 
         // Compute M-DOWN: if linked interface is not UP, append "M-DOWN"

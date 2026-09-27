@@ -1,10 +1,5 @@
 # TODO
 
-## `ip link`
-
-- show: implement `-br`/`--brief` output and the matching `-j` JSON shape
-  - `src/ip/link/show.rs`, `src/ip/link/cli.rs`
-
 ## `ip address`
 
 - show: print the `@NONE`/`@ifN` suffix of the interface name in `-br`

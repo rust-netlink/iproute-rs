@@ -7,6 +7,8 @@ const DUMMY_NAME: &str = "tshow-dummy";
 const DUMMY2_NAME: &str = "tshow-dummy2";
 const BRIDGE_NAME: &str = "tshow-br";
 const VRF_NAME: &str = "tshow-vrf";
+const VETH0_NAME: &str = "tshow-veth0";
+const VETH1_NAME: &str = "tshow-veth1";
 
 fn with_dummy_iface<T>(test: T)
 where
@@ -64,6 +66,19 @@ where
         ]);
         ns.ip_rs_exec_cmd(&["link", "set", DUMMY_NAME, "up"]);
         ns.ip_rs_exec_cmd(&["link", "set", VRF_NAME, "up"]);
+        test(ns);
+    });
+}
+
+fn with_veth_pair<T>(test: T)
+where
+    T: FnOnce(&NetnsGuard),
+{
+    with_netns(|ns| {
+        ns.ip_rs_exec_cmd(&[
+            "link", "add", VETH0_NAME, "type", "veth", "peer", "name",
+            VETH1_NAME,
+        ]);
         test(ns);
     });
 }
@@ -186,6 +201,80 @@ fn test_show_oneline_details() {
 fn test_show_oneline_device() {
     with_dummy_iface(|ns| {
         ns.assert_eq_output(&["-o", "link", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_show_brief() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-br", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_brief_json() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-j", "-br", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_brief_details() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-br", "-d", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_brief_stats() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-br", "-s", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_brief_oneline() {
+    with_dummy_iface(|ns| {
+        ns.assert_eq_output(&["-br", "-o", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_brief_color_always() {
+    with_dummy_iface(|ns| {
+        let outputs =
+            ns.assert_eq_output(&["-c=always", "-br", "link", "show"]);
+        assert!(outputs.actual.contains("\x1b[0m"));
+    });
+}
+
+#[test]
+fn test_show_brief_veth() {
+    with_veth_pair(|ns| {
+        // The veth pair adds the `@link` suffix to the interface name and the
+        // `M-DOWN` flag of the lower link.
+        ns.assert_eq_output(&["-br", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_brief_veth_json() {
+    with_veth_pair(|ns| {
+        ns.assert_eq_output(&["-j", "-br", "link", "show"]);
+    });
+}
+
+#[test]
+fn test_show_brief_json_link_null() {
+    with_netns(|ns| {
+        // The default tunnel devices (e.g. `ip6tnl0`) report link index 0,
+        // which iproute2 serializes as `"link": null`.
+        let ip_output = ns.exec_cmd(&["ip", "-j", "-br", "link", "show"]);
+        if !ip_output.contains("\"link\":null") {
+            // Tunnel devices are not available on this host.
+            return;
+        }
+        ns.assert_eq_output(&["-j", "-br", "link", "show"]);
     });
 }
 
