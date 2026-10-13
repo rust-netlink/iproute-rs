@@ -139,6 +139,38 @@ impl<'a> From<&'a CliLinkInfo> for CliLinkBrief<'a> {
     }
 }
 
+/// `ip -j -br address show` serializes the fields printed by iproute2
+/// `print_linkinfo_brief()` for an address family request plus the brief
+/// address list.
+#[derive(Serialize)]
+pub(crate) struct CliAddrBriefLink<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    link: Option<&'a Option<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    link_index: Option<u32>,
+    ifname: &'a String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    operstate: &'a String,
+    addr_info: &'a [CliAddressInfo],
+}
+
+impl<'a> From<&'a CliLinkInfo> for CliAddrBriefLink<'a> {
+    fn from(link: &'a CliLinkInfo) -> Self {
+        let (link_attr, link_index) = if link.link_netnsid.is_some() {
+            (None, link.link_index)
+        } else {
+            (link.link.as_ref(), None)
+        };
+        Self {
+            link: link_attr,
+            link_index,
+            ifname: &link.ifname,
+            operstate: &link.operstate,
+            addr_info: link.addr_info.as_deref().unwrap_or(&[]),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 struct CliVfInfo {
     #[serde(rename = "vf")]
@@ -808,6 +840,10 @@ impl CliLinkInfo {
 
     pub(crate) fn is_brief_link(&self) -> bool {
         self.brief == BriefMode::Link
+    }
+
+    pub(crate) fn is_brief_address(&self) -> bool {
+        self.brief == BriefMode::Address
     }
 
     pub fn set_oneline(&mut self, oneline: bool) {

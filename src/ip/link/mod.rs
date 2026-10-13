@@ -17,5 +17,7 @@ mod xstats;
 pub(crate) use self::{
     add::LinkBaseConf,
     cli::LinkCommand,
-    show::{BriefMode, CliLinkInfo, handle_show},
+    show::{
+        BriefMode, CliAddrBriefLink, CliLinkBrief, CliLinkInfo, handle_show,
+    },
 };
