@@ -176,6 +176,29 @@ fn test_address_show_brief_link_suffix() {
 }
 
 #[test]
+fn test_address_show_family() {
+    with_dummy_iface_static_ip(|ns| {
+        // The `link/...` line is not printed when an address family is
+        // requested, but the rest of the link information is.
+        ns.assert_eq_output(&["-4", "address", "show", DUMMY_NAME]);
+        ns.assert_eq_output(&["-6", "address", "show", DUMMY_NAME]);
+        ns.assert_eq_output(&["-j", "-4", "address", "show", DUMMY_NAME]);
+        ns.assert_eq_output(&["-j", "-6", "address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_show_family_details() {
+    with_dummy_iface_static_ip(|ns| {
+        // `-d` restores the `link/...` line of the family filtered output.
+        ns.assert_eq_output(&["-4", "-d", "address", "show", DUMMY_NAME]);
+        ns.assert_eq_output(&["-6", "-d", "address", "show", DUMMY_NAME]);
+        ns.assert_eq_output(&["-j", "-4", "-d", "address", "show", DUMMY_NAME]);
+        ns.assert_eq_output(&["-j", "-6", "-d", "address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
 fn test_address_show_filter_scope() {
     with_dummy_iface_static_ip(|ns| {
         // No interface has a host scope address, so iproute2 drops every

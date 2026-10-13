@@ -35,6 +35,11 @@ pub(crate) struct CliLinkInfo {
     brief: BriefMode,
     #[serde(skip)]
     oneline: bool,
+    /// `ip -4`/`-6 address show`: iproute2 `print_linkinfo()` skips the
+    /// `link/...` line unless `-d` is used when an address family is
+    /// requested.
+    #[serde(skip)]
+    link_info_hidden: bool,
     ifindex: u32,
     #[serde(skip)]
     raw_flags: LinkFlags,
@@ -59,6 +64,7 @@ pub(crate) struct CliLinkInfo {
     group: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     txqlen: Option<u32>,
+    #[serde(skip_serializing_if = "String::is_empty")]
     link_type: String,
     #[serde(skip)]
     is_point_2_point: bool,
@@ -778,6 +784,18 @@ impl CliLinkInfo {
         self.remove_inet6_addr_gen_mode();
     }
 
+    /// `ip -4`/`-6 address show` without `-d`: iproute2 omits the `link/...`
+    /// line and its JSON attributes for all families but the link family.
+    pub fn hide_link_info(&mut self) {
+        self.link_info_hidden = true;
+        // The link type, MAC address, broadcast address and permanent
+        // address are only serialized when the `link/...` line is printed.
+        self.link_type = String::new();
+        self.address = String::new();
+        self.broadcast = String::new();
+        self.permaddr = String::new();
+    }
+
     pub fn set_brief(&mut self, brief: BriefMode) {
         self.brief = brief;
     }
@@ -855,24 +873,26 @@ impl std::fmt::Display for CliLinkInfo {
         if let Some(v) = self.txqlen {
             write!(f, "qlen {v}")?;
         }
-        write!(f, "\n    ")?;
-        write!(f, "link/{} ", self.link_type)?;
-        if !self.address.is_empty() {
-            write_with_color!(f, CliColor::Mac, "{}", self.address)?;
-            write!(f, " ")?;
-            if self.is_point_2_point {
-                write!(f, "peer ")?;
-            } else {
-                write!(f, "brd ")?;
+        if !self.link_info_hidden {
+            write!(f, "\n    ")?;
+            write!(f, "link/{} ", self.link_type)?;
+            if !self.address.is_empty() {
+                write_with_color!(f, CliColor::Mac, "{}", self.address)?;
+                write!(f, " ")?;
+                if self.is_point_2_point {
+                    write!(f, "peer ")?;
+                } else {
+                    write!(f, "brd ")?;
+                }
+                write_with_color!(f, CliColor::Mac, "{}", self.broadcast)?;
             }
-            write_with_color!(f, CliColor::Mac, "{}", self.broadcast)?;
-        }
-        if !self.permaddr.is_empty() {
-            // Previous one did not add space because it does not know whether
-            // they are more options
-            write!(f, " ")?;
-            write!(f, "permaddr ")?;
-            write_with_color!(f, CliColor::Mac, "{}", self.permaddr)?;
+            if !self.permaddr.is_empty() {
+                // Previous one did not add space because it does not know
+                // whether they are more options
+                write!(f, " ")?;
+                write!(f, "permaddr ")?;
+                write_with_color!(f, CliColor::Mac, "{}", self.permaddr)?;
+            }
         }
 
         if !self.link_netns.is_empty() {
