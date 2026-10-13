@@ -194,6 +194,27 @@ fn test_address_show_protocol_filter_hex() {
 }
 
 #[test]
+fn test_address_show_protocol_filter_name_rejected() {
+    with_dummy_iface_empty(|ns| {
+        // iproute2 only accepts numbers for the `proto` filter.
+        ns.exec_cmd_expect_failure(&[
+            "ip",
+            "address",
+            "show",
+            "proto",
+            "kernel_lo",
+        ]);
+        let stderr = ns.ip_rs_exec_cmd_expect_failure(&[
+            "address",
+            "show",
+            "proto",
+            "kernel_lo",
+        ]);
+        assert!(!stderr.trim().is_empty());
+    });
+}
+
+#[test]
 fn test_address_show_oneline() {
     with_dummy_iface_static_ip(|ns| {
         ns.assert_eq_output(&["-o", "address", "show", DUMMY_NAME]);

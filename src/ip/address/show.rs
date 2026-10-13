@@ -770,26 +770,20 @@ pub(crate) fn parse_prefix(s: &str) -> Result<(IpAddr, Option<u8>), CliError> {
 }
 
 pub(crate) fn parse_protocol_value(s: &str) -> Result<u8, CliError> {
-    match s {
-        "kernel_lo" => Ok(1),
-        "kernel_ra" => Ok(2),
-        "kernel_ll" => Ok(3),
-        _ => {
-            // iproute2 `get_u8()` uses base 0, accepting decimal, hex and
-            // octal numbers.
-            let (radix, digits) = if let Some(hex) =
-                s.strip_prefix("0x").or_else(|| s.strip_prefix("0X"))
-            {
-                (16, hex)
-            } else if s.len() > 1 && s.starts_with('0') {
-                (8, &s[1..])
-            } else {
-                (10, s)
-            };
-            u8::from_str_radix(digits, radix)
-                .map_err(|_| CliError::from(format!("invalid protocol: {s}")))
-        }
-    }
+    // iproute2 `ipaddr_list_flush_or_save()` parses the `proto` filter with
+    // `get_u8(..., 0)`, which only accepts decimal, hex and octal numbers,
+    // unlike `rtnl_addrprot_a2n()` used when adding an address.
+    let (radix, digits) = if let Some(hex) =
+        s.strip_prefix("0x").or_else(|| s.strip_prefix("0X"))
+    {
+        (16, hex)
+    } else if s.len() > 1 && s.starts_with('0') {
+        (8, &s[1..])
+    } else {
+        (10, s)
+    };
+    u8::from_str_radix(digits, radix)
+        .map_err(|_| CliError::from(format!("invalid protocol: {s}")))
 }
 
 /// One link of `ip -o address show` output. iproute2 omits the link
