@@ -266,8 +266,7 @@ impl LinkBaseConf {
     }
 
     fn parse(args: Vec<String>) -> Result<Self, CliError> {
-        if let Some(type_index) =
-            args.as_slice().iter().position(|a| a.as_str() == "type")
+        if let Some(type_index) = args.iter().position(|a| a.as_str() == "type")
             && args.len() > type_index + 1
         {
             let iface_type = InfoKind::from(args[type_index + 1].as_str());

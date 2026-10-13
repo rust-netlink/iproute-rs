@@ -86,10 +86,8 @@ impl std::fmt::Display for CliLinkInfoDataVti {
             _ => addr.to_string(),
         };
 
-        let remote = self
-            .remote
-            .as_ref()
-            .map_or("any".to_string(), &addr_display);
+        let remote =
+            self.remote.as_ref().map_or("any".to_string(), addr_display);
         let local = self.local.as_ref().map_or("any".to_string(), addr_display);
 
         write!(f, "remote {remote} local {local}")?;
