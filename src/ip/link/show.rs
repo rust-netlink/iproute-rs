@@ -921,7 +921,11 @@ impl std::fmt::Display for CliLinkInfo {
 
         if let Some(addr_info) = &self.addr_info {
             for addr in addr_info {
-                write!(f, "\n    {}", addr)?;
+                // Addresses rejected by an address filter are only
+                // serialized as empty JSON objects.
+                if !addr.is_rejected() {
+                    write!(f, "\n    {}", addr)?;
+                }
             }
         }
 
@@ -969,7 +973,9 @@ impl CliLinkInfo {
 
         if let Some(addr_info) = &self.addr_info {
             for addr in addr_info {
-                write!(f, "{} ", addr)?;
+                if !addr.is_rejected() {
+                    write!(f, "{} ", addr)?;
+                }
             }
         }
         Ok(())
