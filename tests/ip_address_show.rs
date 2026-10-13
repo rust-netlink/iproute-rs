@@ -72,6 +72,25 @@ where
 }
 
 #[test]
+fn test_address_show_metric_json() {
+    with_dummy_iface_empty(|ns| {
+        // iproute2 prints the `metric` JSON key right after `prefixlen`.
+        ns.exec_cmd(&[
+            "ip",
+            "address",
+            "add",
+            "192.0.2.1/24",
+            "dev",
+            DUMMY_NAME,
+            "metric",
+            "100",
+        ]);
+        ns.assert_eq_output(&["-j", "address", "show", DUMMY_NAME]);
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME]);
+    });
+}
+
+#[test]
 fn test_address_show_filter_rejected_text() {
     with_filter_addresses(|ns| {
         // Rejected addresses are not printed in text mode.
