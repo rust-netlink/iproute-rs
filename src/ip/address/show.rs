@@ -34,6 +34,7 @@ pub(crate) struct CliAddressInfo {
     local: String,
     peer: Option<String>,
     prefixlen: u8,
+    metric: Option<u32>,
     broadcast: Option<String>,
     anycast: Option<String>,
     multicast: Option<String>,
@@ -43,7 +44,6 @@ pub(crate) struct CliAddressInfo {
     label: String,
     valid_life_time: u32,
     preferred_life_time: u32,
-    metric: Option<u32>,
 }
 
 /// iproute2 `print_addrinfo()` opens the JSON object before applying the
@@ -67,6 +67,9 @@ impl Serialize for CliAddressInfo {
             map.serialize_entry("peer", peer)?;
         }
         map.serialize_entry("prefixlen", &self.prefixlen)?;
+        if let Some(metric) = self.metric {
+            map.serialize_entry("metric", &metric)?;
+        }
         if let Some(broadcast) = &self.broadcast {
             map.serialize_entry("broadcast", broadcast)?;
         }
@@ -88,9 +91,6 @@ impl Serialize for CliAddressInfo {
         }
         map.serialize_entry("valid_life_time", &self.valid_life_time)?;
         map.serialize_entry("preferred_life_time", &self.preferred_life_time)?;
-        if let Some(metric) = self.metric {
-            map.serialize_entry("metric", &metric)?;
-        }
         map.end()
     }
 }
