@@ -619,8 +619,9 @@ impl AddressShowFilter {
         &self,
         addr: &CliAddressInfo,
         msg: &AddressMessage,
+        ifname: Option<&str>,
     ) -> bool {
-        self.link_matches(addr, msg) && self.proto_matches(msg)
+        self.link_matches(addr, msg, ifname) && self.proto_matches(msg)
     }
 
     /// Whether iproute2 `ipaddr_filter()` would keep the link of this
@@ -630,6 +631,7 @@ impl AddressShowFilter {
         &self,
         addr: &CliAddressInfo,
         msg: &AddressMessage,
+        ifname: Option<&str>,
     ) -> bool {
         if let Some(s) = self.scope {
             let scope_val: u8 = msg.header.scope.into();
@@ -638,10 +640,17 @@ impl AddressShowFilter {
             }
         }
 
-        if let Some(ref label_pat) = self.label
-            && !fnmatch_simple(label_pat.as_str(), &addr.label)
-        {
-            return false;
+        if let Some(ref label_pat) = self.label {
+            // iproute2 `ifa_label_match_rta()` falls back to the interface
+            // name for addresses without an `IFA_LABEL` attribute.
+            let label = if addr.label.is_empty() {
+                ifname.unwrap_or("")
+            } else {
+                addr.label.as_str()
+            };
+            if !fnmatch_simple(label_pat.as_str(), label) {
+                return false;
+            }
         }
 
         if let Some(ref target) = self.to_prefix {
@@ -867,6 +876,47 @@ impl CliAddrOnelineEntry {
     }
 }
 
+/// `ip address show label PATTERN`: iproute2 `print_linkinfo()` returns
+/// before printing the link information when a label filter is active, so
+/// only the address list of each link is printed.
+#[derive(Serialize)]
+pub(crate) struct CliAddrOnlyLink {
+    #[serde(skip)]
+    brief: bool,
+    /// `None` for the link family (`ip -0`), which does not dump any address.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    addr_info: Option<Vec<CliAddressInfo>>,
+}
+
+impl std::fmt::Display for CliAddrOnlyLink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Some(addr_info) = &self.addr_info else {
+            return Ok(());
+        };
+        let mut first = true;
+        for addr in addr_info.iter().filter(|a| !a.is_rejected()) {
+            if self.brief {
+                write!(f, "{addr} ")?;
+            } else {
+                if !first {
+                    writeln!(f)?;
+                }
+                write!(f, "    {addr}")?;
+            }
+            first = false;
+        }
+        Ok(())
+    }
+}
+
+impl CanDisplay for CliAddrOnlyLink {
+    fn gen_string(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl CanOutput for CliAddrOnlyLink {}
+
 /// Output of the `ip address` subcommands.
 pub(crate) enum AddressOutput {
     /// Full link information including the address list, used by
@@ -874,6 +924,8 @@ pub(crate) enum AddressOutput {
     Links(Vec<CliLinkInfo>),
     /// `ip -o address show` only prints the address entries.
     Oneline(Vec<CliAddrOnelineLink>),
+    /// `ip address show label PATTERN` only prints the address entries.
+    Label(Vec<CliAddrOnlyLink>),
 }
 
 impl Serialize for AddressOutput {
@@ -884,6 +936,7 @@ impl Serialize for AddressOutput {
         match self {
             Self::Links(v) => v.serialize(serializer),
             Self::Oneline(v) => v.serialize(serializer),
+            Self::Label(v) => v.serialize(serializer),
         }
     }
 }
@@ -895,6 +948,12 @@ impl CanDisplay for AddressOutput {
             Self::Oneline(v) => v
                 .iter()
                 .map(CliAddrOnelineLink::gen_string)
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<String>>()
+                .join("\n"),
+            Self::Label(v) => v
+                .iter()
+                .map(CliAddrOnlyLink::gen_string)
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<String>>()
                 .join("\n"),
@@ -963,7 +1022,6 @@ pub(crate) async fn handle_show(
     // the correct prefix containment logic.
 
     let mut addresses = address_get_handle.execute();
-    let mut addresses_infos: Vec<CliAddressInfo> = Vec::new();
     let mut address_msgs: Vec<AddressMessage> = Vec::new();
 
     while let Some(nl_msg) = addresses.try_next().await? {
@@ -972,26 +1030,9 @@ pub(crate) async fn handle_show(
 
     let dumped_indexes: HashSet<u32> =
         address_msgs.iter().map(|msg| msg.header.index).collect();
-    let mut matched_indexes: HashSet<u32> = HashSet::new();
 
-    for msg in &address_msgs {
-        if let Some(family) = preferred_family
-            && msg.header.family != family
-        {
-            continue;
-        }
-        let mut addr_info = parse_nl_msg_to_address(msg.clone(), brief)?;
-        if addr_filter.link_matches(&addr_info, msg) {
-            matched_indexes.insert(addr_info.index);
-        }
-        // iproute2 keeps showing the address of a matched link even when an
-        // address filter rejects it, as an empty JSON object.
-        if !addr_filter.matches(&addr_info, msg) {
-            addr_info.set_rejected();
-        }
-        addresses_infos.push(addr_info);
-    }
-
+    // The link information is collected before matching the addresses so
+    // the label filter can fall back to the interface name.
     let mut links_info: HashMap<u32, _> = crate::link::handle_show(
         &link_opts_refs,
         include_details,
@@ -1018,10 +1059,28 @@ pub(crate) async fn handle_show(
     .map(|link_info| (link_info.get_ifindex(), link_info))
     .collect();
 
-    for addr_info in addresses_infos {
-        if let Some(link_info) = links_info.get_mut(&addr_info.index) {
-            link_info.add_address(addr_info);
+    let mut matched_indexes: HashSet<u32> = HashSet::new();
+
+    for msg in &address_msgs {
+        if let Some(family) = preferred_family
+            && msg.header.family != family
+        {
+            continue;
         }
+        let Some(link_info) = links_info.get_mut(&msg.header.index) else {
+            continue;
+        };
+        let mut addr_info = parse_nl_msg_to_address(msg.clone(), brief)?;
+        let ifname = link_info.get_ifname().to_string();
+        if addr_filter.link_matches(&addr_info, msg, Some(&ifname)) {
+            matched_indexes.insert(addr_info.index);
+        }
+        // iproute2 keeps showing the address of a matched link even when an
+        // address filter rejects it, as an empty JSON object.
+        if !addr_filter.matches(&addr_info, msg, Some(&ifname)) {
+            addr_info.set_rejected();
+        }
+        link_info.add_address(addr_info);
     }
 
     // Like iproute2 `ipaddr_filter()`, drop links whose addresses are all
@@ -1053,6 +1112,21 @@ pub(crate) async fn handle_show(
             })
             .collect();
         Ok(AddressOutput::Oneline(links))
+    } else if addr_filter.label.is_some() {
+        // `print_linkinfo()` returns early when a label filter is active,
+        // so the link information is not printed at all.
+        let links: Vec<CliAddrOnlyLink> = result
+            .into_iter()
+            .map(|mut link| CliAddrOnlyLink {
+                brief,
+                addr_info: if link_only {
+                    None
+                } else {
+                    Some(link.take_addr_info())
+                },
+            })
+            .collect();
+        Ok(AddressOutput::Label(links))
     } else {
         Ok(AddressOutput::Links(result))
     }
