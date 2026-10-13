@@ -85,7 +85,8 @@ pub(crate) async fn handle_delete(opts: &[String]) -> Result<(), CliError> {
     let index = resolve_ifindex(&handle, &config.dev).await?;
     msg.header.index = index;
 
-    let nl_msg = NetlinkMessage::from(RouteNetlinkMessage::DelAddress(msg));
+    let mut nl_msg = NetlinkMessage::from(RouteNetlinkMessage::DelAddress(msg));
+    nl_msg.header.flags = NLM_F_REQUEST | NLM_F_ACK;
 
     send_and_check(handle, nl_msg).await
 }

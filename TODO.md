@@ -2,9 +2,6 @@
 
 ## `ip address`
 
-- delete: the command reports success but does not remove the address,
-  neither with an explicit prefix length nor through the wildcard
-  deletion - `src/ip/address/add.rs`
 - show: with a `label` filter, omit the link line and its JSON fields like
   iproute2 `print_linkinfo()`, which returns early, and match addresses
   without an `IFA_LABEL` attribute against the interface name -
