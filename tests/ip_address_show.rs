@@ -3,7 +3,11 @@
 mod common;
 use self::common::{
     DUMMY_NAME, NetnsGuard, with_dummy_iface_empty, with_dummy_iface_static_ip,
+    with_netns,
 };
+
+const VETH0_NAME: &str = "tshow-veth0";
+const VETH1_NAME: &str = "tshow-veth1";
 
 /// Add addresses with and without an `IFA_PROTO` attribute to a dummy
 /// interface: only the first address carries the unknown protocol 99.
@@ -134,6 +138,40 @@ fn test_address_show_stats_oneline() {
 fn test_address_show_stats_brief() {
     with_dummy_iface_static_ip(|ns| {
         ns.assert_eq_output(&["--brief", "-s", "address", "show", DUMMY_NAME]);
+    });
+}
+
+fn with_veth_pair<T>(test: T)
+where
+    T: FnOnce(&NetnsGuard),
+{
+    with_netns(|ns| {
+        ns.exec_cmd(&[
+            "ip", "link", "add", VETH0_NAME, "type", "veth", "peer", "name",
+            VETH1_NAME,
+        ]);
+        ns.exec_cmd(&[
+            "ip",
+            "address",
+            "add",
+            "192.0.2.1/24",
+            "dev",
+            VETH0_NAME,
+        ]);
+        ns.exec_cmd(&["ip", "address", "add", "fd00::1/64", "dev", VETH1_NAME]);
+        ns.exec_cmd(&["ip", "link", "set", VETH0_NAME, "up"]);
+        ns.exec_cmd(&["ip", "link", "set", VETH1_NAME, "up"]);
+        ns.wait_for_ipv6_dad();
+        test(ns);
+    });
+}
+
+#[test]
+fn test_address_show_brief_link_suffix() {
+    with_veth_pair(|ns| {
+        // iproute2 appends the lower link name to the interface name, e.g.
+        // `tshow-veth0@tshow-veth1`.
+        ns.assert_eq_output(&["-br", "address", "show"]);
     });
 }
 

@@ -2,8 +2,6 @@
 
 ## `ip address`
 
-- show: print the `@NONE`/`@ifN` suffix of the interface name in `-br`
-  output - `src/ip/link/show.rs`
 - show: omit the `link/...` line of `-4`/`-6` output unless `-d` is used,
   and follow the reduced `-6` link attributes (no qdisc/group/qlen) -
   `src/ip/address/show.rs`
