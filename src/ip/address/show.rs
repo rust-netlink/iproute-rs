@@ -1009,6 +1009,9 @@ pub(crate) async fn handle_show(
     .into_iter()
     .map(|mut link_info| {
         link_info.show_only_addr_details();
+        if link_only {
+            link_info.hide_addr_info();
+        }
         if hide_link_info {
             link_info.hide_link_info();
         }
