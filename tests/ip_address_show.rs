@@ -72,6 +72,26 @@ where
 }
 
 #[test]
+fn test_address_show_link_json() {
+    with_dummy_iface_empty(|ns| {
+        // The link family output carries no `addr_info` key.
+        ns.assert_eq_output(&["-j", "-0", "address", "show"]);
+        ns.assert_eq_output(&["-j", "-0", "address", "show", DUMMY_NAME]);
+        ns.assert_eq_output(&["-j", "-f", "link", "address", "show"]);
+    });
+}
+
+#[test]
+fn test_address_show_empty_addr_info_json() {
+    with_dummy_iface_empty(|ns| {
+        // An interface without addresses keeps the empty `addr_info` array
+        // when no address family is requested.
+        ns.assert_eq_output(&["-j", "address", "show", DUMMY_NAME]);
+        ns.assert_eq_output(&["-j", "address", "show"]);
+    });
+}
+
+#[test]
 fn test_address_show_metric_json() {
     with_dummy_iface_empty(|ns| {
         // iproute2 prints the `metric` JSON key right after `prefixlen`.

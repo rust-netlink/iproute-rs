@@ -776,6 +776,12 @@ impl CliLinkInfo {
         self.addr_info = Some(vec![]);
     }
 
+    /// `ip -0`/`-f link address show`: iproute2 does not request any address
+    /// for the link family, so the `addr_info` JSON key is not printed.
+    pub fn hide_addr_info(&mut self) {
+        self.addr_info = None;
+    }
+
     // For `ip address show`, we want to remove some details that are not
     // present in the original ip command.
     pub fn show_only_addr_details(&mut self) {
