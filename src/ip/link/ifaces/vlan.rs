@@ -291,7 +291,7 @@ impl std::fmt::Display for CliLinkInfoDataVlan {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "protocol {} id {}", self.protocol, self.id)?;
         if !self.flags.is_empty() {
-            write!(f, " <{}>", self.flags.as_slice().join(","))?;
+            write!(f, " <{}>", self.flags.join(","))?;
         }
         if !self.ingress_qos.is_empty() {
             write!(

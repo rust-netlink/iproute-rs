@@ -891,7 +891,7 @@ impl std::fmt::Display for CliLinkInfo {
         write!(
             f,
             "<{}> mtu {} qdisc {} ",
-            self.flags.as_slice().join(","),
+            self.flags.join(","),
             self.mtu,
             self.qdisc,
         )?;
@@ -999,7 +999,7 @@ impl CliLinkInfo {
         if !self.address.is_empty() {
             write_with_color!(f, CliColor::Mac, "{} ", self.address)?;
         }
-        write!(f, "<{}> ", self.flags.as_slice().join(","))?;
+        write!(f, "<{}> ", self.flags.join(","))?;
         Ok(())
     }
 
