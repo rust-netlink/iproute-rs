@@ -840,6 +840,10 @@ pub(crate) async fn handle_show(
     // `ip -0 address show` (link family) prints the link information like
     // `ip link show` does.
     let link_only = preferred_family == Some(AddressFamily::Unspec);
+    // With an address family requested, iproute2 only prints the `link/...`
+    // line when `-d` is used.
+    let hide_link_info =
+        !link_only && preferred_family.is_some() && !include_details;
     // iproute2 does not print the link statistics when the link information
     // is skipped or printed in brief form.
     let statistics = if brief || (oneline && !link_only) {
@@ -908,6 +912,9 @@ pub(crate) async fn handle_show(
     .into_iter()
     .map(|mut link_info| {
         link_info.show_only_addr_details();
+        if hide_link_info {
+            link_info.hide_link_info();
+        }
         if brief {
             link_info.set_brief(BriefMode::Address);
         }

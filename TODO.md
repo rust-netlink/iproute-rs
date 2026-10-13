@@ -2,9 +2,6 @@
 
 ## `ip address`
 
-- show: omit the `link/...` line of `-4`/`-6` output unless `-d` is used,
-  and follow the reduced `-6` link attributes (no qdisc/group/qlen) -
-  `src/ip/address/show.rs`
 - show: emit an empty JSON object for each address rejected by the
   `scope`, `label`, `to`, flag and `proto` filters -
   `src/ip/address/show.rs`
