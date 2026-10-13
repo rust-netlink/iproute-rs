@@ -48,7 +48,7 @@ pub(crate) async fn handle_save(opts: &[String]) -> Result<(), CliError> {
     let mut addresses = addr_get.execute();
     while let Some(msg) = addresses.try_next().await? {
         let addr_info = parse_nl_msg_to_address(msg.clone(), false)?;
-        if !filter.matches(&addr_info, &msg) {
+        if !filter.matches(&addr_info, &msg, None) {
             continue;
         }
         let mut nl_msg =
@@ -237,7 +237,7 @@ pub(crate) async fn handle_flush(
         let mut flushed_in_round = 0u32;
         while let Some(address) = addresses.try_next().await? {
             let addr_info = parse_nl_msg_to_address(address.clone(), false)?;
-            if !filter.matches(&addr_info, &address) {
+            if !filter.matches(&addr_info, &address, None) {
                 continue;
             }
 

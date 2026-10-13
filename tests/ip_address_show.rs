@@ -91,6 +91,128 @@ fn test_address_show_empty_addr_info_json() {
     });
 }
 
+/// Add a labeled and an unlabeled IPv4 address plus a global IPv6 address.
+/// The kernel also adds a link-local IPv6 address to the interface; the
+/// IPv6 addresses carry no `IFA_LABEL` attribute.
+fn with_label_addresses<T>(test: T)
+where
+    T: FnOnce(&NetnsGuard),
+{
+    with_dummy_iface_empty(|ns| {
+        ns.exec_cmd(&[
+            "ip",
+            "address",
+            "add",
+            "192.0.2.1/24",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        ns.exec_cmd(&[
+            "ip",
+            "address",
+            "add",
+            "192.0.2.2/24",
+            "dev",
+            DUMMY_NAME,
+            "label",
+            "test-dummy:1",
+        ]);
+        ns.exec_cmd(&["ip", "address", "add", "fd00::1/64", "dev", DUMMY_NAME]);
+        test(ns);
+    });
+}
+
+#[test]
+fn test_address_show_label() {
+    with_label_addresses(|ns| {
+        // iproute2 omits the link information when a label filter is active.
+        // Addresses without an `IFA_LABEL` attribute (all IPv6 ones) match
+        // against the interface name.
+        ns.assert_eq_output(&[
+            "address", "show", DUMMY_NAME, "label", DUMMY_NAME,
+        ]);
+        ns.assert_eq_output(&[
+            "address",
+            "show",
+            DUMMY_NAME,
+            "label",
+            "test-dummy:1",
+        ]);
+        // No address matches, so the links are dropped.
+        ns.assert_eq_output(&[
+            "address", "show", DUMMY_NAME, "label", "nomatch",
+        ]);
+        // The link family does not dump any address.
+        ns.assert_eq_output(&[
+            "-0", "address", "show", DUMMY_NAME, "label", DUMMY_NAME,
+        ]);
+    });
+}
+
+#[test]
+fn test_address_show_label_json() {
+    with_label_addresses(|ns| {
+        ns.assert_eq_output(&[
+            "-j", "address", "show", DUMMY_NAME, "label", DUMMY_NAME,
+        ]);
+        ns.assert_eq_output(&[
+            "-j",
+            "address",
+            "show",
+            DUMMY_NAME,
+            "label",
+            "test-dummy:1",
+        ]);
+        ns.assert_eq_output(&[
+            "-j", "address", "show", DUMMY_NAME, "label", "nomatch",
+        ]);
+        ns.assert_eq_output(&[
+            "-j", "-0", "address", "show", DUMMY_NAME, "label", DUMMY_NAME,
+        ]);
+    });
+}
+
+#[test]
+fn test_address_show_label_brief() {
+    with_label_addresses(|ns| {
+        ns.assert_eq_output(&[
+            "-br", "address", "show", DUMMY_NAME, "label", DUMMY_NAME,
+        ]);
+    });
+}
+
+#[test]
+fn test_address_show_label_oneline() {
+    with_label_addresses(|ns| {
+        ns.assert_eq_output(&[
+            "-o", "address", "show", DUMMY_NAME, "label", DUMMY_NAME,
+        ]);
+        ns.assert_eq_output(&[
+            "-j", "-o", "address", "show", DUMMY_NAME, "label", DUMMY_NAME,
+        ]);
+        ns.assert_eq_output(&[
+            "-o",
+            "address",
+            "show",
+            DUMMY_NAME,
+            "label",
+            "test-dummy:1",
+        ]);
+    });
+}
+
+#[test]
+fn test_address_show_label_family() {
+    with_label_addresses(|ns| {
+        ns.assert_eq_output(&[
+            "-4", "address", "show", DUMMY_NAME, "label", DUMMY_NAME,
+        ]);
+        ns.assert_eq_output(&[
+            "-j", "-4", "address", "show", DUMMY_NAME, "label", DUMMY_NAME,
+        ]);
+    });
+}
+
 #[test]
 fn test_address_show_metric_json() {
     with_dummy_iface_empty(|ns| {
