@@ -943,7 +943,8 @@ impl CliLinkInfo {
         &self,
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "{:<16} ", self.ifname)?;
+        let name = format!("{}{}", self.ifname, self.link_suffix());
+        write_with_color!(f, CliColor::IfaceName, "{name:<16} ")?;
         self.fmt_brief_operstate(f)?;
 
         if let Some(addr_info) = &self.addr_info {
