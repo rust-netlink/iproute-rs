@@ -39,6 +39,103 @@ where
     });
 }
 
+/// Add addresses used by the filter tests: the first IPv4 address carries
+/// `IFA_PROTO` 99, the second one is a plain primary IPv4 address and the
+/// IPv6 address is global. The kernel also adds a link-local IPv6 address
+/// with the `kernel_ll` protocol to the interface.
+fn with_filter_addresses<T>(test: T)
+where
+    T: FnOnce(&NetnsGuard),
+{
+    with_dummy_iface_empty(|ns| {
+        ns.exec_cmd(&[
+            "ip",
+            "address",
+            "add",
+            "192.0.2.1/24",
+            "dev",
+            DUMMY_NAME,
+            "proto",
+            "99",
+        ]);
+        ns.exec_cmd(&[
+            "ip",
+            "address",
+            "add",
+            "192.0.2.2/24",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        ns.exec_cmd(&["ip", "address", "add", "fd00::1/64", "dev", DUMMY_NAME]);
+        test(ns);
+    });
+}
+
+#[test]
+fn test_address_show_filter_rejected_text() {
+    with_filter_addresses(|ns| {
+        // Rejected addresses are not printed in text mode.
+        ns.assert_eq_output(&[
+            "address", "show", DUMMY_NAME, "scope", "global",
+        ]);
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME, "scope", "link"]);
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME, "proto", "99"]);
+        ns.assert_eq_output(&["address", "show", DUMMY_NAME, "secondary"]);
+        ns.assert_eq_output(&[
+            "-br", "address", "show", DUMMY_NAME, "scope", "link",
+        ]);
+    });
+}
+
+#[test]
+fn test_address_show_filter_rejected_json() {
+    with_filter_addresses(|ns| {
+        // Each address rejected by a filter is serialized as an empty JSON
+        // object of its link.
+        ns.assert_eq_output(&[
+            "-j", "address", "show", DUMMY_NAME, "scope", "global",
+        ]);
+        ns.assert_eq_output(&[
+            "-j", "address", "show", DUMMY_NAME, "scope", "link",
+        ]);
+        ns.assert_eq_output(&[
+            "-j", "address", "show", DUMMY_NAME, "proto", "99",
+        ]);
+        // `to` also restricts the family, so the IPv6 addresses are not
+        // listed at all.
+        ns.assert_eq_output(&[
+            "-j",
+            "address",
+            "show",
+            DUMMY_NAME,
+            "to",
+            "192.0.2.1",
+        ]);
+        ns.assert_eq_output(&[
+            "-j",
+            "address",
+            "show",
+            DUMMY_NAME,
+            "secondary",
+        ]);
+    });
+}
+
+#[test]
+fn test_address_show_filter_rejected_oneline() {
+    with_filter_addresses(|ns| {
+        ns.assert_eq_output(&[
+            "-j", "-o", "address", "show", DUMMY_NAME, "proto", "99",
+        ]);
+        ns.assert_eq_output(&[
+            "-o", "address", "show", DUMMY_NAME, "proto", "99",
+        ]);
+        ns.assert_eq_output(&[
+            "-o", "address", "show", DUMMY_NAME, "scope", "link",
+        ]);
+    });
+}
+
 #[test]
 fn test_address_show_protocol_filter() {
     with_protocol_addresses(|ns| {

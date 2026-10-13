@@ -22,34 +22,77 @@ use crate::{
     link::{BriefMode, CliLinkInfo},
 };
 
-#[derive(Serialize, Default)]
+#[derive(Default)]
 pub(crate) struct CliAddressInfo {
-    #[serde(skip)]
     index: u32,
-    #[serde(skip)]
     brief: bool,
+    /// Whether an address filter rejected this address. iproute2
+    /// `print_addrinfo()` returns before printing anything for such an
+    /// address, which makes `-j` emit an empty JSON object.
+    rejected: bool,
     family: String,
     local: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     peer: Option<String>,
     prefixlen: u8,
-    #[serde(skip_serializing_if = "Option::is_none")]
     broadcast: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     anycast: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     multicast: Option<String>,
     scope: String,
-    #[serde(flatten, skip_serializing_if = "IndexMap::is_empty")]
     flags: IndexMap<String, bool>,
-    #[serde(skip_serializing_if = "String::is_empty")]
     protocol: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
     label: String,
     valid_life_time: u32,
     preferred_life_time: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
     metric: Option<u32>,
+}
+
+/// iproute2 `print_addrinfo()` opens the JSON object before applying the
+/// address filters, so rejected addresses are serialized as `{}` while all
+/// other addresses serialize their fields.
+impl Serialize for CliAddressInfo {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+
+        if self.rejected {
+            return serializer.serialize_map(Some(0))?.end();
+        }
+
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("family", &self.family)?;
+        map.serialize_entry("local", &self.local)?;
+        if let Some(peer) = &self.peer {
+            map.serialize_entry("peer", peer)?;
+        }
+        map.serialize_entry("prefixlen", &self.prefixlen)?;
+        if let Some(broadcast) = &self.broadcast {
+            map.serialize_entry("broadcast", broadcast)?;
+        }
+        if let Some(anycast) = &self.anycast {
+            map.serialize_entry("anycast", anycast)?;
+        }
+        if let Some(multicast) = &self.multicast {
+            map.serialize_entry("multicast", multicast)?;
+        }
+        map.serialize_entry("scope", &self.scope)?;
+        for (flag, value) in &self.flags {
+            map.serialize_entry(flag, value)?;
+        }
+        if !self.protocol.is_empty() {
+            map.serialize_entry("protocol", &self.protocol)?;
+        }
+        if !self.label.is_empty() {
+            map.serialize_entry("label", &self.label)?;
+        }
+        map.serialize_entry("valid_life_time", &self.valid_life_time)?;
+        map.serialize_entry("preferred_life_time", &self.preferred_life_time)?;
+        if let Some(metric) = self.metric {
+            map.serialize_entry("metric", &metric)?;
+        }
+        map.end()
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -197,6 +240,14 @@ impl std::fmt::Display for CliAddressInfo {
 }
 
 impl CliAddressInfo {
+    pub(crate) fn set_rejected(&mut self) {
+        self.rejected = true;
+    }
+
+    pub(crate) fn is_rejected(&self) -> bool {
+        self.rejected
+    }
+
     fn write_flags(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for flag_name in self.flags.iter().filter_map(|(flag_name, value)| {
             if *value { Some(flag_name) } else { None }
@@ -322,6 +373,7 @@ pub(crate) fn parse_nl_msg_to_address(
     let cli_addr_info = CliAddressInfo {
         index,
         brief,
+        rejected: false,
         family,
         local,
         peer,
@@ -765,26 +817,59 @@ impl CliAddrOnelineLink {
     fn gen_string(&self) -> String {
         self.addr_info
             .iter()
-            .map(CliAddrOnelineEntry::gen_string)
+            .filter_map(CliAddrOnelineEntry::gen_string)
             .collect::<Vec<String>>()
             .join("\n")
     }
 }
 
-#[derive(Serialize)]
 struct CliAddrOnelineEntry {
     index: u32,
     dev: String,
-    #[serde(flatten)]
     addr: CliAddressInfo,
 }
 
+/// The fields of an address entry printed in oneline mode.
+#[derive(Serialize)]
+struct CliAddrOnelineInfo<'a> {
+    index: u32,
+    dev: &'a str,
+    #[serde(flatten)]
+    addr: &'a CliAddressInfo,
+}
+
+impl Serialize for CliAddrOnelineEntry {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // iproute2 serializes an address rejected by `print_addrinfo()` as
+        // an empty JSON object without the `index` and `dev` keys.
+        if self.addr.is_rejected() {
+            use serde::ser::SerializeMap;
+
+            return serializer.serialize_map(Some(0))?.end();
+        }
+        CliAddrOnelineInfo {
+            index: self.index,
+            dev: &self.dev,
+            addr: &self.addr,
+        }
+        .serialize(serializer)
+    }
+}
+
 impl CliAddrOnelineEntry {
-    fn gen_string(&self) -> String {
+    fn gen_string(&self) -> Option<String> {
+        if self.addr.is_rejected() {
+            return None;
+        }
         // iproute2 replaces the newline of the continuation lines with a
         // backslash in oneline mode.
-        format!("{}: {}    {}", self.index, self.dev, self.addr)
-            .replace('\n', "\\")
+        Some(
+            format!("{}: {}    {}", self.index, self.dev, self.addr)
+                .replace('\n', "\\"),
+        )
     }
 }
 
@@ -836,6 +921,15 @@ pub(crate) async fn handle_show(
     let (addr_filter, link_opts) = AddressShowFilter::parse(opts)?;
     let link_opts_refs: Vec<&str> =
         link_opts.iter().map(String::as_str).collect();
+
+    // iproute2 `ipaddr_list_flush_or_save()` restricts the dump to the
+    // family of the `to PREFIX` when no other family was requested.
+    let preferred_family = preferred_family.or_else(|| {
+        addr_filter.to_prefix.map(|ip| match ip {
+            IpAddr::V4(_) => AddressFamily::Inet,
+            IpAddr::V6(_) => AddressFamily::Inet6,
+        })
+    });
 
     // `ip -0 address show` (link family) prints the link information like
     // `ip link show` does.
@@ -892,13 +986,16 @@ pub(crate) async fn handle_show(
         {
             continue;
         }
-        let addr_info = parse_nl_msg_to_address(msg.clone(), brief)?;
+        let mut addr_info = parse_nl_msg_to_address(msg.clone(), brief)?;
         if addr_filter.link_matches(&addr_info, msg) {
             matched_indexes.insert(addr_info.index);
-            if addr_filter.matches(&addr_info, msg) {
-                addresses_infos.push(addr_info);
-            }
         }
+        // iproute2 keeps showing the address of a matched link even when an
+        // address filter rejects it, as an empty JSON object.
+        if !addr_filter.matches(&addr_info, msg) {
+            addr_info.set_rejected();
+        }
+        addresses_infos.push(addr_info);
     }
 
     let mut links_info: HashMap<u32, _> = crate::link::handle_show(
