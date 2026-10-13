@@ -19,7 +19,7 @@ use serde::Serialize;
 
 use crate::{
     CliError,
-    link::{BriefMode, CliLinkInfo},
+    link::{BriefMode, CliAddrBriefLink, CliLinkBrief, CliLinkInfo},
 };
 
 #[derive(Default)]
@@ -58,6 +58,21 @@ impl Serialize for CliAddressInfo {
 
         if self.rejected {
             return serializer.serialize_map(Some(0))?.end();
+        }
+
+        // `ip address show -br` only serializes the address and its prefix
+        // length, matching `print_addrinfo()` brief mode.
+        if self.brief {
+            let mut map = serializer.serialize_map(None)?;
+            map.serialize_entry("local", &self.local)?;
+            if let Some(peer) = &self.peer {
+                map.serialize_entry("address", peer)?;
+            }
+            map.serialize_entry("prefixlen", &self.prefixlen)?;
+            if let Some(metric) = self.metric {
+                map.serialize_entry("metric", &metric)?;
+            }
+            return map.end();
         }
 
         let mut map = serializer.serialize_map(None)?;
@@ -934,7 +949,21 @@ impl Serialize for AddressOutput {
         S: serde::Serializer,
     {
         match self {
-            Self::Links(v) => v.serialize(serializer),
+            Self::Links(v) => {
+                // `ip -br link show` and `ip -br address show` have their
+                // own JSON shapes.
+                if v.iter().any(CliLinkInfo::is_brief_link) {
+                    let brief: Vec<CliLinkBrief<'_>> =
+                        v.iter().map(CliLinkBrief::from).collect();
+                    brief.serialize(serializer)
+                } else if v.iter().any(CliLinkInfo::is_brief_address) {
+                    let brief: Vec<CliAddrBriefLink<'_>> =
+                        v.iter().map(CliAddrBriefLink::from).collect();
+                    brief.serialize(serializer)
+                } else {
+                    v.serialize(serializer)
+                }
+            }
             Self::Oneline(v) => v.serialize(serializer),
             Self::Label(v) => v.serialize(serializer),
         }
@@ -1051,7 +1080,11 @@ pub(crate) async fn handle_show(
             link_info.hide_link_info();
         }
         if brief {
-            link_info.set_brief(BriefMode::Address);
+            link_info.set_brief(if link_only {
+                BriefMode::Link
+            } else {
+                BriefMode::Address
+            });
         }
         link_info.move_stats_after_addr_info();
         link_info

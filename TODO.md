@@ -1,11 +1,5 @@
 # TODO
 
-## `ip address`
-
-- show: `-j -br` only serializes `link`/`link_index`, `ifname`,
-  `operstate` and the brief address entries without family, scope, flags
-  and lifetimes - `src/ip/address/show.rs`
-
 ## Build
 
 - clippy: fix the warnings of the current nightly toolchain:

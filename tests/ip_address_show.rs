@@ -178,6 +178,9 @@ fn test_address_show_label_brief() {
         ns.assert_eq_output(&[
             "-br", "address", "show", DUMMY_NAME, "label", DUMMY_NAME,
         ]);
+        ns.assert_eq_output(&[
+            "-j", "-br", "address", "show", DUMMY_NAME, "label", DUMMY_NAME,
+        ]);
     });
 }
 
@@ -451,6 +454,52 @@ fn test_address_show_brief_link_suffix() {
         // iproute2 appends the lower link name to the interface name, e.g.
         // `tshow-veth0@tshow-veth1`.
         ns.assert_eq_output(&["-br", "address", "show"]);
+    });
+}
+
+#[test]
+fn test_address_show_brief_json() {
+    with_dummy_iface_static_ip(|ns| {
+        // The brief JSON output only serializes the interface name,
+        // operstate and the address entries.
+        ns.assert_eq_output(&["-j", "-br", "address", "show", DUMMY_NAME]);
+        ns.assert_eq_output(&[
+            "-j", "-br", "-4", "address", "show", DUMMY_NAME,
+        ]);
+        ns.assert_eq_output(&[
+            "-j", "-br", "-6", "address", "show", DUMMY_NAME,
+        ]);
+    });
+}
+
+#[test]
+fn test_address_show_brief_veth_json() {
+    with_veth_pair(|ns| {
+        // The `link` field carries the lower interface name.
+        ns.assert_eq_output(&["-j", "-br", "address", "show"]);
+    });
+}
+
+#[test]
+fn test_address_show_brief_oneline() {
+    with_dummy_iface_static_ip(|ns| {
+        // Brief mode wins over oneline mode in iproute2.
+        ns.assert_eq_output(&["-br", "-o", "address", "show", DUMMY_NAME]);
+        ns.assert_eq_output(&[
+            "-j", "-br", "-o", "address", "show", DUMMY_NAME,
+        ]);
+    });
+}
+
+#[test]
+fn test_address_show_link_brief() {
+    with_dummy_iface_static_ip(|ns| {
+        // The link family brief output prints the MAC address and flags
+        // like `ip link show -br`.
+        ns.assert_eq_output(&["-br", "-0", "address", "show", DUMMY_NAME]);
+        ns.assert_eq_output(&[
+            "-j", "-br", "-0", "address", "show", DUMMY_NAME,
+        ]);
     });
 }
 
