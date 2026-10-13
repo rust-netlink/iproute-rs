@@ -348,6 +348,53 @@ fn test_address_delete_wildcard_warning() {
             "Should warn about wildcard deletion, got stderr: {}",
             result.stderr
         );
+        // The wildcard deletion has to remove the address.
+        let output = ns.exec_cmd(&["ip", "address", "show", "dev", DUMMY_NAME]);
+        assert!(
+            !output.contains("10.0.0.1"),
+            "Wildcard deletion did not remove the address: {output}"
+        );
+        ns.assert_eq_output(&["address", "show", "dev", DUMMY_NAME]);
+    });
+}
+
+#[test]
+fn test_address_delete() {
+    with_dummy_iface_empty(|ns| {
+        ns.exec_cmd(&["ip", "addr", "add", "192.0.2.1/24", "dev", DUMMY_NAME]);
+        ns.exec_cmd(&[
+            "ip",
+            "-6",
+            "addr",
+            "add",
+            "fd00::1/64",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "delete",
+            "192.0.2.1/24",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        ns.ip_rs_exec_cmd(&[
+            "address",
+            "delete",
+            "fd00::1/64",
+            "dev",
+            DUMMY_NAME,
+        ]);
+        let output = ns.exec_cmd(&["ip", "address", "show", "dev", DUMMY_NAME]);
+        assert!(
+            !output.contains("192.0.2.1"),
+            "IPv4 address was not deleted: {output}"
+        );
+        assert!(
+            !output.contains("fd00::1"),
+            "IPv6 address was not deleted: {output}"
+        );
+        ns.assert_eq_output(&["address", "show", "dev", DUMMY_NAME]);
     });
 }
 
