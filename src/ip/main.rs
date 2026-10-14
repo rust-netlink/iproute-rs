@@ -2,6 +2,7 @@
 
 mod address;
 mod addrlabel;
+mod fou;
 mod link;
 mod neighbour;
 mod route;
@@ -12,8 +13,8 @@ use iproute_rs::{CliColor, CliError, OutputFormat, print_result_and_exit};
 use rtnetlink::packet_route::AddressFamily;
 
 use self::{
-    address::AddressCommand, addrlabel::AddrLabelCommand, link::LinkCommand,
-    route::RouteCommand,
+    address::AddressCommand, addrlabel::AddrLabelCommand, fou::FouCommand,
+    link::LinkCommand, route::RouteCommand,
 };
 use crate::neighbour::NeighbourCommand;
 
@@ -204,6 +205,7 @@ async fn main() -> Result<(), CliError> {
         .subcommand(LinkCommand::gen_command())
         .subcommand(AddressCommand::gen_command())
         .subcommand(AddrLabelCommand::gen_command())
+        .subcommand(FouCommand::gen_command())
         .subcommand(NeighbourCommand::gen_command())
         .subcommand(RouteCommand::gen_command());
 
@@ -252,6 +254,12 @@ async fn main() -> Result<(), CliError> {
         let preferred_family = resolve_preferred_family(matches);
         print_result_and_exit(
             AddrLabelCommand::handle(matches, preferred_family).await,
+            fmt,
+        );
+    } else if let Some(matches) = matches.subcommand_matches(FouCommand::CMD) {
+        let preferred_family = resolve_preferred_family(matches);
+        print_result_and_exit(
+            FouCommand::handle(matches, preferred_family).await,
             fmt,
         );
     } else if let Some(matches) =

@@ -52,3 +52,29 @@ impl From<rtnetlink::Error> for CliError {
         }
     }
 }
+
+impl From<nl_fou::FouError> for CliError {
+    fn from(e: nl_fou::FouError) -> Self {
+        // iproute2 exits with code 2 for the kernel error of a request and
+        // with code 1 for invalid arguments rejected before the request is
+        // sent or for a failed `genl_init_handle()`.
+        //
+        // `nl-fou` wraps a failed generic netlink family resolution, e.g.
+        // the `fou` module is not loaded, as a netlink request failure,
+        // while the kernel replies to an actual request use the
+        // `Netlink error:` prefix.
+        let code = match e.kind {
+            nl_fou::ErrorKind::InvalidInput => 1,
+            nl_fou::ErrorKind::NetlinkError
+                if e.msg.starts_with("Netlink request failed") =>
+            {
+                1
+            }
+            _ => 2,
+        };
+        CliError {
+            code,
+            msg: format!("nl_fou::Error: {e}"),
+        }
+    }
+}
