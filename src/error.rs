@@ -53,6 +53,27 @@ impl From<rtnetlink::Error> for CliError {
     }
 }
 
+impl From<nl_l2tp::L2tpError> for CliError {
+    fn from(e: nl_l2tp::L2tpError) -> Self {
+        // iproute2 exits with code 2 for the kernel error of a request and
+        // with code 1 for invalid arguments rejected before the request is
+        // sent or for a failed generic netlink family resolution.
+        let code = match e.kind {
+            nl_l2tp::ErrorKind::InvalidInput => 1,
+            nl_l2tp::ErrorKind::NetlinkError
+                if e.msg.starts_with("Netlink request failed") =>
+            {
+                1
+            }
+            _ => 2,
+        };
+        CliError {
+            code,
+            msg: format!("nl_l2tp::Error: {e}"),
+        }
+    }
+}
+
 impl From<nl_fou::FouError> for CliError {
     fn from(e: nl_fou::FouError) -> Self {
         // iproute2 exits with code 2 for the kernel error of a request and

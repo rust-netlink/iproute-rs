@@ -3,6 +3,7 @@
 mod address;
 mod addrlabel;
 mod fou;
+mod l2tp;
 mod link;
 mod neighbour;
 mod route;
@@ -14,7 +15,7 @@ use rtnetlink::packet_route::AddressFamily;
 
 use self::{
     address::AddressCommand, addrlabel::AddrLabelCommand, fou::FouCommand,
-    link::LinkCommand, route::RouteCommand,
+    l2tp::L2tpCommand, link::LinkCommand, route::RouteCommand,
 };
 use crate::neighbour::NeighbourCommand;
 
@@ -206,6 +207,7 @@ async fn main() -> Result<(), CliError> {
         .subcommand(AddressCommand::gen_command())
         .subcommand(AddrLabelCommand::gen_command())
         .subcommand(FouCommand::gen_command())
+        .subcommand(L2tpCommand::gen_command())
         .subcommand(NeighbourCommand::gen_command())
         .subcommand(RouteCommand::gen_command());
 
@@ -262,6 +264,8 @@ async fn main() -> Result<(), CliError> {
             FouCommand::handle(matches, preferred_family).await,
             fmt,
         );
+    } else if let Some(matches) = matches.subcommand_matches(L2tpCommand::CMD) {
+        print_result_and_exit(L2tpCommand::handle(matches).await, fmt);
     } else if let Some(matches) =
         matches.subcommand_matches(NeighbourCommand::CMD)
     {
