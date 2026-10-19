@@ -99,3 +99,24 @@ impl From<nl_fou::FouError> for CliError {
         }
     }
 }
+
+impl From<nl_macsec::MacsecError> for CliError {
+    fn from(e: nl_macsec::MacsecError) -> Self {
+        // iproute2 exits with code 2 for a kernel error and with code 1 for
+        // invalid arguments rejected before the request is sent or for a
+        // failed generic netlink family resolution.
+        let code = match e.kind {
+            nl_macsec::ErrorKind::InvalidInput => 1,
+            nl_macsec::ErrorKind::NetlinkError
+                if e.msg.starts_with("Netlink request failed") =>
+            {
+                1
+            }
+            _ => 2,
+        };
+        CliError {
+            code,
+            msg: format!("nl_macsec::Error: {e}"),
+        }
+    }
+}
