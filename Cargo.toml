@@ -24,7 +24,7 @@ log = { version = "0.4.29", features = ["std"] }
 nix = { version = "0.31.3", features = ["feature", "sched"] }
 nl-fou = "0.1.0"
 nl-macsec = "0.2.1"
-nl-l2tp = { git = "https://github.com/rust-netlink/nl-l2tp" }
+nl-l2tp = "0.2.0"
 rtnetlink = { git = "https://github.com/rust-netlink/rtnetlink" }
 rmsd_yaml = "0.1"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
