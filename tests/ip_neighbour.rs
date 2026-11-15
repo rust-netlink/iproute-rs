@@ -36,7 +36,7 @@ fn test_neighbour_show() {
         let expected_output = ns.exec_cmd(&["ip", "neigh", "show"]);
         let our_output = ns.ip_rs_exec_cmd(&["neigh", "show"]);
 
-        trimmed_assert_eq(&expected_output, &our_output);
+        sorted_assert_eq(&expected_output, &our_output);
     });
 }
 
@@ -69,7 +69,7 @@ fn test_neighbour_show_json() {
         let expected_output = ns.exec_cmd(&["ip", "-j", "neigh", "show"]);
         let our_output = ns.ip_rs_exec_cmd(&["-j", "neigh", "show"]);
 
-        trimmed_assert_eq(&expected_output, &our_output);
+        sorted_json_assert_eq(&expected_output, &our_output);
     });
 }
 
@@ -98,7 +98,7 @@ fn test_neighbour_show_to() {
         let our_output =
             ns.ip_rs_exec_cmd(&["neigh", "show", &neigh_address1.to_string()]);
 
-        trimmed_assert_eq(&expected_output, &our_output);
+        sorted_assert_eq(&expected_output, &our_output);
 
         // Explicit "to" parameter
         let expected_output = ns.exec_cmd(&[
@@ -115,7 +115,7 @@ fn test_neighbour_show_to() {
             &neigh_address1.to_string(),
         ]);
 
-        trimmed_assert_eq(&expected_output, &our_output);
+        sorted_assert_eq(&expected_output, &our_output);
     });
 }
 
@@ -142,18 +142,18 @@ fn test_neighbour_show_nud() {
         let expected_output = ns.exec_cmd(&["ip", "neigh", "show"]);
         let our_output = ns.ip_rs_exec_cmd(&["neigh", "show"]);
 
-        trimmed_assert_eq(&expected_output, &our_output);
+        sorted_assert_eq(&expected_output, &our_output);
 
         // Then, ask for them explictly
         let expected_output =
             ns.exec_cmd(&["ip", "neigh", "show", "nud", "none"]);
         let our_output = ns.ip_rs_exec_cmd(&["neigh", "show", "nud", "none"]);
-        trimmed_assert_eq(&expected_output, &our_output);
+        sorted_assert_eq(&expected_output, &our_output);
 
         let expected_output =
             ns.exec_cmd(&["ip", "neigh", "show", "nud", "noarp"]);
         let our_output = ns.ip_rs_exec_cmd(&["neigh", "show", "nud", "noarp"]);
-        trimmed_assert_eq(&expected_output, &our_output);
+        sorted_assert_eq(&expected_output, &our_output);
     });
 }
 
@@ -183,20 +183,20 @@ fn test_neighbour_show_dev() {
         let expected_output =
             ns.exec_cmd(&["ip", "neigh", "show", "dev", "tap0"]);
         let our_output = ns.ip_rs_exec_cmd(&["neigh", "show", "dev", "tap0"]);
-        trimmed_assert_eq(&expected_output, &our_output);
+        sorted_assert_eq(&expected_output, &our_output);
 
         // `vrf` selects neighbours whose interface is enslaved to the VRF
         // (only `tap0` is a member of `tvrf`).
         let expected_output =
             ns.exec_cmd(&["ip", "neigh", "show", "vrf", "tvrf"]);
         let our_output = ns.ip_rs_exec_cmd(&["neigh", "show", "vrf", "tvrf"]);
-        trimmed_assert_eq(&expected_output, &our_output);
+        sorted_assert_eq(&expected_output, &our_output);
 
         // `nomaster` selects neighbours whose interface has no controller
         // (only `tap1` is unenslaved).
         let expected_output = ns.exec_cmd(&["ip", "neigh", "show", "nomaster"]);
         let our_output = ns.ip_rs_exec_cmd(&["neigh", "show", "nomaster"]);
-        trimmed_assert_eq(&expected_output, &our_output);
+        sorted_assert_eq(&expected_output, &our_output);
     });
 }
 
@@ -224,7 +224,7 @@ fn test_neighbour_show_unused() {
         // so `unused` must list all of them.
         let expected_output = ns.exec_cmd(&["ip", "neigh", "show", "unused"]);
         let our_output = ns.ip_rs_exec_cmd(&["neigh", "show", "unused"]);
-        trimmed_assert_eq(&expected_output, &our_output);
+        sorted_assert_eq(&expected_output, &our_output);
     });
 }
 
@@ -253,7 +253,7 @@ fn test_neighbour_show_proxy() {
 
         let expected_output = ns.exec_cmd(&["ip", "neigh", "show", "proxy"]);
         let our_output = ns.ip_rs_exec_cmd(&["neigh", "show", "proxy"]);
-        trimmed_assert_eq(&expected_output, &our_output);
+        sorted_assert_eq(&expected_output, &our_output);
     });
 }
 
@@ -284,7 +284,7 @@ fn test_neighbour_show_statistics() {
         let our_output =
             normalize_stats(ns.ip_rs_exec_cmd(&["-s", "neigh", "show"]));
 
-        trimmed_assert_eq(&expected_output, &our_output);
+        sorted_assert_eq(&expected_output, &our_output);
     });
 }
 
@@ -360,9 +360,8 @@ fn normalize_stats(output: String) -> String {
     let mut result = String::new();
     let mut remaining = output.as_str();
 
-    if let Some(pos) = remaining.find(MARKER) {
-        result.push_str(&remaining[..pos]);
-        result.push_str(MARKER);
+    while let Some(pos) = remaining.find(MARKER) {
+        result.push_str(&remaining[..pos + MARKER.len()]);
         remaining = &remaining[pos + MARKER.len()..];
 
         // Skip the `a/b/c` value (digits and slashes), replacing it with zeros.
@@ -376,6 +375,43 @@ fn normalize_stats(output: String) -> String {
     result.push_str(remaining);
 
     result
+}
+
+/// Sorts output lines because the kernel does not guarantee a stable order
+/// for entries returned by subsequent neighbour dumps.
+fn sort_lines(output: &str) -> String {
+    let mut lines: Vec<_> = output.lines().map(str::trim_end).collect();
+    lines.sort_unstable();
+
+    let mut result = lines.join("\n");
+    if !result.is_empty() {
+        result.push('\n');
+    }
+    result
+}
+
+/// Sorts JSON neighbour entries by their destination because the kernel does
+/// not guarantee a stable order for subsequent neighbour dumps.
+fn sort_json_entries(output: &str) -> String {
+    let mut value: serde_json::Value = serde_json::from_str(output)
+        .unwrap_or_else(|e| panic!("Invalid JSON output {output:?}: {e}"));
+    if let Some(entries) = value.as_array_mut() {
+        entries.sort_by_key(serde_json::Value::to_string);
+    }
+    serde_json::to_string(&value).expect("Failed to serialize JSON value")
+}
+
+#[track_caller]
+fn sorted_assert_eq(expected: &str, actual: &str) {
+    trimmed_assert_eq(&sort_lines(expected), &sort_lines(actual));
+}
+
+#[track_caller]
+fn sorted_json_assert_eq(expected: &str, actual: &str) {
+    pretty_assertions::assert_eq!(
+        sort_json_entries(expected),
+        sort_json_entries(actual)
+    );
 }
 
 /// Asserts textual outputs of us and iproute2 are equal,
