@@ -43,6 +43,17 @@ impl From<std::io::Error> for CliError {
     }
 }
 
+impl From<genetlink::GenetlinkError> for CliError {
+    fn from(e: genetlink::GenetlinkError) -> Self {
+        // Failing to resolve or connect to a generic netlink family means the
+        // command cannot be sent, iproute2 exits with code 1 for that.
+        CliError {
+            code: 1,
+            msg: format!("genetlink::Error: {e}"),
+        }
+    }
+}
+
 impl From<rtnetlink::Error> for CliError {
     fn from(e: rtnetlink::Error) -> Self {
         // iproute2 exits with code 2 for kernel/netlink errors

@@ -15,13 +15,14 @@ use rtnetlink::{
     packet_route::{
         AddressFamily, RouteNetlinkMessage,
         route::{
-            Ioam6TraceHdr, RouteAddress, RouteAttribute, RouteErspanOpt,
-            RouteGeneveOpt, RouteIoam6Tunnel, RouteIp6Tunnel, RouteIpTunnel,
-            RouteLwEnCapType, RouteLwTunnelEncap, RouteLwTunnelOpt,
-            RouteMessage, RouteMplsIpTunnel, RouteMplsTtlPropagation,
-            RoutePreference, RouteProtocol, RouteRplIpTunnel, RouteScope,
-            RouteSeg6IpTunnel, RouteSeg6LocalTunnel, RouteType, RouteVia,
-            RouteVxlanOpt, RouteXfrmTunnel, RplSrh, Seg6Header, Seg6Mode,
+            Ioam6TraceHdr, Ipv6RoutingType, RouteAddress, RouteAttribute,
+            RouteErspanOpt, RouteGeneveOpt, RouteIoam6Tunnel, RouteIp6Tunnel,
+            RouteIpTunnel, RouteLwEnCapType, RouteLwTunnelEncap,
+            RouteLwTunnelOpt, RouteMessage, RouteMplsIpTunnel,
+            RouteMplsTtlPropagation, RoutePreference, RouteProtocol,
+            RouteRplIpTunnel, RouteScope, RouteSeg6IpTunnel,
+            RouteSeg6LocalTunnel, RouteType, RouteVia, RouteVxlanOpt,
+            RouteXfrmTunnel, RplSrh, Seg6Header, Seg6Mode,
         },
     },
 };
@@ -64,6 +65,7 @@ async fn send_route_request(
         .request(nl_msg)
         .map_err(|e| CliError::from(format!("{e}")))?;
     while let Some(msg) = response.next().await {
+        let msg = msg?;
         if let rtnetlink::packet_core::NetlinkPayload::Error(err) = msg.payload
         {
             return Err(CliError::from(format!(
@@ -264,7 +266,7 @@ fn build_encap(
             // `iproute2` stores the segments in reverse order and sets the
             // `segments_left` field to the number of segments.
             let mut srh = RplSrh::default();
-            srh.routing_type = 3;
+            srh.routing_type = Ipv6RoutingType::Rpl;
             srh.segments_left = segs.len() as u8;
             srh.segments = segs.iter().rev().copied().collect();
             attrs.push(RouteLwTunnelEncap::Rpl(RouteRplIpTunnel::Srh(srh)));

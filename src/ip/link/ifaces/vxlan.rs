@@ -8,7 +8,9 @@ use std::{
 use iproute_rs::CliError;
 use rtnetlink::{
     LinkMessageBuilder, LinkVxlan,
-    packet_route::link::{InfoKind, InfoVxlan, LinkInfo, VxlanDf},
+    packet_route::link::{
+        InfoKind, InfoVxlan, LinkInfo, VxlanDf, VxlanLabelPolicy,
+    },
 };
 use serde::Serialize;
 
@@ -137,12 +139,12 @@ impl From<&[InfoVxlan]> for CliLinkInfoDataVxlan {
                 InfoVxlan::Gbp => gbp = true,
                 InfoVxlan::Gpe => gpe = true,
                 InfoVxlan::RemCsumNoPartial => remcsum_no_partial = true,
-                InfoVxlan::TtlInherit(v) => ttl_inherit = *v != 0,
+                InfoVxlan::TtlInherit(v) => ttl_inherit = *v,
                 InfoVxlan::TtlInheritFlag => ttl_inherit = true,
                 InfoVxlan::Df(v) => df = Some(v.to_string()),
                 InfoVxlan::Vnifilter(v) => vnifilter = *v,
                 InfoVxlan::Localbypass(v) => localbypass = *v,
-                InfoVxlan::LabelPolicy(v) => label_policy = *v,
+                InfoVxlan::LabelPolicy(v) => label_policy = u32::from(*v),
                 InfoVxlan::ReservedBits(v) => reserved_bits = *v,
                 InfoVxlan::McRoute(v) => mc_route = *v,
                 _ => (),
@@ -556,7 +558,7 @@ fn apply_vxlan_args<'a>(
                 let val: u32 = v.parse().map_err(|_| {
                     CliError::from(format!("Invalid VXLAN label_policy: {v}"))
                 })?;
-                builder = builder.label_policy(val);
+                builder = builder.label_policy(VxlanLabelPolicy::from(val));
             }
             _ => {
                 return Err(CliError::from(format!(

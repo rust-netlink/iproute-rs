@@ -6,9 +6,11 @@ use iproute_rs::{CliError, mac_to_string, parse_mac_str};
 use rtnetlink::{
     LinkBridge, LinkMessageBuilder,
     packet_route::link::{
-        BridgeBooleanOptionFlags as BoolOptFlags, BridgeMulticastRouterType,
-        BridgePortState, BridgeQuerierState, BridgeStpMode, InfoBridge,
-        InfoBridgePort, InfoPortData, InfoPortKind, LinkInfo,
+        BridgeBooleanOptionFlags as BoolOptFlags, BridgeGroupFwdMask,
+        BridgeMulticastIgmpVersion, BridgeMulticastMldVersion,
+        BridgeMulticastRouterType, BridgePortState, BridgeQuerierState,
+        BridgeStpMode, InfoBridge, InfoBridgePort, InfoPortData, InfoPortKind,
+        LinkInfo,
     },
 };
 use serde::Serialize;
@@ -190,7 +192,7 @@ impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
                     topology_change_timer = *v
                 }
                 InfoBridge::GcTimer(v) => gc_timer = *v,
-                InfoBridge::GroupFwdMask(v) => group_fwd_mask_val = *v,
+                InfoBridge::GroupFwdMask(v) => group_fwd_mask_val = v.bits(),
                 InfoBridge::GroupAddr(v) => group_addr = mac_to_string(v),
                 InfoBridge::MulticastRouter(v) => mcast_router = (*v).into(),
                 InfoBridge::MulticastSnooping(v) => {
@@ -244,10 +246,10 @@ impl From<&[InfoBridge]> for CliLinkInfoDataBridge {
                     mcast_stats_enabled = Some((*v).into())
                 }
                 InfoBridge::MulticastIgmpVersion(v) => {
-                    mcast_igmp_version = Some(*v)
+                    mcast_igmp_version = Some(u8::from(*v))
                 }
                 InfoBridge::MulticastMldVersion(v) => {
-                    mcast_mld_version = Some(*v)
+                    mcast_mld_version = Some(u8::from(*v))
                 }
                 InfoBridge::FdbNLearned(v) => fdb_n_learned = Some(*v),
                 InfoBridge::FdbMaxLearned(v) => fdb_max_learned = Some(*v),
@@ -643,7 +645,7 @@ impl From<&[InfoBridgePort]> for CliLinkInfoDataBridgePort {
                 InfoBridgePort::NeighForwardGrat(v) => {
                     neigh_forward_grat = Some(*v)
                 }
-                InfoBridgePort::GroupFwdMask(v) => group_fwd_mask = *v,
+                InfoBridgePort::GroupFwdMask(v) => group_fwd_mask = v.bits(),
                 InfoBridgePort::VlanTunnel(v) => vlan_tunnel = *v,
                 InfoBridgePort::Isolated(v) => isolated = *v,
                 InfoBridgePort::Locked(v) => locked = *v,
@@ -847,8 +849,13 @@ fn apply_bridge_args<'a>(
                 builder = builder.vlan_stats_per_port(parse_on_off_01(v)?);
             }
             "group_fwd_mask" => {
-                builder = builder
-                    .group_fwd_mask(parse_u32(v, "group_fwd_mask")? as u16);
+                builder = builder.group_fwd_mask(
+                    BridgeGroupFwdMask::from_bits_retain(parse_u32(
+                        v,
+                        "group_fwd_mask",
+                    )?
+                        as u16),
+                );
             }
             "group_address" => {
                 let mac: [u8; 6] =
@@ -937,12 +944,18 @@ fn apply_bridge_args<'a>(
                 builder = builder.mcast_stats_enabled(parse_on_off_01(v)?);
             }
             "mcast_igmp_version" => {
-                builder = builder
-                    .mcast_igmp_version(parse_u8(v, "mcast_igmp_version")?);
+                builder = builder.mcast_igmp_version(
+                    BridgeMulticastIgmpVersion::from(parse_u8(
+                        v,
+                        "mcast_igmp_version",
+                    )?),
+                );
             }
             "mcast_mld_version" => {
-                builder = builder
-                    .mcast_mld_version(parse_u8(v, "mcast_mld_version")?);
+                builder =
+                    builder.mcast_mld_version(BridgeMulticastMldVersion::from(
+                        parse_u8(v, "mcast_mld_version")?,
+                    ));
             }
             "nf_call_iptables" => {
                 builder = builder.nf_call_iptables(parse_on_off_01(v)?);
@@ -1094,10 +1107,12 @@ async fn apply_bridge_port_args(
                 ));
             }
             "group_fwd_mask" => {
-                port_data.push(InfoBridgePort::GroupFwdMask(parse_u16(
-                    v.as_ref(),
-                    "group_fwd_mask",
-                )?));
+                port_data.push(InfoBridgePort::GroupFwdMask(
+                    BridgeGroupFwdMask::from_bits_retain(parse_u16(
+                        v.as_ref(),
+                        "group_fwd_mask",
+                    )?),
+                ));
             }
             "neigh_suppress" => {
                 port_data.push(InfoBridgePort::NeighSupress(parse_on_off_01(

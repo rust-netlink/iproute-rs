@@ -105,12 +105,12 @@ impl From<&[InfoMacSec]> for CliLinkInfoDataMacSec {
                 }
                 InfoMacSec::Window(v) => window = Some(*v),
                 InfoMacSec::EncodingSa(v) => encoding_sa = Some(*v),
-                InfoMacSec::Encrypt(v) => encrypt = *v != 0,
-                InfoMacSec::Protect(v) => protect = *v != 0,
-                InfoMacSec::IncSci(v) => send_sci = *v != 0,
-                InfoMacSec::Es(v) => es = *v != 0,
-                InfoMacSec::Scb(v) => scb = *v != 0,
-                InfoMacSec::ReplayProtect(v) => replay = *v != 0,
+                InfoMacSec::Encrypt(v) => encrypt = *v,
+                InfoMacSec::Protect(v) => protect = *v,
+                InfoMacSec::IncSci(v) => send_sci = *v,
+                InfoMacSec::Es(v) => es = *v,
+                InfoMacSec::Scb(v) => scb = *v,
+                InfoMacSec::ReplayProtect(v) => replay = *v,
                 InfoMacSec::Validation(v) => {
                     validation = validate_to_str(v).to_string();
                 }

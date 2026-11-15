@@ -4,8 +4,8 @@ use iproute_rs::CliError;
 use rtnetlink::{
     LinkMacVlan, LinkMacVtap, LinkMessageBuilder,
     packet_route::link::{
-        InfoKind, InfoMacVlan, InfoMacVtap, LinkInfo, MacVlanFlags,
-        MacVlanMode, MacVtapMode,
+        InfoKind, InfoMacVlan, InfoMacVtap, LinkInfo, MacVlanBcCutoff,
+        MacVlanFlags, MacVlanMode, MacVtapMode,
     },
 };
 use serde::Serialize;
@@ -60,7 +60,7 @@ impl From<&[InfoMacVlan]> for CliLinkInfoDataMacVlan {
                 }
                 InfoMacVlan::BcQueueLen(v) => bcqueuelen = Some(*v),
                 InfoMacVlan::BcQueueLenUsed(v) => usedbcqueuelen = Some(*v),
-                InfoMacVlan::BcCutoff(v) => bclim = Some(*v),
+                InfoMacVlan::BcCutoff(v) => bclim = Some(i32::from(*v)),
                 InfoMacVlan::MacAddrCount(v) => macaddr_count = Some(*v),
                 InfoMacVlan::MacAddrData(addrs) => {
                     let mut macs = Vec::new();
@@ -148,7 +148,7 @@ impl From<&[InfoMacVtap]> for CliLinkInfoDataMacVtap {
                 }
                 InfoMacVtap::BcQueueLen(v) => bcqueuelen = Some(*v),
                 InfoMacVtap::BcQueueLenUsed(v) => usedbcqueuelen = Some(*v),
-                InfoMacVtap::BcCutoff(v) => bclim = Some(*v),
+                InfoMacVtap::BcCutoff(v) => bclim = Some(i32::from(*v)),
                 InfoMacVtap::MacAddrCount(v) => macaddr_count = Some(*v),
                 InfoMacVtap::MacAddrData(addrs) => {
                     let mut macs = Vec::new();
@@ -262,7 +262,9 @@ fn parse_macvlan_args<'a>(
                 let val: i32 = v.parse().map_err(|_| {
                     CliError::from(format!("Invalid MACVLAN bclim: {v}"))
                 })?;
-                builder = builder.append_info_data(InfoMacVlan::BcCutoff(val));
+                builder = builder.append_info_data(InfoMacVlan::BcCutoff(
+                    MacVlanBcCutoff::from(val),
+                ));
             }
             _ => {
                 return Err(CliError::from(format!(
@@ -343,7 +345,9 @@ fn parse_macvtap_args<'a>(
                 let val: i32 = v.parse().map_err(|_| {
                     CliError::from(format!("Invalid MACVTAP bclim: {v}"))
                 })?;
-                builder = builder.append_info_data(InfoMacVtap::BcCutoff(val));
+                builder = builder.append_info_data(InfoMacVtap::BcCutoff(
+                    MacVlanBcCutoff::from(val),
+                ));
             }
             _ => {
                 return Err(CliError::from(format!(

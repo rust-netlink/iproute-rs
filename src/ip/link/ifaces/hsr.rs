@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use iproute_rs::{CliError, mac_to_string};
 use rtnetlink::{
     LinkHsr, LinkMessageBuilder,
-    packet_route::link::{HsrProtocol, InfoHsr, InfoKind, LinkInfo},
+    packet_route::link::{
+        HsrProtocol, HsrVersion, InfoHsr, InfoKind, LinkInfo,
+    },
 };
 use serde::Serialize;
 
@@ -75,7 +77,7 @@ impl From<&[InfoHsr]> for CliLinkInfoDataHsr {
                 InfoHsr::Protocol(HsrProtocol::Hsr) => proto = Some(0),
                 InfoHsr::Protocol(HsrProtocol::Prp) => proto = Some(1),
                 InfoHsr::Protocol(HsrProtocol::Other(v)) => proto = Some(*v),
-                InfoHsr::Version(v) => version = Some(*v),
+                InfoHsr::Version(v) => version = Some(u8::from(*v)),
                 _ => (),
             }
         }
@@ -135,7 +137,8 @@ fn apply_hsr_args<'a>(
                 builder = builder.supervision(parse_u8(v, "supervision")?);
             }
             "version" => {
-                builder = builder.version(parse_u8(v, "version")?);
+                builder =
+                    builder.version(HsrVersion::from(parse_u8(v, "version")?));
             }
             "proto" => {
                 let proto: u8 = parse_u8(v, "proto")?;

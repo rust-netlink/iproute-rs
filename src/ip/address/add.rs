@@ -309,6 +309,7 @@ async fn send_and_check(
         .request(nl_msg)
         .map_err(|e| CliError::from(format!("{e}")))?;
     while let Some(msg) = response.next().await {
+        let msg = msg?;
         if let NetlinkPayload::Error(err) = msg.payload {
             return Err(CliError::from(format!(
                 "Received a netlink error message {err}"

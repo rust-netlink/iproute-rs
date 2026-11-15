@@ -6,7 +6,8 @@ use futures_util::{TryStreamExt, stream::StreamExt};
 use iproute_rs::CanDisplay;
 use rtnetlink::{
     packet_core::{
-        NLM_F_ACK, NLM_F_CREATE, NLM_F_REQUEST, NetlinkMessage, NetlinkPayload,
+        Emitable, NLM_F_ACK, NLM_F_CREATE, NLM_F_REQUEST, NetlinkMessage,
+        NetlinkPayload,
     },
     packet_route::{RouteNetlinkMessage, route::RouteMessage},
 };
@@ -67,12 +68,12 @@ pub(crate) async fn handle_save(opts: &[String]) -> Result<(), CliError> {
             continue;
         }
 
-        let mut nl_msg_out =
+        let nl_msg_out =
             NetlinkMessage::from(RouteNetlinkMessage::NewRoute(nl_msg));
-        nl_msg_out.finalize();
-        let len = nl_msg_out.buffer_len();
-        let mut buf = vec![0u8; len];
-        nl_msg_out.serialize(&mut buf);
+        let mut buf = Vec::new();
+        nl_msg_out.emit(&mut buf).map_err(|e| {
+            CliError::from(format!("Failed to serialize nlmsg: {e}"))
+        })?;
         stdout.write_all(&buf).map_err(|e| {
             CliError::from(format!("Short write while saving nlmsg: {e}"))
         })?;
@@ -140,6 +141,7 @@ pub(crate) async fn handle_restore() -> Result<(), CliError> {
             .request(msg)
             .map_err(|e| CliError::from(format!("{e}")))?;
         while let Some(resp) = response.next().await {
+            let resp = resp?;
             if let NetlinkPayload::Error(err) = resp.payload
                 && let Some(code) = err.code
                 && code.get() != -libc::EEXIST
