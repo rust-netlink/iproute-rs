@@ -18,14 +18,15 @@ path = "src/ip/main.rs"
 [dependencies]
 clap = { version = "4.5.40", features = ["cargo"] }
 futures-util = "0.3.31"
+genetlink = "1.0.0-rc2"
 libc = "0.2"
 indexmap = { version = "2.14.0", features = ["serde"] }
 log = { version = "0.4.29", features = ["std"] }
 nix = { version = "0.31.3", features = ["feature", "sched"] }
-nl-fou = "0.1.0"
-nl-macsec = "0.2.1"
-nl-l2tp = "0.2.0"
-rtnetlink = { git = "https://github.com/rust-netlink/rtnetlink" }
+nl-fou = "*"
+nl-macsec = "*"
+nl-l2tp = "*"
+rtnetlink = "*"
 rmsd_yaml = "0.2.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_json = "1.0.140"
@@ -37,3 +38,15 @@ rand = "0.10.0"
 
 [patch.crates-io.netlink-packet-route]
 git = "https://github.com/rust-netlink/netlink-packet-route"
+
+[patch.crates-io.nl-fou]
+git = "https://github.com/rust-netlink/nl-fou"
+
+[patch.crates-io.nl-macsec]
+git = "https://github.com/rust-netlink/nl-macsec"
+
+[patch.crates-io.nl-l2tp]
+git = "https://github.com/rust-netlink/nl-l2tp"
+
+[patch.crates-io.rtnetlink]
+git = "https://github.com/rust-netlink/rtnetlink"

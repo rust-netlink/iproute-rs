@@ -1731,7 +1731,7 @@ async fn get_netns_id_from_fd(
 
     let mut netns = handle.request(nsid_req.clone()).unwrap();
 
-    if let Some(msg) = netns.next().await {
+    if let Some(Ok(msg)) = netns.next().await {
         let rtnetlink::packet_core::NetlinkPayload::InnerMessage(
             rtnetlink::packet_route::RouteNetlinkMessage::NewNsId(payload),
         ) = msg.payload

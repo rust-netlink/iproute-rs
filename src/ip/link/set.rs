@@ -195,10 +195,10 @@ async fn handle_link_set_replace(
         attrs.push(LinkAttribute::NetNsFd(file.as_raw_fd()));
     }
     if let Some(v) = conf.protodown {
-        attrs.push(LinkAttribute::ProtoDown(if v { 1 } else { 0 }));
+        attrs.push(LinkAttribute::ProtoDown(v));
     }
     if let Some(v) = conf.carrier {
-        attrs.push(LinkAttribute::Carrier(if v { 1 } else { 0 }));
+        attrs.push(LinkAttribute::Carrier(v));
     }
     if let Some(v) = conf.state {
         attrs.push(LinkAttribute::OperState(v));
@@ -307,7 +307,9 @@ async fn handle_link_set_replace(
                 infos
                     .push(VfInfo::IbPortGuid(VfInfoGuid::new(vf.vf_num, guid)));
             }
-            vf_info_list.push(LinkVfInfo(infos));
+            let mut vf_info = LinkVfInfo::default();
+            vf_info.0 = infos;
+            vf_info_list.push(vf_info);
         }
         attrs.push(LinkAttribute::VfInfoList(vf_info_list));
     }

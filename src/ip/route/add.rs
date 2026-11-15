@@ -8,9 +8,9 @@ use rtnetlink::{
     packet_route::{
         AddressFamily,
         route::{
-            Ioam6Mode, MplsLabel, RouteIp6TunnelFlags, RouteIpTunnelFlags,
-            RouteMetric, RouteProtocol, RouteRealm, RouteScope, RouteType,
-            Seg6LocalAction, Seg6LocalSrh, Seg6Mode,
+            Ioam6Mode, Ipv6RoutingType, MplsLabel, RouteIp6TunnelFlags,
+            RouteIpTunnelFlags, RouteMetric, RouteProtocol, RouteRealm,
+            RouteScope, RouteType, Seg6LocalAction, Seg6LocalSrh, Seg6Mode,
         },
     },
 };
@@ -623,12 +623,7 @@ fn parse_mpls_label_stack(stack: &str) -> Result<Vec<MplsLabel>, CliError> {
                 "MPLS label out of range: {label}"
             )));
         }
-        ret.push(MplsLabel {
-            label: value,
-            traffic_class: 0,
-            bottom_of_stack: index == labels.len() - 1,
-            ttl: 0,
-        });
+        ret.push(MplsLabel::new(value, 0, index == labels.len() - 1, 0));
     }
 
     Ok(ret)
@@ -645,12 +640,7 @@ fn parse_mpls_dst_label(value: &str) -> Result<MplsLabel, CliError> {
             "MPLS label out of range: {value}"
         )));
     }
-    Ok(MplsLabel {
-        label,
-        traffic_class: 0,
-        bottom_of_stack: true,
-        ttl: 0,
-    })
+    Ok(MplsLabel::new(label, 0, true, 0))
 }
 
 fn parse_encap_u64(value: &str) -> Result<u64, CliError> {
@@ -962,7 +952,7 @@ fn build_seg6local_srh(
     }
     let segment_count = segments.len() as u8;
     let mut srh = Seg6LocalSrh::default();
-    srh.routing_type = 4;
+    srh.routing_type = Ipv6RoutingType::SegmentRouting;
     srh.segments_left = segment_count - 1;
     srh.first_segment = segment_count - 1;
     srh.segments = segments.into_iter().rev().collect();
@@ -1457,16 +1447,13 @@ fn parse_time_rtt(s: &str) -> Result<(u32, bool), CliError> {
 
 fn parse_realm(s: &str) -> Result<RouteRealm, CliError> {
     if let Some((from, to)) = s.split_once('/') {
-        Ok(RouteRealm {
-            source: parse_realm_component(from)?,
-            destination: parse_realm_component(to)?,
-        })
+        Ok(RouteRealm::new(
+            parse_realm_component(from)?,
+            parse_realm_component(to)?,
+        ))
     } else {
         let value = parse_u32_any_base(s)?;
-        Ok(RouteRealm {
-            source: (value >> 16) as u16,
-            destination: value as u16,
-        })
+        Ok(RouteRealm::new((value >> 16) as u16, value as u16))
     }
 }
 
@@ -1795,13 +1782,7 @@ mod tests {
                 RouteMetric::FastopenNoCookie(1),
             ]
         );
-        assert_eq!(
-            config.realm,
-            Some(RouteRealm {
-                source: 10,
-                destination: 20,
-            })
-        );
+        assert_eq!(config.realm, Some(RouteRealm::new(10, 20)));
     }
 
     #[test]
@@ -1858,10 +1839,10 @@ mod tests {
                 RouteMetric::Mtu(1500)
             ]))
         );
-        assert!(msg.attributes.contains(&RouteAttribute::Realm(RouteRealm {
-            source: 1,
-            destination: 2,
-        })));
+        assert!(
+            msg.attributes
+                .contains(&RouteAttribute::Realm(RouteRealm::new(1, 2)))
+        );
     }
 
     #[test]
@@ -2202,18 +2183,8 @@ mod tests {
             config.encap,
             Some(RouteEncapConfig::Mpls {
                 dst: vec![
-                    MplsLabel {
-                        label: 100,
-                        traffic_class: 0,
-                        bottom_of_stack: false,
-                        ttl: 0,
-                    },
-                    MplsLabel {
-                        label: 200,
-                        traffic_class: 0,
-                        bottom_of_stack: true,
-                        ttl: 0,
-                    },
+                    MplsLabel::new(100, 0, false, 0),
+                    MplsLabel::new(200, 0, true, 0),
                 ],
                 ttl: None,
             })
@@ -2236,12 +2207,7 @@ mod tests {
         assert_eq!(
             config.encap,
             Some(RouteEncapConfig::Mpls {
-                dst: vec![MplsLabel {
-                    label: 100,
-                    traffic_class: 0,
-                    bottom_of_stack: true,
-                    ttl: 0,
-                }],
+                dst: vec![MplsLabel::new(100, 0, true, 0)],
                 ttl: Some(64),
             })
         );
@@ -2514,15 +2480,7 @@ mod tests {
             Some(AddressFamily::Mpls),
         )
         .unwrap();
-        assert_eq!(
-            config.mpls_dst,
-            Some(MplsLabel {
-                label: 100,
-                traffic_class: 0,
-                bottom_of_stack: true,
-                ttl: 0,
-            })
-        );
+        assert_eq!(config.mpls_dst, Some(MplsLabel::new(100, 0, true, 0)));
         assert_eq!(config.dst_len, 20);
         assert_eq!(config.ttl_propagate, Some(true));
 
@@ -2541,18 +2499,8 @@ mod tests {
         assert_eq!(
             config.mpls_newdst,
             Some(vec![
-                MplsLabel {
-                    label: 400,
-                    traffic_class: 0,
-                    bottom_of_stack: false,
-                    ttl: 0,
-                },
-                MplsLabel {
-                    label: 500,
-                    traffic_class: 0,
-                    bottom_of_stack: true,
-                    ttl: 0,
-                },
+                MplsLabel::new(400, 0, false, 0),
+                MplsLabel::new(500, 0, true, 0),
             ])
         );
 

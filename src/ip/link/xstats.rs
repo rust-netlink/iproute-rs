@@ -677,6 +677,7 @@ pub(crate) async fn handle_xstats(
     let mut results = Vec::new();
 
     while let Some(msg) = response.next().await {
+        let msg = msg?;
         match msg.payload {
             rtnetlink::packet_core::NetlinkPayload::InnerMessage(
                 RouteNetlinkMessage::NewStats(stats),

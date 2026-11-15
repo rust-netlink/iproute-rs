@@ -116,7 +116,7 @@ impl From<&[InfoIpTunnel]> for CliLinkInfoDataIpIp {
                 InfoIpTunnel::EncapLimit(v) => encap_limit = Some(*v),
                 InfoIpTunnel::FlowInfo(v) => flow_info = Some(*v),
                 InfoIpTunnel::Ipv6Flags(v) => ipv6_flags = Some(*v),
-                InfoIpTunnel::Ipv6SitFlags(v) => sit_flags = Some(*v),
+                InfoIpTunnel::Ipv6SitFlags(v) => sit_flags = Some(v.bits()),
                 InfoIpTunnel::Ipv6RdPrefix(v) => ipv6_rd_prefix = Some(*v),
                 InfoIpTunnel::Ipv6RdRelayPrefix(v) => {
                     ipv6_rd_relay_prefix = Some(*v)
