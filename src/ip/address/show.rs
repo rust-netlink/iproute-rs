@@ -374,8 +374,7 @@ pub(crate) fn parse_nl_msg_to_address(
 
     // If no IFA_LOCAL, use IFA_ADDRESS as local
     if local.is_empty() {
-        local = address_attr;
-        address_attr = String::new();
+        local = std::mem::take(&mut address_attr);
     }
 
     // Set peer only when IFA_ADDRESS differs from IFA_LOCAL
